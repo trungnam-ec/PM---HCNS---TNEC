@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
+import { supabase } from "@/lib/supabase";
 import {
   Search,
   Plus,
@@ -25,7 +26,9 @@ import {
   AlertCircle,
   Settings,
   Key,
-  Info
+  Info,
+  Database,
+  X
 } from "lucide-react";
 
 // ─── TYPES FOR CV SCORER ──────────────────────────────────────────────────────
@@ -39,6 +42,7 @@ type ScoringResult = {
   summary: string;
   extracted_info: Record<string, string>;
   submitted?: boolean;
+  saved_db?: boolean;
   error?: string;
 };
 
@@ -53,28 +57,6 @@ function scoreColor(score: number) {
   return { text: "text-rose-500", bg: "bg-rose-500", bar: "bg-rose-400" };
 }
 
-// ─── PIPELINE MOCK DATA ──────────────────────────────────────────────────────
-const INITIAL_CANDIDATES = [
-  // CV Mới
-  { id: "c1", name: "Bùi Tấn Hiếu", position: "QLDA Cầu Đường", source: "TopCV", date: "02 Tháng 6", score: 85, phone: "0912 345 678", email: "hieu.bt@gmail.com", column: "new" },
-  { id: "c2", name: "Trần Văn Trượt", position: "Kỹ sư Giám sát", source: "Referral", date: "03 Tháng 6", score: 45, phone: "0987 654 321", email: "truot.tv@gmail.com", column: "new" },
-  
-  // Sàng lọc
-  { id: "c3", name: "Lê Thị Thu Thảo", position: "Trợ lý Giám đốc", source: "LinkedIn", date: "28 Tháng 5", score: 92, phone: "0934 567 890", email: "thao.lt@gmail.com", column: "screening" },
-  
-  // Phỏng vấn
-  { id: "c4", name: "Bùi Quốc Vương", position: "Kế hoạch Kỹ thuật", source: "TopCV", date: "25 Tháng 5", score: 78, phone: "0905 123 456", email: "vuong.bq@gmail.com", column: "interview" },
-  
-  // Đề nghị
-  { id: "c5", name: "Nguyễn Văn Thành", position: "Chuyên viên QLDA", source: "Nội bộ", date: "20 Tháng 5", score: 88, phone: "0917 999 888", email: "thanh.nv@gmail.com", column: "offer" },
-  
-  // Đã tuyển
-  { id: "c6", name: "Nguyễn Văn Đấu", position: "Kỹ sư Kế hoạch", source: "LinkedIn", date: "15 Tháng 5", score: 95, phone: "0909 888 777", email: "dau.nv@gmail.com", column: "hired" },
-  
-  // Từ chối
-  { id: "c7", name: "Lê Văn Tèo", position: "Nhân viên Hành chính", source: "TopCV", date: "12 Tháng 5", score: 35, phone: "0914 111 222", email: "teo.lv@gmail.com", column: "rejected" }
-];
-
 const COLUMNS = [
   { id: "new", title: "CV Mới", color: "border-t-slate-400" },
   { id: "screening", title: "Sàng lọc", color: "border-t-cyan-500" },
@@ -88,18 +70,27 @@ const COLUMNS = [
 function ResultCard({
   result,
   onSubmit,
+  onSaveDb,
 }: {
   result: ScoringResult;
   onSubmit: (r: ScoringResult) => Promise<void>;
+  onSaveDb: (r: ScoringResult) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const c = scoreColor(result.score);
 
   const handleSubmit = async () => {
     setSubmitting(true);
     await onSubmit(result);
     setSubmitting(false);
+  };
+
+  const handleSaveDb = async () => {
+    setSaving(true);
+    await onSaveDb(result);
+    setSaving(false);
   };
 
   if (result.error) {
@@ -153,18 +144,36 @@ function ResultCard({
           >
             {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
+          
+          {/* Supabase Save Button */}
+          {!result.saved_db ? (
+            <button
+              onClick={handleSaveDb}
+              disabled={saving}
+              className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-xl transition-all active:scale-95 disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={12} className="animate-spin" /> : <Database size={12} />}
+              Lưu Database
+            </button>
+          ) : (
+            <span className="flex items-center gap-1 text-blue-600 text-xs font-medium px-2">
+              <CheckCircle size={13} /> Đã lưu DB
+            </span>
+          )}
+
+          {/* Sheets Save Button */}
           {!result.submitted ? (
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-xl transition-all active:scale-95 disabled:opacity-50"
+              className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-800 text-white text-xs px-3 py-1.5 rounded-xl transition-all active:scale-95 disabled:opacity-50"
             >
               {submitting ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
               Ghi Sheets
             </button>
           ) : (
             <span className="flex items-center gap-1 text-emerald-600 text-xs font-medium">
-              <CheckCircle size={13} /> Đã ghi
+              <CheckCircle size={13} /> Đã ghi Sheets
             </span>
           )}
         </div>
@@ -233,7 +242,8 @@ function ResultCard({
 // ─── MAIN RECRUITMENT PAGE ────────────────────────────────────────────────────
 export default function RecruitmentPage() {
   const [activeTab, setActiveTab] = useState<"pipeline" | "scorer" | "settings">("pipeline");
-  const [candidates, setCandidates] = useState(INITIAL_CANDIDATES);
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
   // Scorer Tab states
@@ -251,6 +261,42 @@ export default function RecruitmentPage() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [model, setModel] = useState("gpt-4o-mini");
   const [saved, setSaved] = useState(false);
+
+  // Drag State
+  const [draggedCandidateId, setDraggedCandidateId] = useState<string | null>(null);
+
+  // Modal Add Candidate State
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addPosition, setAddPosition] = useState("");
+  const [addEmail, setAddEmail] = useState("");
+  const [addPhone, setAddPhone] = useState("");
+  const [addSource, setAddSource] = useState("TopCV");
+
+  // Fetch candidates from Supabase
+  const fetchCandidates = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("candidates")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      
+      if (data) {
+        setCandidates(data);
+      }
+    } catch (err) {
+      console.error("Error fetching candidates:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCandidates();
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -275,8 +321,8 @@ export default function RecruitmentPage() {
 
   // Search filter for pipeline
   const filteredPipeline = candidates.filter(c => 
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.position.toLowerCase().includes(search.toLowerCase())
+    (c.name || "").toLowerCase().includes(search.toLowerCase()) ||
+    (c.role || c.last_position || "").toLowerCase().includes(search.toLowerCase())
   );
 
   // Scorer dropzone handlers
@@ -297,6 +343,7 @@ export default function RecruitmentPage() {
 
   const removeFile = (id: string) => setFiles((prev) => prev.filter((f) => f.id !== id));
 
+  // Start CV AI Scoring
   const startScoring = async () => {
     if (!jdText.trim()) { alert("Vui lòng nhập mô tả công việc (JD)."); return; }
     if (files.length === 0) { alert("Vui lòng chọn ít nhất 1 file CV."); return; }
@@ -337,6 +384,7 @@ export default function RecruitmentPage() {
           summary: data.summary ?? "",
           extracted_info: data.extracted_info ?? {},
           submitted: false,
+          saved_db: false
         };
         newResults.push(r);
       } catch (e: unknown) {
@@ -344,7 +392,7 @@ export default function RecruitmentPage() {
         newResults.push({
           file_name: item.file.name, score: 0, recommendation: "Error",
           trang_thai: "FAIL", matching_skills: [], missing_skills: [],
-          summary: "", extracted_info: {}, submitted: false, error: msg,
+          summary: "", extracted_info: {}, submitted: false, saved_db: false, error: msg,
         });
       }
 
@@ -357,6 +405,7 @@ export default function RecruitmentPage() {
     setProcessing(false);
   };
 
+  // Submit CV score to Google Sheets (legacy workflow supported)
   const submitToSheets = async (result: ScoringResult) => {
     try {
       const customUrl = localStorage.getItem("apps_script_url");
@@ -380,6 +429,52 @@ export default function RecruitmentPage() {
     }
   };
 
+  // Save CV score to Supabase Database (new primary workflow)
+  const saveToSupabase = async (result: ScoringResult) => {
+    try {
+      const info = result.extracted_info || {};
+      const { error } = await supabase
+        .from("candidates")
+        .insert([{
+          name: info.ten_ung_vien || result.file_name.split(".")[0],
+          email: info.email || null,
+          phone: info.sdt || null,
+          education: info.bang_cap || null,
+          major: info.chuyen_nganh || null,
+          experience: info.kinh_nghiem || null,
+          last_position: info.chuc_danh_gan_nhat || null,
+          last_company: info.cong_ty_gan_nhat || null,
+          region: info.khu_vuc || null,
+          department: info.phong_ban || null,
+          role: info.vi_tri || null,
+          status: "new", // Starts in "new" column
+          source: nguon,
+          reviewer: info.nguoi_danh_gia || "AI Auto",
+          ai_score: result.score,
+          ai_recommendation: result.recommendation,
+          ai_analysis: result.summary
+        }]);
+
+      if (error) throw error;
+
+      setResults((prev) =>
+        prev.map((r) => r.file_name === result.file_name ? { ...r, saved_db: true } : r)
+      );
+      
+      // Refresh pipeline list
+      fetchCandidates();
+    } catch (err) {
+      console.error("Error saving to database:", err);
+      alert("Lỗi khi lưu vào database: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  // Save all un-saved candidates to DB
+  const saveAllToDb = async () => {
+    const unsaved = results.filter((r) => !r.saved_db && !r.error);
+    for (const r of unsaved) await saveToSupabase(r);
+  };
+
   const submitAll = async () => {
     const unsubmitted = results.filter((r) => !r.submitted && !r.error);
     for (const r of unsubmitted) await submitToSheets(r);
@@ -388,6 +483,87 @@ export default function RecruitmentPage() {
   const reset = () => { setFiles([]); setResults([]); setProgress({ done: 0, total: 0 }); };
 
   const passCount = results.filter((r) => r.trang_thai === "PASS CV").length;
+
+  // Handle Pipeline Drag Start
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDraggedCandidateId(id);
+    e.dataTransfer.setData("text/plain", id);
+  };
+
+  // Handle Pipeline Drop
+  const handleDrop = async (e: React.DragEvent, columnId: string) => {
+    e.preventDefault();
+    const candidateId = draggedCandidateId || e.dataTransfer.getData("text/plain");
+    if (!candidateId) return;
+
+    // Optimistic UI update
+    const updatedCandidates = candidates.map(c => c.id === candidateId ? { ...c, status: columnId } : c);
+    setCandidates(updatedCandidates);
+
+    // Update in Supabase
+    try {
+      const { error } = await supabase
+        .from("candidates")
+        .update({ status: columnId })
+        .eq("id", candidateId);
+
+      if (error) throw error;
+    } catch (err) {
+      console.error("Error updating candidate pipeline status:", err);
+      fetchCandidates(); // Rollback
+    } finally {
+      setDraggedCandidateId(null);
+    }
+  };
+
+  // Create Manual Candidate
+  const handleCreateCandidate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addName.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from("candidates")
+        .insert([{
+          name: addName,
+          role: addPosition,
+          email: addEmail || null,
+          phone: addPhone || null,
+          source: addSource,
+          status: "new",
+          ai_score: 0,
+          reviewer: "Tự tạo"
+        }]);
+
+      if (error) throw error;
+
+      setAddName("");
+      setAddPosition("");
+      setAddEmail("");
+      setAddPhone("");
+      setIsAddOpen(false);
+      
+      fetchCandidates();
+    } catch (err) {
+      console.error("Error creating candidate:", err);
+      alert("Lỗi khi thêm ứng viên!");
+    }
+  };
+
+  // Delete Candidate
+  const handleDeleteCandidate = async (id: string) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa hồ sơ ứng viên này?")) return;
+    try {
+      const { error } = await supabase
+        .from("candidates")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+      fetchCandidates();
+    } catch (err) {
+      console.error("Error deleting candidate:", err);
+    }
+  };
 
   return (
     <div className="flex min-h-screen bg-[#F7F9FC]">
@@ -450,80 +626,104 @@ export default function RecruitmentPage() {
                       className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 transition-all shadow-sm"
                     />
                   </div>
-                  <button className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50 transition-colors shadow-sm">
-                    <ArrowUpDown size={13} /> Điểm số
+                  <button 
+                    onClick={fetchCandidates}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
+                  >
+                    Tải lại
                   </button>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-all shadow-sm">
-                    <Layers size={14} /> Quy trình tuyển dụng
-                  </button>
-                  <button className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all active:scale-95 shadow-md shadow-blue-600/10">
+                  <button 
+                    onClick={() => setIsAddOpen(true)}
+                    className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all active:scale-95 shadow-md shadow-blue-600/10"
+                  >
                     <Plus size={14} /> Thêm ứng viên
                   </button>
                 </div>
               </div>
 
-              {/* Pipeline Board */}
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-start overflow-x-auto pb-4">
-                {COLUMNS.map((col) => {
-                  const colCandidates = filteredPipeline.filter(c => c.column === col.id);
-                  return (
-                    <div key={col.id} className="flex flex-col gap-4 min-w-[200px] bg-slate-100/40 p-3 rounded-2xl border border-slate-200/40">
-                      {/* Column Header */}
-                      <div className={`flex items-center justify-between border-t-2 ${col.color} pt-2`}>
-                        <div className="flex items-center gap-2">
-                          <span className="font-heading font-bold text-xs text-slate-700">{col.title}</span>
-                          <span className="text-[9px] font-extrabold text-slate-400 bg-slate-200/80 px-2 py-0.5 rounded-full">{colCandidates.length}</span>
+              {loading ? (
+                <div className="flex flex-col items-center justify-center h-[350px] text-slate-400 gap-2">
+                  <Loader2 className="animate-spin text-blue-600" size={26} />
+                  <p className="text-xs font-medium">Đang tải phễu tuyển dụng...</p>
+                </div>
+              ) : (
+                /* Pipeline Board */
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-start overflow-x-auto pb-4">
+                  {COLUMNS.map((col) => {
+                    const colCandidates = filteredPipeline.filter(c => (c.status || "new") === col.id);
+                    return (
+                      <div 
+                        key={col.id} 
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => handleDrop(e, col.id)}
+                        className="flex flex-col gap-4 min-w-[200px] bg-slate-100/40 p-3 rounded-2xl border border-slate-200/40 min-h-[450px]"
+                      >
+                        {/* Column Header */}
+                        <div className={`flex items-center justify-between border-t-2 ${col.color} pt-2`}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-heading font-bold text-xs text-slate-700">{col.title}</span>
+                            <span className="text-[9px] font-extrabold text-slate-400 bg-slate-200/80 px-2 py-0.5 rounded-full">{colCandidates.length}</span>
+                          </div>
+                        </div>
+
+                        {/* Candidate Cards */}
+                        <div className="space-y-3 flex-1">
+                          {colCandidates.map((candidate) => (
+                            <div
+                              key={candidate.id}
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, candidate.id)}
+                              className="glass rounded-xl p-4 bg-white hover-elevate border border-slate-200/30 flex flex-col justify-between h-40 cursor-grab active:cursor-grabbing relative group"
+                            >
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-md ${
+                                    candidate.ai_score >= 75 ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
+                                    candidate.ai_score >= 50 ? "bg-amber-100 text-amber-700 border border-amber-200" :
+                                    "bg-rose-100 text-rose-700 border border-rose-200"
+                                  }`}>
+                                    Điểm AI: {candidate.ai_score || 0}
+                                  </span>
+                                  <button 
+                                    onClick={() => handleDeleteCandidate(candidate.id)}
+                                    className="text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                                
+                                <p className="text-slate-800 font-heading font-bold text-xs truncate leading-snug">{candidate.name}</p>
+                                <p className="text-slate-400 text-[10px] font-semibold truncate">{candidate.role || candidate.last_position || "Chưa cập nhật"}</p>
+                              </div>
+
+                              {/* Contact & Timeline Info */}
+                              <div className="space-y-1.5 pt-2 border-t border-slate-100 text-[9px] text-slate-400 font-semibold">
+                                <span className="flex items-center gap-1.5 text-slate-500"><Phone size={10} /> {candidate.phone || "Không có SĐT"}</span>
+                                <span className="flex items-center gap-1.5 text-slate-500"><Mail size={10} /> {candidate.email || "Không có Email"}</span>
+                                
+                                <div className="flex items-center justify-between pt-1 text-[8px] text-slate-400">
+                                  <span>Nguồn: <strong className="text-slate-600">{candidate.source || "Khác"}</strong></span>
+                                  <span className="flex items-center gap-0.5">
+                                    <Calendar size={9} /> {new Date(candidate.created_at).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit' })}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                          {colCandidates.length === 0 && (
+                            <div className="h-28 border-2 border-dashed border-slate-200/50 rounded-xl flex items-center justify-center text-slate-300 text-[11px] italic">
+                              Kéo thả vào đây
+                            </div>
+                          )}
                         </div>
                       </div>
-
-                      {/* Candidate Cards */}
-                      <div className="space-y-3 min-h-[400px]">
-                        {colCandidates.map((candidate) => (
-                          <div
-                            key={candidate.id}
-                            className="glass rounded-xl p-4 bg-white hover-elevate border border-slate-200/30 flex flex-col justify-between h-40 cursor-grab active:cursor-grabbing"
-                          >
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between">
-                                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-md ${
-                                  candidate.score >= 75 ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
-                                  candidate.score >= 50 ? "bg-amber-100 text-amber-700 border border-amber-200" :
-                                  "bg-rose-100 text-rose-700 border border-rose-200"
-                                }`}>
-                                  Điểm AI: {candidate.score}
-                                </span>
-                                <button className="text-slate-400 hover:text-slate-600"><MoreHorizontal size={13} /></button>
-                              </div>
-                              
-                              <p className="text-slate-800 font-heading font-bold text-xs truncate leading-snug">{candidate.name}</p>
-                              <p className="text-slate-400 text-[10px] font-semibold truncate">{candidate.position}</p>
-                            </div>
-
-                            {/* Contact & Timeline Info */}
-                            <div className="space-y-1.5 pt-2 border-t border-slate-100 text-[9px] text-slate-400 font-semibold">
-                              <span className="flex items-center gap-1.5 text-slate-500"><Phone size={10} /> {candidate.phone}</span>
-                              <span className="flex items-center gap-1.5 text-slate-500"><Mail size={10} /> {candidate.email}</span>
-                              
-                              <div className="flex items-center justify-between pt-1 text-[8px] text-slate-400">
-                                <span>Nguồn: <strong className="text-slate-600">{candidate.source}</strong></span>
-                                <span className="flex items-center gap-0.5"><Calendar size={9} /> {candidate.date}</span>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                        {colCandidates.length === 0 && (
-                          <div className="h-28 border-2 border-dashed border-slate-200/80 rounded-xl flex items-center justify-center text-slate-300 text-[11px] italic">
-                            Trống
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -577,8 +777,14 @@ export default function RecruitmentPage() {
                     {results.length > 0 && (
                       <>
                         <button
+                          onClick={saveAllToDb}
+                          className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2.5 rounded-xl transition-all active:scale-95 shadow"
+                        >
+                          <Database size={14} /> Lưu tất cả vào Database (Supabase)
+                        </button>
+                        <button
                           onClick={submitAll}
-                          className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 rounded-xl transition-all active:scale-95 shadow"
+                          className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold py-2 rounded-xl transition-all active:scale-95 shadow-sm"
                         >
                           <Send size={14} /> Ghi tất cả vào Google Sheets
                         </button>
@@ -664,7 +870,7 @@ export default function RecruitmentPage() {
                     </button>
                   </div>
                   {results.map((r) => (
-                    <ResultCard key={r.file_name} result={r} onSubmit={submitToSheets} />
+                    <ResultCard key={r.file_name} result={r} onSubmit={submitToSheets} onSaveDb={saveToSupabase} />
                   ))}
                 </div>
               )}
@@ -686,7 +892,7 @@ export default function RecruitmentPage() {
               {saved && (
                 <div className="fixed bottom-6 right-6 z-50 animate-bounce">
                   <div className="bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-3 font-semibold text-sm">
-                    <CheckCircle className="w-5 h-5 text-emerald-200" />
+                     <CheckCircle className="w-5 h-5 text-emerald-200" />
                     Cập nhật cấu hình thành công!
                   </div>
                 </div>
@@ -764,8 +970,8 @@ export default function RecruitmentPage() {
                     <p className="text-emerald-600 font-bold">Tuyển dụng & HCNS</p>
                   </div>
                   <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
-                    <p className="text-slate-400 text-[10px]">Cơ sở dữ liệu</p>
-                    <p className="text-blue-600 font-bold">Google Sheets API</p>
+                    <p className="text-slate-400 text-[10px]">Cơ sở dữ liệu chính</p>
+                    <p className="text-blue-600 font-bold">Supabase PostgreSQL</p>
                   </div>
                   <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
                     <p className="text-slate-400 text-[10px]">Môi trường</p>
@@ -777,6 +983,95 @@ export default function RecruitmentPage() {
           )}
         </main>
       </div>
+
+      {/* Manual Candidate Add Modal */}
+      {isAddOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in-50 zoom-in-95 duration-150 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-heading font-bold text-sm text-slate-800">Thêm ứng viên mới</h3>
+              <button onClick={() => setIsAddOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCandidate} className="space-y-4 font-semibold text-slate-600">
+              <div className="space-y-1">
+                <label className="text-slate-500">Tên ứng viên</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ví dụ: Nguyễn Văn A..."
+                  value={addName}
+                  onChange={(e) => setAddName(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-500">Vị trí ứng tuyển</label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: Kỹ sư xây dựng..."
+                  value={addPosition}
+                  onChange={(e) => setAddPosition(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-slate-500">Email</label>
+                  <input
+                    type="email"
+                    placeholder="email@example.com"
+                    value={addEmail}
+                    onChange={(e) => setAddEmail(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-slate-500">Số điện thoại</label>
+                  <input
+                    type="text"
+                    placeholder="SĐT ứng viên..."
+                    value={addPhone}
+                    onChange={(e) => setAddPhone(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-500">Nguồn ứng viên</label>
+                <select
+                  value={addSource}
+                  onChange={(e) => setAddSource(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white"
+                >
+                  {NGUON_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddOpen(false)}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl"
+                >
+                  Thêm mới
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

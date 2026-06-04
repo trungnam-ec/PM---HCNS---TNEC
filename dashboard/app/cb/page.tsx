@@ -1,25 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
+import { supabase } from "@/lib/supabase";
 import {
   Calendar,
   DollarSign,
   FileCheck,
-  TrendingUp,
   Award,
-  Users,
-  Search,
-  ChevronRight,
-  Clock
+  Clock,
+  Loader2
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid, Legend
+  CartesianGrid, Legend
 } from "recharts";
 
-// --- MOCK DATA ---
+// --- MOCK DATA FOR CHARTS ---
 const CHARTS_DATA = [
   { name: "Jan", "Quỹ lương (Tỷ)": 1.2, "Bảo hiểm (Triệu)": 120 },
   { name: "Feb", "Quỹ lương (Tỷ)": 1.25, "Bảo hiểm (Triệu)": 125 },
@@ -29,14 +27,75 @@ const CHARTS_DATA = [
   { name: "Jun", "Quỹ lương (Tỷ)": 1.4, "Bảo hiểm (Triệu)": 140 }
 ];
 
-const CONTRACTS_EXPIRING = [
-  { name: "Bùi Quốc Vương", type: "Hợp đồng thử việc", end: "2025-07-01", daysLeft: 27, status: "Khẩn cấp" },
-  { name: "Nguyễn Văn Đấu", type: "Hợp đồng thử việc", end: "2025-07-15", daysLeft: 41, status: "Cảnh báo" },
-  { name: "Phạm Minh Tâm", type: "HĐ xác định thời hạn (3 năm)", end: "2025-08-15", daysLeft: 72, status: "Bình thường" }
-];
+interface ContractExpiring {
+  name: string;
+  type: string;
+  end: string;
+  daysLeft: number;
+  status: string;
+}
 
 export default function CBPage() {
   const [activeTab, setActiveTab] = useState("attendance"); // attendance, payroll, contracts, benefits
+  const [expiringContracts, setExpiringContracts] = useState<ContractExpiring[]>([]);
+  const [loadingContracts, setLoadingContracts] = useState(false);
+
+  // Fetch expiring contracts from Supabase
+  const fetchExpiringContracts = async () => {
+    try {
+      setLoadingContracts(true);
+      
+      // Query contracts with joined employee info
+      const { data, error } = await supabase
+        .from("contracts")
+        .select(`
+          id,
+          contract_number,
+          type,
+          expiration_date,
+          employees (
+            name
+          )
+        `)
+        .order("expiration_date", { ascending: true });
+
+      if (error) throw error;
+
+      if (data) {
+        const today = new Date();
+        const mapped: ContractExpiring[] = data
+          .filter((c: any) => c.expiration_date)
+          .map((c: any) => {
+            const expDate = new Date(c.expiration_date);
+            const diffTime = expDate.getTime() - today.getTime();
+            const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            let status = "Bình thường";
+            if (daysLeft <= 30) status = "Khẩn cấp";
+            else if (daysLeft <= 60) status = "Cảnh báo";
+
+            return {
+              name: c.employees?.name || "Nhân viên chưa rõ",
+              type: c.type || "Hợp đồng lao động",
+              end: c.expiration_date,
+              daysLeft: daysLeft,
+              status: status
+            };
+          });
+        setExpiringContracts(mapped);
+      }
+    } catch (err) {
+      console.error("Error fetching expiring contracts:", err);
+    } finally {
+      setLoadingContracts(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "contracts") {
+      fetchExpiringContracts();
+    }
+  }, [activeTab]);
 
   return (
     <div className="flex min-h-screen bg-[#F7F9FC]">
@@ -173,32 +232,53 @@ export default function CBPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="font-heading font-bold text-slate-800 text-sm">Cảnh báo hết hạn hợp đồng</h3>
+                  <button 
+                    onClick={fetchExpiringContracts}
+                    className="text-xs text-blue-600 font-semibold hover:underline"
+                  >
+                    Tải lại
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  {CONTRACTS_EXPIRING.map((c) => (
-                    <div
-                      key={c.name}
-                      className={`glass bg-white rounded-2xl p-5 border-t-4 hover-elevate ${
-                        c.status === "Khấn cấp" ? "border-t-rose-500" :
-                        c.status === "Cảnh báo" ? "border-t-amber-500" : "border-t-blue-500"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                          c.status === "Khấn cấp" ? "bg-rose-100 text-rose-700" :
-                          c.status === "Cảnh báo" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
-                        }`}>
-                          {c.status}
-                        </span>
-                        <span className="text-slate-400 text-[10px] font-bold">Còn {c.daysLeft} ngày</span>
+                {loadingContracts ? (
+                  <div className="flex flex-col items-center justify-center h-[200px] text-slate-400 gap-2">
+                    <Loader2 className="animate-spin text-blue-600" size={24} />
+                    <p className="text-xs">Đang đọc dữ liệu hợp đồng...</p>
+                  </div>
+                ) : expiringContracts.length === 0 ? (
+                  <div className="h-32 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center text-slate-400 text-xs italic">
+                    Không có hợp đồng nào sắp hết hạn hoặc hết hạn trong hệ thống
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    {expiringContracts.map((c, idx) => (
+                      <div
+                        key={idx}
+                        className={`glass bg-white rounded-2xl p-5 border-t-4 hover-elevate ${
+                          c.status === "Khẩn cấp" ? "border-t-rose-500" :
+                          c.status === "Cảnh báo" ? "border-t-amber-500" : "border-t-blue-500"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                            c.status === "Khẩn cấp" ? "bg-rose-100 text-rose-700" :
+                            c.status === "Cảnh báo" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
+                          }`}>
+                            {c.status}
+                          </span>
+                          <span className="text-slate-400 text-[10px] font-bold">
+                            {c.daysLeft > 0 ? `Còn ${c.daysLeft} ngày` : `Đã hết hạn ${Math.abs(c.daysLeft)} ngày`}
+                          </span>
+                        </div>
+                        <h4 className="font-heading font-bold text-slate-800 text-sm">{c.name}</h4>
+                        <p className="text-slate-400 text-xs font-semibold mt-0.5">{c.type}</p>
+                        <p className="text-slate-500 text-[10px] font-semibold mt-3">
+                          Ngày kết thúc: {new Date(c.end).toLocaleDateString("vi-VN")}
+                        </p>
                       </div>
-                      <h4 className="font-heading font-bold text-slate-800 text-sm">{c.name}</h4>
-                      <p className="text-slate-400 text-xs font-semibold mt-0.5">{c.type}</p>
-                      <p className="text-slate-500 text-[10px] font-semibold mt-3">Ngày kết thúc: {c.end}</p>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -5,6 +5,12 @@ from dotenv import load_dotenv
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# Cấu hình encoding utf-8 cho terminal để hỗ trợ tiếng Việt và Emoji
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+
 def main():
     print("🚀 AI CV Scorer is starting...")
     load_dotenv()

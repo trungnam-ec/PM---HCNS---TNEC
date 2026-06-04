@@ -39,7 +39,7 @@ export default function ThuViecPage() {
         <div className="flex min-h-screen">
             <Sidebar />
             <div className="ml-60 flex-1 flex flex-col">
-                <Header title="Quản lý Thử Việc" subtitle="Theo dõi ứng viên trong giai đoạn thử việc (Probes)" />
+                <Header title="Quản lý Thử Việc" subtitle="Theo dõi ứng viên trong giai đoạn thử việc" />
 
                 <main className="p-8 space-y-6">
                     <div className="glass p-5 rounded-2xl flex items-center gap-4 w-fit">

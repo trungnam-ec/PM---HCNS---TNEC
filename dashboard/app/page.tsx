@@ -1,319 +1,186 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid, Legend
-} from "recharts";
-import {
-  Users, CheckCircle, Briefcase, Building2,
-  TrendingUp, RefreshCw, Plus, Pencil, Trash2, Search, FileCheck,
-  MailOpen, Send, FileText
+  ClipboardList,
+  Clock,
+  CheckCircle,
+  Users,
+  Briefcase,
+  AlertTriangle,
+  Award,
+  ChevronRight,
+  Calendar,
+  Paperclip,
+  MessageSquare,
+  MoreHorizontal,
+  Plus
 } from "lucide-react";
-import { fetchStats, fetchCandidates, deleteCandidate, fetchVanThuStats, type Stats, type Candidate, type VanThuStats } from "@/lib/api";
-import AddCandidateModal from "@/components/AddCandidateModal";
-import Link from "next/link";
 
-// ─── KPI Card ───────────────────────────────────────────────────────────────
-function KpiCard({ icon: Icon, label, value, trend, color }: {
-  icon: React.ElementType; label: string; value: string | number;
-  trend?: string; color: string;
-}) {
-  return (
-    <div className="glass rounded-2xl p-5 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <span className="text-slate-500 text-sm font-medium">{label}</span>
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
-          <Icon size={18} className="text-white" />
-        </div>
-      </div>
-      <div className="font-heading font-bold text-3xl text-[#005088]">{value}</div>
-      {trend && (
-        <div className="flex items-center gap-1 text-emerald-600 text-xs font-medium">
-          <TrendingUp size={12} />
-          {trend}
-        </div>
-      )}
-    </div>
-  );
-}
+// --- MOCK DATA ---
+const KPI_DATA = [
+  { label: "Tổng số công việc", value: 142, icon: ClipboardList, color: "bg-blue-500", text: "text-blue-500" },
+  { label: "Đang thực hiện", value: 34, icon: Clock, color: "bg-amber-500", text: "text-amber-500" },
+  { label: "Chờ phê duyệt", value: 12, icon: AlertTriangle, color: "bg-rose-500", text: "text-rose-500" },
+  { label: "Đã hoàn thành", value: 96, icon: CheckCircle, color: "bg-emerald-500", text: "text-emerald-500" },
+  { label: "Tổng số nhân viên", value: 645, icon: Users, color: "bg-indigo-500", text: "text-indigo-500" },
+  { label: "Vị trí đang tuyển", value: 18, icon: Briefcase, color: "bg-cyan-500", text: "text-cyan-500" },
+  { label: "Hợp đồng sắp hết hạn", value: 5, icon: AlertTriangle, color: "bg-amber-600", text: "text-amber-600" },
+  { label: "Chứng chỉ sắp hết hạn", value: 8, icon: Award, color: "bg-purple-500", text: "text-purple-500" },
+];
 
-// ─── Status Badge ────────────────────────────────────────────────────────────
-function StatusBadge({ status }: { status: string }) {
-  const s = String(status).trim().toUpperCase();
-  if (s === "PASS CV") return <span className="badge-pass px-2.5 py-0.5 rounded-full text-xs font-semibold">✓ PASS CV</span>;
-  if (s === "FAIL") return <span className="badge-fail px-2.5 py-0.5 rounded-full text-xs font-semibold">✗ FAIL</span>;
-  return <span className="badge-wait px-2.5 py-0.5 rounded-full text-xs">{status}</span>;
-}
+const TEAM_PERFORMANCE = [
+  { name: "Phạm Minh Tâm", position: "Chuyên viên C&B", kpi: 94, completed: 28, pending: 2, leave: "Đang làm việc", avatar: "PT" },
+  { name: "Lê Thành Đạt", position: "Chuyên viên Tuyển dụng", kpi: 88, completed: 24, pending: 4, leave: "Đang làm việc", avatar: "LD" },
+  { name: "Trần Thị Mai", position: "Chuyên viên Hành chính", kpi: 91, completed: 32, pending: 3, leave: "Nghỉ phép", avatar: "TM" },
+  { name: "Nguyễn Hoàng Huy", position: "Chuyên viên Văn thư", kpi: 85, completed: 19, pending: 5, leave: "Đang làm việc", avatar: "HH" },
+];
 
-// ─── Main Page ───────────────────────────────────────────────────────────────
+const KANBAN_TASKS = [
+  { id: "1", title: "Đánh giá Kế hoạch Tuyển dụng Q3", priority: "Cao", assignee: "Minh Tâm", due: "12 Tháng 6", progress: 75, attachments: 3, comments: 5 },
+  { id: "2", title: "Cập nhật Sổ tay Nhân viên", priority: "Trung bình", assignee: "Thành Đạt", due: "18 Tháng 6", progress: 40, attachments: 1, comments: 2 },
+  { id: "3", title: "Soạn thảo Công văn số 248", priority: "Cao", assignee: "Thị Mai", due: "10 Tháng 6", progress: 90, attachments: 2, comments: 8 },
+  { id: "4", title: "Mua sắm Laptop & Văn phòng phẩm", priority: "Thấp", assignee: "Hoàng Huy", due: "25 Tháng 6", progress: 15, attachments: 0, comments: 0 },
+];
+
 export default function DashboardPage() {
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [vanThuStats, setVanThuStats] = useState<VanThuStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [filterDept, setFilterDept] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [showModal, setShowModal] = useState(false);
-  const [page, setPage] = useState(1);
-  const PER_PAGE = 10;
-
-  const DEPARTMENTS = [
-    "Phòng Kỹ Thuật", "Phòng Dự Án", "Phòng Kế Hoạch",
-    "Phòng Vật Tư Thiết Bị", "Phòng ATLĐ", "Phòng Hành Chính Nhân Sự",
-    "Phòng QLCC", "Phòng Trợ Lý", "Phòng Kế Toán"
-  ];
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [s, c, vt] = await Promise.all([fetchStats(), fetchCandidates(), fetchVanThuStats()]);
-      setStats(s);
-      setCandidates(c);
-      setVanThuStats(vt);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  // ── Charts data ──
-  const deptChartData = stats
-    ? Object.entries(stats.by_department)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 9)
-      .map(([name, value]) => ({ name: name.replace("Phòng ", ""), value }))
-    : [];
-
-  const monthChartData = stats
-    ? Object.entries(stats.by_month)
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .slice(-12)
-      .map(([month, total]) => ({ month: month.slice(5), "Tổng CV": total, "PASS CV": Math.round(total * (stats.pass_rate / 100)) }))
-    : [];
-
-  // ── Filter table ──
-  const filtered = candidates.filter(c => {
-    const name = String(c["Tên ứng viên"] || "").toLowerCase();
-    const email = String(c["Email"] || "").toLowerCase();
-    const sdt = String(c["SĐT"] || "").toLowerCase();
-    const q = search.toLowerCase();
-    const matchQ = !q || name.includes(q) || email.includes(q) || sdt.includes(q);
-    const matchDept = filterDept === "all" || c["Phòng Ban"] === filterDept;
-    const matchSt = filterStatus === "all" || String(c["Trạng thái"]).toUpperCase() === filterStatus;
-    return matchQ && matchDept && matchSt;
-  });
-
-  const totalPages = Math.ceil(filtered.length / PER_PAGE);
-  const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-
-  const handleDelete = async (stt: number) => {
-    if (!confirm(`Xóa ứng viên STT ${stt}?`)) return;
-    await deleteCandidate(stt);
-    load();
-  };
-
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-[#F7F9FC]">
       <Sidebar />
-      <div className="ml-60 flex-1 flex flex-col">
-        <Header title="Executive Dashboard" subtitle="Tổng quan nhân sự toàn công ty" />
-
-        <main className="flex-1 p-8 space-y-8">
-
-          {/* ── Refresh ── */}
-          <div className="flex justify-end">
-            <button onClick={load} disabled={loading}
-              className="flex items-center gap-2 text-sm text-[#005088] hover:text-blue-600 glass px-4 py-2 rounded-xl transition-all active:scale-95">
-              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-              {loading ? "Đang tải..." : "Làm mới dữ liệu"}
-            </button>
-          </div>
-
-          {/* ── KPI Cards ── */}
-          <div className="grid grid-cols-5 gap-5">
-            <KpiCard icon={Users} label="Tổng Ứng Viên" value={stats?.total_candidates ?? "–"} color="bg-[#005088]" trend={stats ? `${stats.pass_rate}% PASS CV` : undefined} />
-            <KpiCard icon={CheckCircle} label="Tỷ lệ PASS CV" value={stats ? `${stats.pass_rate}%` : "–"} color="bg-emerald-500" trend={`${stats?.pass_count ?? 0} ứng viên`} />
-            <KpiCard icon={Briefcase} label="Đang Thử Việc" value={stats?.thuviec_count ?? "–"} color="bg-violet-500" trend={`Vòng 2: ${stats?.vong2_count ?? 0}`} />
-            <KpiCard icon={FileCheck} label="HĐ Chính Thức" value={stats?.hd_count ?? "–"} color="bg-rose-500" trend="Đã ký hợp đồng" />
-            <KpiCard icon={Building2} label="Ứng Viên Vòng 1" value={stats?.vong1_count ?? "–"} color="bg-cyan-500" trend="Đang phỏng vấn" />
-          </div>
-
-          {/* ── Charts ── */}
-          <div className="grid grid-cols-2 gap-6">
-            {/* Bar Chart */}
-            <div className="glass rounded-2xl p-6">
-              <h2 className="font-heading font-semibold text-[#005088] mb-5">Ứng Viên Theo Phòng Ban</h2>
-              {deptChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={deptChartData} layout="vertical" margin={{ left: 10, right: 20 }}>
-                    <XAxis type="number" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                    <YAxis dataKey="name" type="category" width={90} tick={{ fontSize: 11, fill: "#334155" }} axisLine={false} tickLine={false} />
-                    <Tooltip cursor={{ fill: "rgba(59,130,246,0.05)" }} contentStyle={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.9)" }} />
-                    <Bar dataKey="value" fill="#005088" radius={[0, 6, 6, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : <div className="h-60 flex items-center justify-center text-slate-400 text-sm">Chưa có dữ liệu</div>}
-            </div>
-
-            {/* Line Chart */}
-            <div className="glass rounded-2xl p-6">
-              <h2 className="font-heading font-semibold text-[#005088] mb-5">Xu Hướng Tuyển Dụng Theo Tháng</h2>
-              {monthChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={240}>
-                  <LineChart data={monthChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(59,130,246,0.1)" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.9)" }} />
-                    <Legend />
-                    <Line type="monotone" dataKey="Tổng CV" stroke="#005088" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="PASS CV" stroke="#06b6d4" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : <div className="h-60 flex items-center justify-center text-slate-400 text-sm">Chưa có dữ liệu</div>}
-            </div>
-          </div>
-
-          {/* ── Văn Thư Section ── */}
-          <div className="glass rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-2">
-                <FileText size={18} className="text-[#005088]" />
-                <h2 className="font-heading font-semibold text-[#005088]">Hành Chính Nhân Sự – Văn Thư</h2>
-              </div>
-              <Link href="/van-thu" className="text-xs text-[#005088] hover:underline font-medium flex items-center gap-1">
-                Xem chi tiết →
-              </Link>
-            </div>
-            <div className="grid grid-cols-4 gap-4">
-              {[
-                { icon: MailOpen, label: "Công Văn Đến", value: vanThuStats?.cong_van_den ?? "–", color: "bg-emerald-500", href: "/van-thu/cong-van-den" },
-                { icon: Send, label: "Công Văn Đi 1", value: vanThuStats?.cong_van_di_1 ?? "–", color: "bg-violet-500", href: "/van-thu/cong-van-di-1" },
-                { icon: Send, label: "Công Văn Đi 2", value: vanThuStats?.cong_van_di_2 ?? "–", color: "bg-cyan-500", href: "/van-thu/cong-van-di-2" },
-                { icon: FileText, label: "Công Văn HĐQT", value: vanThuStats?.cong_van_hdqt ?? "–", color: "bg-rose-500", href: "/van-thu/cong-van-hdqt" },
-              ].map(({ icon: Icon, label, value, color, href }) => (
-                <Link key={label} href={href}
-                  className="flex items-center gap-4 p-4 bg-white/50 rounded-xl border border-slate-100 hover:shadow-md hover:scale-[1.02] transition-all cursor-pointer">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color} shrink-0`}>
-                    <Icon size={16} className="text-white" />
+      <div className="ml-60 flex-1 flex flex-col min-w-0">
+        <Header title="Bảng điều khiển Hành chính Nhân sự" subtitle="Hệ thống quản trị Hành chính Nhân sự Trung Nam E&C" />
+        
+        <main className="flex-1 p-8 space-y-8 overflow-y-auto">
+          {/* KPI Dashboard Section */}
+          <section className="space-y-4">
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Hệ thống chỉ số KPI</h2>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+              {KPI_DATA.map((card) => {
+                const Icon = card.icon;
+                return (
+                  <div key={card.label} className="glass rounded-2xl p-5 hover-elevate bg-white/75 flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="text-slate-500 text-xs font-semibold">{card.label}</p>
+                      <p className="font-heading font-extrabold text-2xl text-slate-800">{card.value}</p>
+                    </div>
+                    <div className={`w-10 h-10 rounded-xl ${card.color} bg-opacity-10 flex items-center justify-center`}>
+                      <Icon className={card.text} size={18} />
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-slate-500 text-xs">{label}</p>
-                    <p className="font-heading font-bold text-2xl text-[#005088] leading-tight">{value}</p>
-                  </div>
-                </Link>
-              ))}
+                );
+              })}
             </div>
-            {!vanThuStats?.success && (
-              <p className="text-center text-slate-400 text-xs mt-3 italic">
-                ⚠️ Cần redeploy Apps Script để lấy dữ liệu Văn Thư
-              </p>
-            )}
+          </section>
+
+          {/* Team Performance & Recent Activity */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+            {/* Team Performance Card */}
+            <section className="xl:col-span-2 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Hiệu suất Đội ngũ (Team Performance)</h2>
+                <button className="text-xs text-blue-600 font-semibold hover:underline flex items-center gap-1">
+                  Xem chi tiết <ChevronRight size={12} />
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {TEAM_PERFORMANCE.map((emp) => (
+                  <div key={emp.name} className="glass rounded-2xl p-5 bg-white/75 flex gap-4 hover-elevate">
+                    {/* Avatar */}
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-white text-sm shadow shrink-0">
+                      {emp.avatar}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <p className="text-slate-800 font-heading font-bold text-sm truncate">{emp.name}</p>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${emp.leave === "Đang làm việc" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+                          {emp.leave}
+                        </span>
+                      </div>
+                      <p className="text-slate-400 text-xs font-medium truncate">{emp.position}</p>
+                      
+                      <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100 text-[10px] text-slate-500 font-semibold">
+                        <div>KPI: <span className="text-blue-600 font-bold">{emp.kpi}%</span></div>
+                        <div>Công việc: <span className="text-emerald-600 font-bold">{emp.completed}✓</span> / <span className="text-amber-500 font-bold">{emp.pending}⏳</span></div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* Completion Rate Circle Diagram */}
+            <section className="space-y-4">
+              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Tỉ lệ hoàn thành công việc</h2>
+              <div className="glass rounded-2xl p-6 bg-white/75 flex flex-col items-center justify-center text-center h-[230px] border border-white/50">
+                <div className="relative w-28 h-28 flex items-center justify-center">
+                  <svg className="w-full h-full transform -rotate-90">
+                    <circle cx="56" cy="56" r="48" stroke="#E2E8F0" strokeWidth="8" fill="transparent" />
+                    <circle cx="56" cy="56" r="48" stroke="#005BAC" strokeWidth="8" fill="transparent" strokeDasharray="301.6" strokeDashoffset="60" strokeLinecap="round" />
+                  </svg>
+                  <div className="absolute flex flex-col items-center justify-center">
+                    <span className="font-heading font-extrabold text-2xl text-slate-800">80%</span>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Đạt chỉ tiêu</span>
+                  </div>
+                </div>
+                <p className="text-slate-500 text-xs font-semibold mt-4">96 công việc đã hoàn thành đúng hạn</p>
+              </div>
+            </section>
           </div>
 
-          {/* ── Filters + Table ── */}
-          <div className="glass rounded-2xl overflow-hidden">
-            {/* Filter bar */}
-            <div className="p-5 border-b border-white/40 flex flex-wrap items-center gap-3">
-              <div className="relative flex-1 min-w-48">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-                  placeholder="Tìm tên, email, SĐT..."
-                  className="w-full pl-8 pr-4 py-2 text-sm bg-white/50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400/30"
-                />
-              </div>
-              <select value={filterDept} onChange={e => { setFilterDept(e.target.value); setPage(1); }}
-                className="text-sm bg-white/50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400/30">
-                <option value="all">Tất cả phòng ban</option>
-                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-              <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
-                className="text-sm bg-white/50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400/30">
-                <option value="all">Trạng thái</option>
-                <option value="PASS CV">PASS CV</option>
-                <option value="FAIL">FAIL</option>
-              </select>
-              <button onClick={() => setShowModal(true)}
-                className="flex items-center gap-2 bg-[#005088] hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-xl transition-all active:scale-95 ml-auto shadow-md">
-                <Plus size={15} /> Thêm ứng viên
+          {/* Task Management Overview (Kanban Preview) */}
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nhiệm vụ trọng tâm (Task Management)</h2>
+              <button className="text-xs text-blue-600 font-semibold hover:underline flex items-center gap-1">
+                Xem bảng Kanban <ChevronRight size={12} />
               </button>
             </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+              {KANBAN_TASKS.map((task) => (
+                <div key={task.id} className="glass rounded-2xl p-5 hover-elevate bg-white/75 flex flex-col justify-between border border-white/60 h-44">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${task.priority === "Cao" ? "bg-rose-100 text-rose-700" : task.priority === "Trung bình" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
+                        Ưu tiên: {task.priority}
+                      </span>
+                      <button className="text-slate-400 hover:text-slate-600"><MoreHorizontal size={14} /></button>
+                    </div>
+                    <p className="text-slate-800 font-heading font-bold text-sm leading-snug line-clamp-2">{task.title}</p>
+                  </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gradient-to-r from-[#005088]/5 to-blue-50 text-left">
-                    {["STT", "Ngày", "Tên ứng viên", "Email", "SĐT", "Phòng Ban", "Vị trí", "Kinh nghiệm", "Chức danh gần nhất", "Công ty gần nhất", "Trạng thái", "Thao tác"].map(h => (
-                      <th key={h} className="px-5 py-3.5 font-heading font-semibold text-[#005088] text-xs uppercase tracking-wide whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr><td colSpan={15} className="text-center py-16 text-slate-400">
-                      <RefreshCw size={20} className="animate-spin mx-auto mb-2" />
-                      Đang tải dữ liệu từ Google Sheets...
-                    </td></tr>
-                  ) : paged.length === 0 ? (
-                    <tr><td colSpan={15} className="text-center py-16 text-slate-400">Không có dữ liệu phù hợp</td></tr>
-                  ) : paged.map((c, i) => (
-                    <tr key={i} className="border-t border-slate-100 hover:bg-blue-50/30 transition-colors">
-                      <td className="px-5 py-3.5 text-slate-500 font-medium">{c.STT}</td>
-                      <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">{c["Ngày"]}</td>
-                      <td className="px-5 py-3.5 font-semibold text-[#005088]">{c["Tên ứng viên"]}</td>
-                      <td className="px-5 py-3.5 text-slate-600 max-w-[160px] truncate">{c["Email"]}</td>
-                      <td className="px-5 py-3.5 text-slate-600">{c["SĐT"]}</td>
-                      <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">{c["Phòng Ban"]}</td>
-                      <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap max-w-[160px] truncate">{c["Vị trí"]}</td>
-                      <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">{c["Kinh nghiệm"]}</td>
-                      <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap max-w-[140px] truncate">{c["Chức danh gần nhất"]}</td>
-                      <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap max-w-[140px] truncate">{c["Công ty gần nhất"]}</td>
-                      <td className="px-5 py-3.5"><StatusBadge status={c["Trạng thái"]} /></td>
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-2">
-                          <button className="p-1.5 hover:bg-blue-100 rounded-lg text-blue-500 transition-colors" title="Sửa">
-                            <Pencil size={13} />
-                          </button>
-                          <button onClick={() => handleDelete(Number(c.STT))}
-                            className="p-1.5 hover:bg-red-100 rounded-lg text-red-400 transition-colors" title="Xóa">
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  <div className="space-y-3">
+                    {/* Progress bar */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold">
+                        <span>Tiến độ</span>
+                        <span className="text-blue-600 font-bold">{task.progress}%</span>
+                      </div>
+                      <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-blue-600 rounded-full" style={{ width: `${task.progress}%` }} />
+                      </div>
+                    </div>
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between px-5 py-4 border-t border-slate-100 text-sm">
-                <span className="text-slate-500">Hiển thị {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, filtered.length)} / {filtered.length} ứng viên</span>
-                <div className="flex gap-1">
-                  {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => i + 1).map(p => (
-                    <button key={p} onClick={() => setPage(p)}
-                      className={`w-8 h-8 rounded-lg text-xs font-medium transition-all ${p === page ? "bg-[#005088] text-white shadow" : "hover:bg-blue-50 text-slate-600"}`}>
-                      {p}
-                    </button>
-                  ))}
+                    {/* Task Footer Info */}
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[10px] text-slate-400 font-semibold">
+                      <span className="flex items-center gap-1 text-slate-500"><Calendar size={12} /> {task.due}</span>
+                      <div className="flex items-center gap-2">
+                        {task.attachments > 0 && <span className="flex items-center gap-0.5"><Paperclip size={11} /> {task.attachments}</span>}
+                        {task.comments > 0 && <span className="flex items-center gap-0.5"><MessageSquare size={11} /> {task.comments}</span>}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              ))}
+            </div>
+          </section>
         </main>
       </div>
-
-      {showModal && <AddCandidateModal onClose={() => setShowModal(false)} onSuccess={() => { setShowModal(false); load(); }} />}
     </div>
   );
 }

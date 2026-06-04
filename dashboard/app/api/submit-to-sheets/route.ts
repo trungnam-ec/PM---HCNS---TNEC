@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const SCRIPT_URL = process.env.NEXT_PUBLIC_APPS_SCRIPT_URL || "";
-const SECRET = process.env.APPS_SCRIPT_SECRET || "CV_SCORER_SECRET_2025";
-
 export async function POST(req: NextRequest) {
   try {
+    const customUrl = req.headers.get("x-apps-script-url");
+    const SCRIPT_URL = customUrl || process.env.NEXT_PUBLIC_APPS_SCRIPT_URL || "";
+    const SECRET = process.env.APPS_SCRIPT_SECRET || "CV_SCORER_SECRET_2025";
+
     const body = await req.json();
     const { extracted_info } = body;
 
@@ -13,13 +14,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (!SCRIPT_URL) {
-      return NextResponse.json({ error: "APPS_SCRIPT_URL chưa cấu hình." }, { status: 500 });
+      return NextResponse.json({ error: "APPS_SCRIPT_URL chưa được cấu hình. Vui lòng nhập trong phần Cài đặt." }, { status: 500 });
     }
 
     // Build row matching Google Sheets column order (16 columns)
     const info = extracted_info;
     const row = [
-      null,                              // STT – auto by sheet
       info.ngay        || "N/A",
       info.ten_ung_vien || "N/A",
       info.email        || "N/A",

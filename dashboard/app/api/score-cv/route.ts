@@ -119,9 +119,11 @@ function classifyDept(jdText: string, viTri = ""): { phong_ban: string; nguoi_da
 // ── Main handler ──────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const authHeader = req.headers.get("Authorization");
+    const apiKey = (authHeader && authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null) || process.env.OPENAI_API_KEY;
+    
     if (!apiKey) {
-      return NextResponse.json({ error: "OPENAI_API_KEY chưa được cấu hình trên server." }, { status: 500 });
+      return NextResponse.json({ error: "OPENAI_API_KEY chưa được cấu hình. Vui lòng nhập trong phần Cài đặt." }, { status: 500 });
     }
 
     const form = await req.formData();

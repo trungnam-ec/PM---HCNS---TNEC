@@ -137,12 +137,12 @@ export default function PhongBanPage() {
                                             <>
                                                 <div className="grid grid-cols-3 gap-2 text-center">
                                                     <div className="bg-white/60 rounded-xl py-2">
-                                                        <p className="font-heading font-bold text-[#005088] text-lg">{loading ? "–" : hcnsTotal}</p>
+                                                        <p className="font-heading font-bold text-slate-800 text-lg">{loading ? "–" : hcnsTotal}</p>
                                                         <p className="text-slate-400 text-[9px] uppercase">Ứng Viên</p>
                                                     </div>
                                                     <div className="bg-white/60 rounded-xl py-2">
                                                         <p className="font-heading font-bold text-emerald-600 text-lg">{loading ? "–" : `${hcnsPassRate}%`}</p>
-                                                        <p className="text-slate-400 text-[9px] uppercase">Pass Rate</p>
+                                                        <p className="text-slate-400 text-[9px] uppercase">Tỉ lệ duyệt</p>
                                                     </div>
                                                     <div className="bg-white/60 rounded-xl py-2">
                                                         <p className="font-heading font-bold text-violet-600 text-lg">{loading ? "–" : stats?.vong1_count ?? 0}</p>
@@ -153,7 +153,7 @@ export default function PhongBanPage() {
                                                 {/* Pipeline mini */}
                                                 <div className="space-y-1.5">
                                                     <div className="flex items-center justify-between text-[10px] text-slate-500">
-                                                        <span>Pipeline tuyển dụng</span>
+                                                        <span>Quy trình tuyển dụng</span>
                                                         <span>{hcnsTotal} → {stats?.vong1_count ?? 0} → {stats?.vong2_count ?? 0} → {stats?.thuviec_count ?? 0}</span>
                                                     </div>
                                                     <div className="flex gap-0.5 h-1.5 rounded-full overflow-hidden bg-slate-200">

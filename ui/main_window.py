@@ -153,7 +153,7 @@ class CVScorerApp(ctk.CTk):
         super().__init__()
 
         # --- CẤU HÌNH WINDOW ---
-        self.title("TNEC-HR – Auto to Google Sheets")
+        self.title("PM - HCNS - TNEC")
         self.geometry("1200x800")
 
         self.grid_columnconfigure(1, weight=1)
@@ -183,7 +183,7 @@ class CVScorerApp(ctk.CTk):
 
         # Title
         ctk.CTkLabel(
-            self.sidebar_frame, text="🤖 TNEC-HR",
+            self.sidebar_frame, text="🤖 PM - HCNS - TNEC",
             font=ctk.CTkFont(size=18, weight="bold")
         ).grid(row=row, column=0, padx=20, pady=(20, 2), sticky="w"); row += 1
 

@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "Tuyendung-Report V2 | Executive Dashboard",
-  description: "Hệ thống quản lý tuyển dụng AI – Ban Giám đốc",
+  title: "PM - HCNS - TNEC",
+  description: "Phần mềm Quản lý Hành chính Nhân sự - Trung Nam E&C",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

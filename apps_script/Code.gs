@@ -125,7 +125,7 @@ function doGet(e) {
       }
     }
 
-    return response({ status: "OK", message: "Tuyendung-Report V2 API Ready" });
+    return response({ status: "OK", message: "PM - HCNS - TNEC API Ready" });
 
   } catch (err) {
     return response({ success: false, error: err.message });

@@ -495,9 +495,9 @@ export default function AdministrationPage() {
                             onChange={(e) => setNewTaskAssignee(e.target.value as any)}
                             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold bg-white"
                           >
-                            <option value="Như Quỳnh">Như Quỳnh (Phó phòng Hành chính - Hậu cần, VPP, Phòng họp)</option>
-                            <option value="Thùy Quyên">Thùy Quyên (Tuyển dụng - Hóa đơn, HS thanh toán)</option>
-                            <option value="Thanh Hằng">Thanh Hằng (Văn thư - Tiếp nhận, lưu trữ công văn)</option>
+                            <option value="Như Quỳnh">Như Quỳnh</option>
+                            <option value="Thùy Quyên">Thùy Quyên</option>
+                            <option value="Thanh Hằng">Thanh Hằng</option>
                           </select>
                         </div>
                         <div className="space-y-1">

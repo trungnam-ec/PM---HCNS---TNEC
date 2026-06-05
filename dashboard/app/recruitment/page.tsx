@@ -672,14 +672,8 @@ export default function RecruitmentPage() {
 
     if (subTab === "tong_hop") return sorted;
     if (subTab === "vong_1") {
-      // Logic: Chỉ hiện ứng viên PASS CV (đã qua vòng lọc CV)
-      // - Loại bỏ: status=rejected VÀ không có v1_result (bị FAIL ở bước Tổng Hợp, chưa vào V1)
-      // - Giữ lại: có v1_result (đã được đánh giá ở V1, kể cả LOẠI)
-      // - Giữ lại: status = screening/interview/offer/hired (đang trong pipeline)
-      return sorted.filter(c => {
-        if (c.status === "rejected" && !c.v1_result) return false; // FAIL ở Tổng Hợp → không vào V1
-        return c.v1_date || c.v1_result || ["screening", "interview", "offer", "hired"].includes(c.status);
-      });
+      // Logic: Chỉ hiện ứng viên PASS CV (tức là status khác "rejected")
+      return sorted.filter(c => c.status !== "rejected");
     }
     if (subTab === "vong_2") {
       // Logic: Chỉ hiện ứng viên có Kết quả V1 = ĐẠT

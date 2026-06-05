@@ -32,6 +32,15 @@ import {
 } from "lucide-react";
 
 // ─── TYPES FOR CV SCORER ──────────────────────────────────────────────────────
+type ScoreBreakdownItem = { diem: number; toi_da: number; ly_do: string };
+type ScoreBreakdown = {
+  kinh_nghiem?: ScoreBreakdownItem;
+  ky_nang?: ScoreBreakdownItem;
+  hoc_van?: ScoreBreakdownItem;
+  soft_skill?: ScoreBreakdownItem;
+  phat?: ScoreBreakdownItem;
+};
+
 type ScoringResult = {
   file_name: string;
   score: number;
@@ -40,6 +49,7 @@ type ScoringResult = {
   matching_skills: string[];
   missing_skills: string[];
   summary: string;
+  score_breakdown?: ScoreBreakdown;
   extracted_info: Record<string, string>;
   submitted?: boolean;
   saved_db?: boolean;
@@ -107,6 +117,15 @@ function ResultCard({
     );
   }
 
+  // Breakdown tiêu chí hiển thị
+  const breakdownItems = result.score_breakdown ? [
+    { key: "kinh_nghiem", label: "Kinh nghiệm liên quan", icon: "💼", color: "bg-blue-500",    data: result.score_breakdown.kinh_nghiem },
+    { key: "ky_nang",     label: "Kỹ năng chuyên môn",   icon: "🛠️", color: "bg-violet-500", data: result.score_breakdown.ky_nang },
+    { key: "hoc_van",     label: "Học vấn & Bằng cấp",   icon: "🎓", color: "bg-amber-500",  data: result.score_breakdown.hoc_van },
+    { key: "soft_skill",  label: "Soft skills",           icon: "🤝", color: "bg-teal-500",  data: result.score_breakdown.soft_skill },
+    { key: "phat",        label: "Điểm trừ (phạt)",       icon: "⚠️", color: "bg-rose-500",  data: result.score_breakdown.phat },
+  ] : [];
+
   return (
     <div className="glass rounded-2xl overflow-hidden border border-slate-200/40 hover:shadow-lg transition-all">
       {/* Header row */}
@@ -138,11 +157,18 @@ function ResultCard({
           ) : (
             <span className="badge-fail px-3 py-1 rounded-full text-xs font-semibold">✗ FAIL</span>
           )}
+
+          {/* Chi tiết toggle button */}
           <button
             onClick={() => setExpanded(!expanded)}
-            className="p-1.5 hover:bg-blue-50 rounded-lg text-slate-400 transition-colors"
+            className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl transition-all active:scale-95 ${
+              expanded
+                ? "bg-blue-100 text-blue-700"
+                : "bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600"
+            }`}
           >
-            {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            Chi tiết
           </button>
           
           {/* Supabase Save Button */}
@@ -181,56 +207,105 @@ function ResultCard({
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="border-t border-slate-200/40 px-5 pb-5 pt-4 grid grid-cols-2 gap-6 text-sm">
-          {/* Left: skills */}
-          <div className="space-y-3">
-            <div>
-              <p className="font-semibold text-emerald-600 mb-1.5">✅ Kỹ năng tương thích</p>
-              <ul className="space-y-1">
-                {result.matching_skills.length ? result.matching_skills.map((s, i) => (
-                  <li key={i} className="text-slate-600 text-xs flex items-start gap-1.5"><span className="text-emerald-400 mt-0.5">•</span>{s}</li>
-                )) : <li className="text-slate-400 text-xs italic">Không có</li>}
-              </ul>
-            </div>
-            <div>
-              <p className="font-semibold text-rose-500 mb-1.5">❌ Kỹ năng còn thiếu</p>
-              <ul className="space-y-1">
-                {result.missing_skills.length ? result.missing_skills.map((s, i) => (
-                  <li key={i} className="text-slate-600 text-xs flex items-start gap-1.5"><span className="text-rose-300 mt-0.5">•</span>{s}</li>
-                )) : <li className="text-slate-400 text-xs italic">Không có</li>}
-              </ul>
-            </div>
-          </div>
+        <div className="border-t border-slate-200/40 px-5 pb-6 pt-5 space-y-5">
 
-          {/* Right: info + summary */}
-          <div className="space-y-3">
+          {/* Score Breakdown - chỉ hiện nếu có dữ liệu */}
+          {breakdownItems.length > 0 && (
             <div>
-              <p className="font-semibold text-slate-600 mb-1.5">📋 Thông tin trích xuất</p>
-              <div className="space-y-1 text-xs text-slate-500">
-                {[
-                  ["Email", result.extracted_info?.email],
-                  ["SĐT", result.extracted_info?.sdt],
-                  ["Bằng cấp", result.extracted_info?.bang_cap],
-                  ["Chuyên ngành", result.extracted_info?.chuyen_nganh],
-                  ["Phòng ban", result.extracted_info?.phong_ban],
-                  ["Người đánh giá", result.extracted_info?.nguoi_danh_gia],
-                ].map(([label, val]) => (
-                  <div key={label} className="flex gap-2">
-                    <span className="text-slate-400 w-24 shrink-0">{label}:</span>
-                    <span className="text-slate-600">{val || "N/A"}</span>
-                  </div>
-                ))}
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">📊 Phân tích điểm chi tiết</p>
+              <div className="space-y-2.5">
+                {breakdownItems.map(({ key, label, icon, color, data }) => {
+                  if (!data) return null;
+                  const isPenalty = key === "phat";
+                  const pct = isPenalty
+                    ? 0 // penalty bar always shown as 0 (red badge)
+                    : Math.max(0, Math.min(100, data.toi_da > 0 ? (data.diem / data.toi_da) * 100 : 0));
+                  return (
+                    <div key={key}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-slate-600">{icon} {label}</span>
+                        <span className={`text-xs font-bold ${
+                          isPenalty ? "text-rose-600" :
+                          data.diem >= data.toi_da * 0.8 ? "text-emerald-600" :
+                          data.diem >= data.toi_da * 0.5 ? "text-amber-500" : "text-rose-500"
+                        }`}>
+                          {isPenalty ? (data.diem < 0 ? data.diem : `-${Math.abs(data.diem)}`) : `${data.diem}/${data.toi_da}`}
+                        </span>
+                      </div>
+                      {!isPenalty && (
+                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mb-1">
+                          <div
+                            className={`h-full ${color} rounded-full transition-all`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      )}
+                      <p className="text-[11px] text-slate-500 leading-relaxed">{data.ly_do}</p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-            <div>
-              <p className="font-semibold text-slate-600 mb-1">📝 Nhận xét AI</p>
-              <p className="text-slate-500 text-xs leading-relaxed">{result.summary}</p>
-              <p className="mt-1.5 text-xs font-medium">
-                Khuyến nghị:{" "}
-                <span className={result.recommendation === "Interview" ? "text-emerald-600" : result.recommendation === "Hold" ? "text-amber-500" : "text-rose-500"}>
-                  {result.recommendation}
-                </span>
-              </p>
+          )}
+
+          <div className="grid grid-cols-2 gap-5">
+            {/* Left: skills */}
+            <div className="space-y-3">
+              <div>
+                <p className="font-semibold text-emerald-600 mb-1.5 text-xs">✅ Kỹ năng tương thích</p>
+                <ul className="space-y-1">
+                  {result.matching_skills.length ? result.matching_skills.map((s, i) => (
+                    <li key={i} className="text-slate-600 text-[11px] flex items-start gap-1.5"><span className="text-emerald-400 mt-0.5">•</span>{s}</li>
+                  )) : <li className="text-slate-400 text-xs italic">Không có</li>}
+                </ul>
+              </div>
+              <div>
+                <p className="font-semibold text-rose-500 mb-1.5 text-xs">❌ Kỹ năng còn thiếu</p>
+                <ul className="space-y-1">
+                  {result.missing_skills.length ? result.missing_skills.map((s, i) => (
+                    <li key={i} className="text-slate-600 text-[11px] flex items-start gap-1.5"><span className="text-rose-300 mt-0.5">•</span>{s}</li>
+                  )) : <li className="text-slate-400 text-xs italic">Không có</li>}
+                </ul>
+              </div>
+            </div>
+
+            {/* Right: info + summary */}
+            <div className="space-y-3">
+              <div>
+                <p className="font-semibold text-slate-600 mb-1.5 text-xs">📋 Thông tin trích xuất</p>
+                <div className="space-y-1 text-[11px] text-slate-500">
+                  {[
+                    ["Email", result.extracted_info?.email],
+                    ["SĐT", result.extracted_info?.sdt],
+                    ["Bằng cấp", result.extracted_info?.bang_cap],
+                    ["Chuyên ngành", result.extracted_info?.chuyen_nganh],
+                    ["Phòng ban", result.extracted_info?.phong_ban],
+                    ["Người đánh giá", result.extracted_info?.nguoi_danh_gia],
+                  ].map(([label, val]) => (
+                    <div key={label} className="flex gap-2">
+                      <span className="text-slate-400 w-24 shrink-0">{label}:</span>
+                      <span className="text-slate-600">{val || "N/A"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="font-semibold text-slate-600 mb-1 text-xs">📝 Nhận xét AI</p>
+                <p className="text-slate-500 text-[11px] leading-relaxed">{result.summary}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400">Khuyến nghị:</span>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                    result.recommendation === "Interview"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : result.recommendation === "Hold"
+                      ? "bg-amber-100 text-amber-700"
+                      : "bg-rose-100 text-rose-600"
+                  }`}>
+                    {result.recommendation === "Interview" ? "✓ Phỏng vấn" :
+                     result.recommendation === "Hold" ? "⏸ Giữ lại" : "✗ Từ chối"}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -634,6 +709,7 @@ export default function RecruitmentPage() {
           matching_skills: data.matching_skills ?? [],
           missing_skills: data.missing_skills ?? [],
           summary: data.summary ?? "",
+          score_breakdown: data.score_breakdown ?? undefined,
           extracted_info: data.extracted_info ?? {},
           submitted: false,
           saved_db: false

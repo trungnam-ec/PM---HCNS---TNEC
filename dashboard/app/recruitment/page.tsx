@@ -239,12 +239,232 @@ function ResultCard({
   );
 }
 
+// ─── HELPERS FOR TABLE VIEW ──────────────────────────────────────────────────
+function EditableCell({
+  value,
+  onSave,
+  type = "text"
+}: {
+  value: string;
+  onSave: (val: string) => void;
+  type?: string;
+}) {
+  const [val, setVal] = useState(value);
+
+  useEffect(() => {
+    setVal(value);
+  }, [value]);
+
+  const handleBlur = () => {
+    if (val !== value) {
+      onSave(val);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.currentTarget.blur();
+    }
+  };
+
+  return (
+    <input
+      type={type}
+      value={val || ""}
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      className="w-full bg-transparent px-2 py-1 outline-none border border-transparent hover:bg-slate-100/50 focus:border-blue-500 focus:bg-white rounded transition-all text-xs font-normal text-slate-700"
+    />
+  );
+}
+
+const getColumnsForTab = (tab: string) => {
+  if (tab === "tong_hop") {
+    return [
+      { key: "stt", label: "STT", width: "60px" },
+      { key: "created_at", label: "Ngày tạo", width: "110px", readOnly: true },
+      { key: "name", label: "Tên ứng viên", width: "180px" },
+      { key: "email", label: "Email", width: "180px" },
+      { key: "phone", label: "SĐT", width: "110px" },
+      { key: "education", label: "Bằng cấp", width: "100px" },
+      { key: "major", label: "Chuyên ngành", width: "150px" },
+      { key: "experience", label: "Kinh nghiệm", width: "120px" },
+      { key: "last_position", label: "Chức danh gần nhất", width: "160px" },
+      { key: "last_company", label: "Công ty gần nhất", width: "160px" },
+      { key: "region", label: "Khu vực", width: "100px" },
+      { key: "department", label: "Phòng Ban", width: "130px" },
+      { key: "role", label: "Vị trí", width: "140px" },
+      { key: "status", label: "Trạng thái", width: "120px", type: "status" },
+      { key: "source", label: "Nguồn", width: "110px" },
+      { key: "reviewer", label: "Người đánh giá", width: "130px" }
+    ];
+  }
+  if (tab === "vong_1") {
+    return [
+      { key: "stt", label: "STT", width: "60px" },
+      { key: "v1_date", label: "Ngày Vòng 1", width: "110px" },
+      { key: "name", label: "Tên ứng viên", width: "180px" },
+      { key: "email", label: "Email", width: "180px" },
+      { key: "phone", label: "SĐT", width: "110px" },
+      { key: "education", label: "Bằng cấp", width: "100px" },
+      { key: "major", label: "Chuyên ngành", width: "150px" },
+      { key: "region", label: "Khu vực", width: "100px" },
+      { key: "department", label: "Phòng Ban", width: "130px" },
+      { key: "role", label: "Vị trí", width: "140px" },
+      { key: "status", label: "Trạng thái", width: "120px", type: "status" },
+      { key: "source", label: "Nguồn", width: "110px" },
+      { key: "v1_interviewer", label: "Người PV V1", width: "130px" },
+      { key: "v1_result", label: "Kết quả V1", width: "120px", type: "v1_result" }
+    ];
+  }
+  if (tab === "vong_2") {
+    return [
+      { key: "stt", label: "STT", width: "60px" },
+      { key: "v2_date", label: "Ngày Vòng 2", width: "110px" },
+      { key: "name", label: "Tên ứng viên", width: "180px" },
+      { key: "email", label: "Email", width: "180px" },
+      { key: "phone", label: "SĐT", width: "110px" },
+      { key: "education", label: "Bằng cấp", width: "100px" },
+      { key: "major", label: "Chuyên ngành", width: "150px" },
+      { key: "region", label: "Khu vực", width: "100px" },
+      { key: "department", label: "Phòng Ban", width: "130px" },
+      { key: "role", label: "Vị trí", width: "140px" },
+      { key: "status", label: "Trạng thái", width: "120px", type: "status" },
+      { key: "source", label: "Nguồn", width: "110px" },
+      { key: "v2_interviewer", label: "Người PV V2", width: "130px" },
+      { key: "v2_result", label: "Kết quả V2", width: "120px", type: "v2_result" }
+    ];
+  }
+  // Thử việc
+  return [
+    { key: "stt", label: "STT", width: "60px" },
+    { key: "created_at", label: "Ngày tạo", width: "110px", readOnly: true },
+    { key: "name", label: "Tên ứng viên", width: "180px" },
+    { key: "email", label: "Email", width: "180px" },
+    { key: "phone", label: "SĐT", width: "110px" },
+    { key: "education", label: "Bằng cấp", width: "100px" },
+    { key: "major", label: "Chuyên ngành", width: "150px" },
+    { key: "experience", label: "Kinh nghiệm", width: "120px" },
+    { key: "last_position", label: "Chức danh gần nhất", width: "160px" },
+    { key: "last_company", label: "Công ty gần nhất", width: "160px" },
+    { key: "region", label: "Khu vực", width: "100px" },
+    { key: "department", label: "Phòng Ban", width: "130px" },
+    { key: "role", label: "Vị trí", width: "140px" },
+    { key: "v2_result", label: "Kết quả V2", width: "110px", readOnly: true },
+    { key: "probation_result", label: "Kết quả nhận việc", width: "130px", type: "probation_result" },
+    { key: "ai_recommendation", label: "HĐ Chính thức", width: "120px", type: "probation_contract" }, // Store in ai_recommendation
+    { key: "onboard_date", label: "ONBOARD", width: "110px" },
+    { key: "probation_end_date", label: "Hết hạn TV", width: "110px" },
+    { key: "probation_salary", label: "Mức lương TV", width: "120px" },
+    { key: "official_salary", label: "MỨC lương CT", width: "120px" }
+  ];
+};
+
 // ─── MAIN RECRUITMENT PAGE ────────────────────────────────────────────────────
 export default function RecruitmentPage() {
-  const [activeTab, setActiveTab] = useState<"pipeline" | "scorer" | "settings">("pipeline");
+  const [activeTab, setActiveTab] = useState<"pipeline" | "table_view" | "scorer" | "settings">("pipeline");
+  const [tableSubTab, setTableSubTab] = useState<"tong_hop" | "vong_1" | "vong_2" | "thu_viec">("tong_hop");
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  // Update candidate field directly
+  const handleUpdateCandidateField = async (id: string, field: string, val: any) => {
+    try {
+      // Optimistic update
+      setCandidates(prev => prev.map(c => c.id === id ? { ...c, [field]: val } : c));
+
+      const { error } = await supabase
+        .from("candidates")
+        .update({ [field]: val })
+        .eq("id", id);
+
+      if (error) throw error;
+    } catch (err) {
+      console.error("Error updating candidate field:", err);
+      fetchCandidates();
+    }
+  };
+
+  // Update multiple candidate fields
+  const handleUpdateCandidateFields = async (id: string, updates: Record<string, any>) => {
+    try {
+      // Optimistic update
+      setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+
+      const { error } = await supabase
+        .from("candidates")
+        .update(updates)
+        .eq("id", id);
+
+      if (error) throw error;
+    } catch (err) {
+      console.error("Error updating candidate fields:", err);
+      fetchCandidates();
+    }
+  };
+
+  // Handle dropdown value changes for spreadsheet view
+  const handleDropdownChange = async (candidateId: string, type: string, value: string) => {
+    if (type === "status") {
+      const newStatus = value === "FAIL" ? "rejected" : "new";
+      await handleUpdateCandidateField(candidateId, "status", newStatus);
+    } else if (type === "v1_result") {
+      const updates: any = { v1_result: value };
+      if (value === "ĐẠT") {
+        updates.status = "interview";
+      } else if (value === "LOẠI" || value === "TC PV") {
+        updates.status = "rejected";
+      }
+      await handleUpdateCandidateFields(candidateId, updates);
+    } else if (type === "v2_result") {
+      const updates: any = { v2_result: value };
+      if (value === "ĐẠT") {
+        updates.status = "offer";
+      } else if (value === "LOẠI" || value === "TC PV") {
+        updates.status = "rejected";
+      }
+      await handleUpdateCandidateFields(candidateId, updates);
+    } else if (type === "probation_result") {
+      const updates: any = { probation_result: value };
+      if (value === "ĐẠT") {
+        updates.status = "hired";
+      } else if (value === "TC") {
+        updates.status = "rejected";
+      }
+      await handleUpdateCandidateFields(candidateId, updates);
+    }
+  };
+
+  // Filter and sort candidates for the spreadsheet view
+  const getFilteredTableCandidates = (subTab: string) => {
+    const sorted = [...candidates]
+      .filter(c => {
+        if (!search) return true;
+        const q = search.toLowerCase();
+        return (
+          (c.name || "").toLowerCase().includes(q) ||
+          (c.phone || "").toLowerCase().includes(q) ||
+          (c.email || "").toLowerCase().includes(q) ||
+          (c.role || "").toLowerCase().includes(q) ||
+          (c.department || "").toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => (a.stt || 999999) - (b.stt || 999999));
+
+    if (subTab === "tong_hop") return sorted;
+    if (subTab === "vong_1") {
+      return sorted.filter(c => c.v1_result || ["screening", "interview", "offer", "hired"].includes(c.status));
+    }
+    if (subTab === "vong_2") {
+      return sorted.filter(c => c.v2_result || ["interview", "offer", "hired"].includes(c.status));
+    }
+    if (subTab === "thu_viec") {
+      return sorted.filter(c => c.onboard_date || c.status === "hired");
+    }
+    return sorted;
+  };
 
   // Scorer Tab states
   const [jdText, setJdText] = useState("");
@@ -586,6 +806,17 @@ export default function RecruitmentPage() {
               Phễu tuyển dụng (Pipeline)
             </button>
             <button
+              onClick={() => setActiveTab("table_view")}
+              className={`flex items-center gap-2 px-6 py-3 text-xs font-bold border-b-2 transition-all ${
+                activeTab === "table_view"
+                  ? "border-[#005BAC] text-[#005BAC]"
+                  : "border-transparent text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              <FileText size={14} />
+              Bảng danh sách chi tiết (Sheets)
+            </button>
+            <button
               onClick={() => setActiveTab("scorer")}
               className={`flex items-center gap-2 px-6 py-3 text-xs font-bold border-b-2 transition-all ${
                 activeTab === "scorer"
@@ -724,6 +955,208 @@ export default function RecruitmentPage() {
                   })}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB 2: SPREADSHEET TABLE VIEW */}
+          {activeTab === "table_view" && (
+            <div className="space-y-6">
+              {/* Controls bar */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                {/* Sheets Subtabs */}
+                <div className="flex bg-slate-200/50 p-1 rounded-xl gap-1 w-fit border border-slate-200">
+                  {[
+                    { id: "tong_hop", label: "Tổng Hợp" },
+                    { id: "vong_1", label: "Vòng 1" },
+                    { id: "vong_2", label: "Vòng 2" },
+                    { id: "thu_viec", label: "Thử Việc" }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setTableSubTab(tab.id as any)}
+                      className={`px-5 py-2 text-xs font-bold rounded-lg transition-all ${
+                        tableSubTab === tab.id
+                          ? "bg-[#005BAC] text-white shadow-sm font-bold"
+                          : "text-slate-600 hover:bg-white/40"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Search & Refresh */}
+                <div className="flex items-center gap-3">
+                  <div className="relative w-64">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Tìm theo tên, SĐT, vị trí..."
+                      className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 transition-all shadow-sm"
+                    />
+                  </div>
+                  <button 
+                    onClick={fetchCandidates}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
+                  >
+                    Tải lại
+                  </button>
+                  <button 
+                    onClick={() => setIsAddOpen(true)}
+                    className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 shadow"
+                  >
+                    <Plus size={14} /> Thêm ứng viên
+                  </button>
+                </div>
+              </div>
+
+              {/* Data Table */}
+              <div className="glass rounded-2xl overflow-hidden border border-slate-200/40 shadow-xl bg-white/80">
+                <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                  <table className="w-full text-xs text-left border-collapse table-fixed min-w-[1500px]">
+                    <thead className="bg-[#005088] text-white sticky top-0 z-10 font-heading text-[11px] uppercase tracking-wider">
+                      <tr>
+                        {getColumnsForTab(tableSubTab).map(col => (
+                          <th
+                            key={col.key}
+                            style={{ width: col.width }}
+                            className="px-3 py-3 border border-slate-200/80 font-semibold text-center whitespace-nowrap"
+                          >
+                            {col.label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loading ? (
+                        <tr>
+                          <td colSpan={getColumnsForTab(tableSubTab).length} className="py-20 text-center">
+                            <div className="flex flex-col items-center gap-2">
+                              <Loader2 className="animate-spin text-blue-600" size={24} />
+                              <p className="text-slate-400 italic">Đang tải bảng dữ liệu...</p>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : getFilteredTableCandidates(tableSubTab).length === 0 ? (
+                        <tr>
+                          <td colSpan={getColumnsForTab(tableSubTab).length} className="py-10 text-center text-slate-400 italic">
+                            Không tìm thấy ứng viên nào phù hợp
+                          </td>
+                        </tr>
+                      ) : (
+                        getFilteredTableCandidates(tableSubTab).map((candidate, i) => {
+                          const cols = getColumnsForTab(tableSubTab);
+                          return (
+                            <tr
+                              key={candidate.id}
+                              className={`border-b border-slate-100 transition-colors ${
+                                i % 2 === 0 ? "bg-white/40" : "bg-blue-50/10"
+                              } hover:bg-blue-100/10`}
+                            >
+                              {cols.map(col => {
+                                const val = candidate[col.key];
+
+                                // Format cell content based on type
+                                if (col.readOnly) {
+                                  let displayVal = val || "";
+                                  if (col.key === "created_at" && val) {
+                                    displayVal = new Date(val).toLocaleDateString('vi-VN');
+                                  }
+                                  return (
+                                    <td key={col.key} className="px-3 py-2 border border-slate-100 text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis">
+                                      {displayVal}
+                                    </td>
+                                  );
+                                }
+
+                                if (col.type === "status") {
+                                  const displayStatus = val === "rejected" ? "FAIL" : "PASS CV";
+                                  return (
+                                    <td key={col.key} className="px-3 py-2 border border-slate-100 text-center">
+                                      <select
+                                        value={displayStatus}
+                                        onChange={(e) => handleDropdownChange(candidate.id, "status", e.target.value)}
+                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full cursor-pointer border-none outline-none ${
+                                          displayStatus === "FAIL"
+                                            ? "bg-rose-100 text-rose-700"
+                                            : "bg-emerald-100 text-emerald-700"
+                                        }`}
+                                      >
+                                        <option value="PASS CV">PASS CV</option>
+                                        <option value="FAIL">FAIL</option>
+                                      </select>
+                                    </td>
+                                  );
+                                }
+
+                                if (col.type === "v1_result" || col.type === "v2_result") {
+                                  const displayRes = val || "Chờ đánh giá";
+                                  return (
+                                    <td key={col.key} className="px-3 py-2 border border-slate-100 text-center">
+                                      <select
+                                        value={displayRes}
+                                        onChange={(e) => handleDropdownChange(candidate.id, col.type!, e.target.value)}
+                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border-none cursor-pointer outline-none ${
+                                          displayRes === "ĐẠT"
+                                            ? "bg-emerald-100 text-emerald-700"
+                                            : displayRes === "LOẠI"
+                                            ? "bg-[#FEF3C7] text-[#92400E]"
+                                            : displayRes === "TC PV"
+                                            ? "bg-rose-600 text-white font-bold"
+                                            : "bg-slate-100 text-slate-600"
+                                        }`}
+                                      >
+                                        <option value="Chờ đánh giá">Chờ đánh giá</option>
+                                        <option value="ĐẠT">ĐẠT</option>
+                                        <option value="LOẠI">LOẠI</option>
+                                        <option value="TC PV">TC PV</option>
+                                      </select>
+                                    </td>
+                                  );
+                                }
+
+                                if (col.type === "probation_result") {
+                                  const displayRes = val || "Chờ nhận việc";
+                                  return (
+                                    <td key={col.key} className="px-3 py-2 border border-slate-100 text-center">
+                                      <select
+                                        value={displayRes}
+                                        onChange={(e) => handleDropdownChange(candidate.id, "probation_result", e.target.value)}
+                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border-none cursor-pointer outline-none ${
+                                          displayRes === "ĐẠT"
+                                            ? "bg-emerald-100 text-emerald-700"
+                                            : displayRes === "TC"
+                                            ? "bg-rose-600 text-white font-bold"
+                                            : "bg-slate-100 text-slate-600"
+                                        }`}
+                                      >
+                                        <option value="Chờ nhận việc">Chờ nhận việc</option>
+                                        <option value="ĐẠT">ĐẠT</option>
+                                        <option value="TC">TC</option>
+                                      </select>
+                                    </td>
+                                  );
+                                }
+
+                                return (
+                                  <td key={col.key} className="p-0 border border-slate-100">
+                                    <EditableCell
+                                      value={val || ""}
+                                      onSave={(newVal) => handleUpdateCandidateField(candidate.id, col.key, newVal)}
+                                    />
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
 

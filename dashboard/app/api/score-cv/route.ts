@@ -34,6 +34,15 @@ if (typeof globalThis.DOMMatrix === "undefined") {
   };
 }
 
+// Cấu hình GlobalWorkerOptions cho pdfjs-dist trong Node.js / Next.js
+try {
+  const path = require("path");
+  const pdfjs = require("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = path.join(process.cwd(), "node_modules", "pdfjs-dist", "legacy", "build", "pdf.worker.mjs");
+} catch (e) {
+  console.warn("Failed to set pdfjs workerSrc:", e);
+}
+
 export const maxDuration = 60; // Vercel max for hobby plan
 
 const SYSTEM_PROMPT = `

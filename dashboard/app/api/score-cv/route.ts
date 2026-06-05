@@ -243,10 +243,10 @@ export async function POST(req: NextRequest) {
     let messages: OpenAI.Chat.ChatCompletionMessageParam[];
 
     if (fileType.endsWith(".pdf")) {
-      // Use require for CJS compat with Next.js
-      const pdfParse = require("pdf-parse");
-      const parseFn = typeof pdfParse === "function" ? pdfParse : (pdfParse.default || pdfParse);
-      const parsed = await parseFn(fileBuffer);
+      const { PDFParse } = require("pdf-parse");
+      const u8 = new Uint8Array(fileBuffer.buffer, fileBuffer.byteOffset, fileBuffer.byteLength);
+      const parser = new PDFParse(u8);
+      const parsed = await parser.getText();
       const cvText = parsed.text || "";
       messages = [
         { role: "system", content: SYSTEM_PROMPT },

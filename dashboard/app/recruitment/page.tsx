@@ -432,7 +432,7 @@ export default function RecruitmentPage() {
   // Handle dropdown value changes for spreadsheet view
   const handleDropdownChange = async (candidateId: string, type: string, value: string) => {
     if (type === "status") {
-      const newStatus = value === "FAIL" ? "rejected" : "new";
+      const newStatus = value === "FAIL" ? "rejected" : "screening";
       await handleUpdateCandidateField(candidateId, "status", newStatus);
     } else if (type === "v1_result") {
       const updates: any = { v1_result: value };
@@ -479,13 +479,13 @@ export default function RecruitmentPage() {
 
     if (subTab === "tong_hop") return sorted;
     if (subTab === "vong_1") {
-      return sorted.filter(c => c.v1_result || ["screening", "interview", "offer", "hired"].includes(c.status));
+      return sorted.filter(c => c.v1_date || c.v1_result || ["screening", "interview", "offer", "hired"].includes(c.status));
     }
     if (subTab === "vong_2") {
-      return sorted.filter(c => c.v2_result || ["interview", "offer", "hired"].includes(c.status));
+      return sorted.filter(c => c.v2_date || c.v2_result || ["interview", "offer", "hired"].includes(c.status));
     }
     if (subTab === "thu_viec") {
-      return sorted.filter(c => c.onboard_date || c.status === "hired");
+      return sorted.filter(c => c.onboard_date || c.probation_result || ["offer", "hired"].includes(c.status));
     }
     return sorted;
   };

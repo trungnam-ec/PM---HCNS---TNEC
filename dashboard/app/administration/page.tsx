@@ -495,8 +495,8 @@ export default function AdministrationPage() {
                             onChange={(e) => setNewTaskAssignee(e.target.value as any)}
                             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold bg-white"
                           >
-                            <option value="Như Quỳnh">Như Quỳnh (Hành chính - Hậu cần, VPP, Phòng họp)</option>
-                            <option value="Thùy Quyên">Thùy Quyên (Hành chính - Hóa đơn, HS thanh toán)</option>
+                            <option value="Như Quỳnh">Như Quỳnh (Phó phòng Hành chính - Hậu cần, VPP, Phòng họp)</option>
+                            <option value="Thùy Quyên">Thùy Quyên (Tuyển dụng - Hóa đơn, HS thanh toán)</option>
                             <option value="Thanh Hằng">Thanh Hằng (Văn thư - Tiếp nhận, lưu trữ công văn)</option>
                           </select>
                         </div>
@@ -540,11 +540,11 @@ export default function AdministrationPage() {
                   {/* Three personnel summary */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Như Quỳnh (Hành chính)</strong></p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Như Quỳnh (Phó phòng Hành chính)</strong></p>
                       <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Phụ trách hậu cần, kho VPP, phòng họp & tiếp khách</p>
                     </div>
                     <div className="border-l border-slate-200 pl-4">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Thùy Quyên (Hành chính)</strong></p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Thùy Quyên (Tuyển dụng)</strong></p>
                       <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Phụ trách đối soát hóa đơn, làm hồ sơ thanh toán, báo cáo chi phí</p>
                     </div>
                     <div className="border-l border-slate-200 pl-4">

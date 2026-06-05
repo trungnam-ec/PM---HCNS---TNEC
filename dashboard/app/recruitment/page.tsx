@@ -668,7 +668,7 @@ export default function RecruitmentPage() {
           (c.department || "").toLowerCase().includes(q)
         );
       })
-      .sort((a, b) => (a.stt || 999999) - (b.stt || 999999));
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 
     if (subTab === "tong_hop") return sorted;
     if (subTab === "vong_1") {
@@ -1547,11 +1547,24 @@ export default function RecruitmentPage() {
                               {cols.map(col => {
                                 const val = candidate[col.key];
 
-                                // STT: luôn đánh số lại từ 1 theo thứ tự hiển thị trong tab hiện tại
+                                // STT: luôn đánh số lại từ 1 theo thứ tự hiển thị trong tab hiện tại, rê chuột hiện nút xóa
                                 if (col.key === "stt") {
                                   return (
-                                    <td key={col.key} className="px-3 py-2 border border-slate-100 text-center text-slate-500 font-medium text-xs">
-                                      {i + 1}
+                                    <td 
+                                      key={col.key} 
+                                      className="group px-3 py-2 border border-slate-100 text-center text-slate-500 font-medium text-xs relative cursor-pointer min-w-[50px] align-middle"
+                                    >
+                                      <span className="group-hover:hidden block">{i + 1}</span>
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteCandidate(candidate.id);
+                                        }}
+                                        className="hidden group-hover:flex items-center justify-center w-full h-full text-rose-500 hover:text-rose-700 transition-colors mx-auto"
+                                        title="Xóa ứng viên"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
                                     </td>
                                   );
                                 }

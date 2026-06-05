@@ -838,7 +838,7 @@ export default function RecruitmentPage() {
               }`}
             >
               <FileText size={14} />
-              Bảng danh sách chi tiết (Sheets)
+              Bảng danh sách chi tiết (Sheets) {candidates.length > 0 && `(${candidates.length})`}
             </button>
             <button
               onClick={() => setActiveTab("scorer")}
@@ -1245,19 +1245,27 @@ export default function RecruitmentPage() {
                     { id: "vong_1", label: "Vòng 1" },
                     { id: "vong_2", label: "Vòng 2" },
                     { id: "thu_viec", label: "Thử Việc" }
-                  ].map(tab => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setTableSubTab(tab.id as any)}
-                      className={`px-5 py-2 text-xs font-bold rounded-lg transition-all ${
-                        tableSubTab === tab.id
-                          ? "bg-[#005BAC] text-white shadow-sm font-bold"
-                          : "text-slate-600 hover:bg-white/40"
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
+                  ].map(tab => {
+                    const count = getFilteredTableCandidates(tab.id).length;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => setTableSubTab(tab.id as any)}
+                        className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                          tableSubTab === tab.id
+                            ? "bg-[#005BAC] text-white shadow-sm font-bold"
+                            : "text-slate-600 hover:bg-white/40"
+                        }`}
+                      >
+                        <span>{tab.label}</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                          tableSubTab === tab.id ? "bg-white/20 text-white" : "bg-slate-300/60 text-slate-600"
+                        }`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Search & Refresh */}
@@ -1289,7 +1297,7 @@ export default function RecruitmentPage() {
 
               {/* Data Table */}
               <div className="glass rounded-2xl overflow-hidden border border-slate-200/40 shadow-xl bg-white/80">
-                <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                <div className="overflow-x-auto max-h-[70vh] overflow-y-auto custom-scrollbar-table">
                   <table className="w-full text-xs text-left border-collapse table-fixed min-w-[1500px]">
                     <thead className="bg-[#005088] text-white sticky top-0 z-10 font-heading text-[11px] uppercase tracking-wider">
                       <tr>

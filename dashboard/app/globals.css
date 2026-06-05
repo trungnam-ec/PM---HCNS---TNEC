@@ -80,6 +80,27 @@ body {
   background: #CBD5E1;
 }
 
+/* Custom scrollbar for data tables to make them highly visible */
+.custom-scrollbar-table::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.custom-scrollbar-table::-webkit-scrollbar-track {
+  background: #F1F5F9;
+  border-radius: 4px;
+}
+
+.custom-scrollbar-table::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border: 2px solid #F1F5F9;
+  border-radius: 9999px;
+}
+
+.custom-scrollbar-table::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
 /* Badges styling */
 .badge {
   display: inline-flex;

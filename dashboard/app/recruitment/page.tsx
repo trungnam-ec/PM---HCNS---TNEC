@@ -279,6 +279,30 @@ function EditableCell({
   );
 }
 
+const normalizeDepartment = (dept: string): string => {
+  if (!dept) return "Chưa xác định";
+  const trim = dept.trim();
+  const lower = trim.toLowerCase();
+  
+  if (lower === "atld" || lower === "atlđ" || lower === "phòng atlđ") {
+    return "ATLĐ";
+  }
+  if (lower === "kỹ thuật" || lower === "kỹ Thuật") {
+    return "Kỹ thuật";
+  }
+  if (lower === "phòng hành chính nhân sự" || lower === "hcns") {
+    return "HCNS";
+  }
+  if (lower === "vt-tb" || lower === "vt_tb" || lower === "vật tư - thiết bị") {
+    return "VT-TB";
+  }
+  if (lower === "kế toán") {
+    return "Kế toán";
+  }
+  
+  return trim.charAt(0).toUpperCase() + trim.slice(1);
+};
+
 const getColumnsForTab = (tab: string) => {
   if (tab === "tong_hop") {
     return [
@@ -544,14 +568,14 @@ export default function RecruitmentPage() {
 
   // Get all unique departments for filtering
   const departments = Array.from(
-    new Set(candidates.map(c => c.department || "Chưa xác định").filter(Boolean))
+    new Set(candidates.map(c => normalizeDepartment(c.department)).filter(Boolean))
   ).sort();
 
   // Search filter for pipeline
   const filteredPipeline = candidates.filter(c => {
     const matchesSearch = (c.name || "").toLowerCase().includes(search.toLowerCase()) ||
       (c.role || c.last_position || "").toLowerCase().includes(search.toLowerCase());
-    const matchesDept = selectedDept === "all" || (c.department || "Chưa xác định") === selectedDept;
+    const matchesDept = selectedDept === "all" || normalizeDepartment(c.department) === selectedDept;
     return matchesSearch && matchesDept;
   });
 
@@ -937,7 +961,7 @@ export default function RecruitmentPage() {
                           
                           {!groupByDept && candidate.department && (
                             <span className="text-[8px] font-extrabold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-md border border-blue-100 truncate max-w-[85px]">
-                              {candidate.department}
+                              {normalizeDepartment(candidate.department)}
                             </span>
                           )}
 
@@ -971,7 +995,7 @@ export default function RecruitmentPage() {
                     return (
                       <div className="space-y-4">
                         {departments.map((dept) => {
-                          const deptCandidates = filteredPipeline.filter(c => (c.department || "Chưa xác định") === dept);
+                          const deptCandidates = filteredPipeline.filter(c => normalizeDepartment(c.department) === dept);
                           if (deptCandidates.length === 0) return null;
 
                           const isCollapsed = collapsedDepts[dept] || false;

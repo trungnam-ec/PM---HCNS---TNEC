@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase";
@@ -438,11 +438,13 @@ function ResultCard({
 function EditableCell({
   value,
   onSave,
-  type = "text"
+  type = "text",
+  readOnly = false
 }: {
   value: string;
   onSave: (val: string) => void;
   type?: string;
+  readOnly?: boolean;
 }) {
   const [val, setVal] = useState(value);
 
@@ -451,7 +453,7 @@ function EditableCell({
   }, [value]);
 
   const handleBlur = () => {
-    if (val !== value) {
+    if (!readOnly && val !== value) {
       onSave(val);
     }
   };
@@ -461,6 +463,10 @@ function EditableCell({
       e.currentTarget.blur();
     }
   };
+
+  if (readOnly) {
+    return <span className="px-2 py-1 text-xs text-slate-700 block w-full whitespace-nowrap overflow-hidden text-ellipsis">{value}</span>;
+  }
 
   return (
     <input
@@ -586,8 +592,78 @@ export default function RecruitmentPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
+  // Current logged in user state
+  const [currentUser, setCurrentUser] = useState<{
+    email: string;
+    name: string;
+    role: string;
+    department: string;
+    isAdmin: boolean;
+  } | null>(null);
+
+  const fetchCurrentUser = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const user = session.user;
+      const email = user.email || "";
+
+      // 1. Check allowed_users
+      const { data: allowedData } = await supabase
+        .from("allowed_users")
+        .select("role")
+        .ilike("email", email)
+        .maybeSingle();
+
+      const isAdmin = allowedData?.role === "Admin";
+
+      // 2. Check employees
+      const { data: empData } = await supabase
+        .from("employees")
+        .select("name, role, department")
+        .ilike("email", email)
+        .maybeSingle();
+
+      setCurrentUser({
+        email,
+        name: empData?.name || user.user_metadata?.full_name || user.user_metadata?.name || "Người dùng",
+        role: empData?.role || (isAdmin ? "Admin" : "Nhân viên"),
+        department: empData?.department || "Chưa xếp phòng",
+        isAdmin
+      });
+    } catch (err) {
+      console.error("Error fetching current user info:", err);
+    }
+  }, []);
+
+  const canManage = useMemo(() => {
+    if (!currentUser) return false;
+    if (currentUser.isAdmin) return true;
+
+    const emailLower = (currentUser.email || "").toLowerCase().trim();
+    const roleLower = (currentUser.role || "").toLowerCase();
+    const deptLower = (currentUser.department || "").toLowerCase();
+
+    return (
+      emailLower === "quyen.0408@gmail.com" ||
+      emailLower === "duongnhathoanhanh@gmail.com" ||
+      deptLower.includes("hành chính") ||
+      deptLower.includes("nhân sự") ||
+      roleLower.includes("tuyển dụng") ||
+      roleLower.includes("nhân sự") ||
+      roleLower.includes("trưởng phòng") ||
+      roleLower.includes("phó phòng") ||
+      roleLower.includes("giám đốc")
+    );
+  }, [currentUser]);
+
   // Update candidate field directly
   const handleUpdateCandidateField = async (id: string, field: string, val: any) => {
+    if (!canManage) {
+      alert("Bạn không có quyền thực hiện thao tác này.");
+      return;
+    }
     try {
       // Optimistic update
       setCandidates(prev => prev.map(c => c.id === id ? { ...c, [field]: val } : c));
@@ -606,6 +682,10 @@ export default function RecruitmentPage() {
 
   // Update multiple candidate fields
   const handleUpdateCandidateFields = async (id: string, updates: Record<string, any>) => {
+    if (!canManage) {
+      alert("Bạn không có quyền thực hiện thao tác này.");
+      return;
+    }
     try {
       // Optimistic update
       setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
@@ -737,7 +817,8 @@ export default function RecruitmentPage() {
 
   useEffect(() => {
     fetchCandidates();
-  }, []);
+    fetchCurrentUser();
+  }, [fetchCurrentUser]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -875,6 +956,10 @@ export default function RecruitmentPage() {
 
   // Save CV score to Supabase Database (new primary workflow)
   const saveToSupabase = async (result: ScoringResult) => {
+    if (!canManage) {
+      alert("Bạn không có quyền thực hiện thao tác này.");
+      return;
+    }
     try {
       const info = result.extracted_info || {};
       const { error } = await supabase
@@ -916,6 +1001,10 @@ export default function RecruitmentPage() {
 
   // Save all un-saved candidates to DB
   const saveAllToDb = async () => {
+    if (!canManage) {
+      alert("Bạn không có quyền thực hiện thao tác này.");
+      return;
+    }
     const unsaved = results.filter((r) => !r.saved_db && !r.error);
     for (const r of unsaved) await saveToSupabase(r);
   };
@@ -931,6 +1020,10 @@ export default function RecruitmentPage() {
 
   // Handle Pipeline Drag Start
   const handleDragStart = (e: React.DragEvent, id: string) => {
+    if (!canManage) {
+      e.preventDefault();
+      return;
+    }
     setDraggedCandidateId(id);
     e.dataTransfer.setData("text/plain", id);
   };
@@ -938,6 +1031,10 @@ export default function RecruitmentPage() {
   // Handle Pipeline Drop
   const handleDrop = async (e: React.DragEvent, columnId: string) => {
     e.preventDefault();
+    if (!canManage) {
+      alert("Bạn không có quyền thực hiện thao tác này.");
+      return;
+    }
     const candidateId = draggedCandidateId || e.dataTransfer.getData("text/plain");
     if (!candidateId) return;
 
@@ -964,6 +1061,10 @@ export default function RecruitmentPage() {
   // Create Manual Candidate
   const handleCreateCandidate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManage) {
+      alert("Bạn không có quyền thực hiện thao tác này.");
+      return;
+    }
     if (!addName.trim()) return;
 
     try {
@@ -998,6 +1099,10 @@ export default function RecruitmentPage() {
 
   // Delete Candidate
   const handleDeleteCandidate = async (id: string) => {
+    if (!canManage) {
+      alert("Bạn không có quyền thực hiện thao tác này.");
+      return;
+    }
     if (!confirm("Bạn có chắc chắn muốn xóa hồ sơ ứng viên này?")) return;
     try {
       const { error } = await supabase
@@ -1342,14 +1447,16 @@ export default function RecruitmentPage() {
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button 
-                    onClick={() => setIsAddOpen(true)}
-                    className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all active:scale-95 shadow-md shadow-blue-600/10"
-                  >
-                    <Plus size={14} /> Thêm ứng viên
-                  </button>
-                </div>
+                {canManage && (
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setIsAddOpen(true)}
+                      className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all active:scale-95 shadow-md shadow-blue-600/10"
+                    >
+                      <Plus size={14} /> Thêm ứng viên
+                    </button>
+                  </div>
+                )}
               </div>
 
               {loading ? (
@@ -1382,9 +1489,9 @@ export default function RecruitmentPage() {
                           {colCandidates.map((candidate) => (
                             <div
                               key={candidate.id}
-                              draggable
+                              draggable={canManage}
                               onDragStart={(e) => handleDragStart(e, candidate.id)}
-                              className="glass rounded-xl p-4 bg-white hover-elevate border border-slate-200/30 flex flex-col justify-between h-40 cursor-grab active:cursor-grabbing relative group"
+                              className={`glass rounded-xl p-4 bg-white hover-elevate border border-slate-200/30 flex flex-col justify-between h-40 ${canManage ? "cursor-grab active:cursor-grabbing" : "cursor-default"} relative group`}
                             >
                               <div className="space-y-1">
                                 <div className="flex items-center justify-between">
@@ -1395,12 +1502,14 @@ export default function RecruitmentPage() {
                                   }`}>
                                     Điểm AI: {candidate.ai_score || 0}
                                   </span>
-                                  <button 
-                                    onClick={() => handleDeleteCandidate(candidate.id)}
-                                    className="text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
+                                  {canManage && (
+                                    <button 
+                                      onClick={() => handleDeleteCandidate(candidate.id)}
+                                      className="text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  )}
                                 </div>
                                 
                                 <p className="text-slate-800 font-heading font-bold text-xs truncate leading-snug">{candidate.name}</p>
@@ -1488,12 +1597,14 @@ export default function RecruitmentPage() {
                   >
                     Tải lại
                   </button>
-                  <button 
-                    onClick={() => setIsAddOpen(true)}
-                    className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 shadow"
-                  >
-                    <Plus size={14} /> Thêm ứng viên
-                  </button>
+                  {canManage && (
+                    <button 
+                      onClick={() => setIsAddOpen(true)}
+                      className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 shadow"
+                    >
+                      <Plus size={14} /> Thêm ứng viên
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1585,11 +1696,12 @@ export default function RecruitmentPage() {
                                       <select
                                         value={displayStatus}
                                         onChange={(e) => handleDropdownChange(candidate.id, "status", e.target.value)}
-                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full cursor-pointer border-none outline-none ${
+                                        disabled={!canManage}
+                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border-none outline-none ${
                                           displayStatus === "FAIL"
                                             ? "bg-rose-100 text-rose-700"
                                             : "bg-emerald-100 text-emerald-700"
-                                        }`}
+                                        } ${canManage ? "cursor-pointer" : "cursor-default opacity-85"}`}
                                       >
                                         <option value="PASS CV">PASS CV</option>
                                         <option value="FAIL">FAIL</option>
@@ -1624,7 +1736,8 @@ export default function RecruitmentPage() {
                                       <select
                                         value={displayRes}
                                         onChange={(e) => handleDropdownChange(candidate.id, col.type!, e.target.value)}
-                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border-none cursor-pointer outline-none ${
+                                        disabled={!canManage}
+                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border-none outline-none ${
                                           displayRes === "ĐẠT"
                                             ? "bg-emerald-100 text-emerald-700"
                                             : displayRes === "LOẠI"
@@ -1632,7 +1745,7 @@ export default function RecruitmentPage() {
                                             : displayRes === "TC PV"
                                             ? "bg-rose-600 text-white font-bold"
                                             : "bg-slate-100 text-slate-600"
-                                        }`}
+                                        } ${canManage ? "cursor-pointer" : "cursor-default opacity-85"}`}
                                       >
                                         <option value="Chờ đánh giá">Chờ đánh giá</option>
                                         <option value="ĐẠT">ĐẠT</option>
@@ -1650,13 +1763,14 @@ export default function RecruitmentPage() {
                                       <select
                                         value={displayRes}
                                         onChange={(e) => handleDropdownChange(candidate.id, "probation_result", e.target.value)}
-                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border-none cursor-pointer outline-none ${
+                                        disabled={!canManage}
+                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border-none outline-none ${
                                           displayRes === "ĐẠT"
                                             ? "bg-emerald-100 text-emerald-700"
                                             : displayRes === "TC"
                                             ? "bg-rose-600 text-white font-bold"
                                             : "bg-slate-100 text-slate-600"
-                                        }`}
+                                        } ${canManage ? "cursor-pointer" : "cursor-default opacity-85"}`}
                                       >
                                         <option value="Chờ nhận việc">Chờ nhận việc</option>
                                         <option value="ĐẠT">ĐẠT</option>
@@ -1679,6 +1793,7 @@ export default function RecruitmentPage() {
                                     <EditableCell
                                       value={cellValue}
                                       onSave={(newVal) => handleUpdateCandidateField(candidate.id, col.key, newVal)}
+                                      readOnly={!canManage}
                                     />
                                   </td>
                                 );
@@ -1735,7 +1850,7 @@ export default function RecruitmentPage() {
                     <button
                       id="btn-start-scoring"
                       onClick={startScoring}
-                      disabled={processing || files.length === 0 || !jdText.trim()}
+                      disabled={processing || files.length === 0 || !jdText.trim() || !canManage}
                       className="w-full flex items-center justify-center gap-2 bg-[#005BAC] hover:bg-blue-700 disabled:opacity-40 text-white font-bold py-3 rounded-xl transition-all active:scale-95 shadow-md shadow-blue-600/10 text-xs"
                     >
                       {processing ? <Loader2 size={16} className="animate-spin" /> : "🚀"}
@@ -1743,12 +1858,14 @@ export default function RecruitmentPage() {
                     </button>
                     {results.length > 0 && (
                       <>
-                        <button
-                          onClick={saveAllToDb}
-                          className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2.5 rounded-xl transition-all active:scale-95 shadow"
-                        >
-                          <Database size={14} /> Lưu tất cả vào Database (Supabase)
-                        </button>
+                        {canManage && (
+                          <button
+                            onClick={saveAllToDb}
+                            className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2.5 rounded-xl transition-all active:scale-95 shadow"
+                          >
+                            <Database size={14} /> Lưu tất cả vào Database (Supabase)
+                          </button>
+                        )}
                         <button
                           onClick={submitAll}
                           className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold py-2 rounded-xl transition-all active:scale-95 shadow-sm"

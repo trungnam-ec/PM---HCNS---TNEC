@@ -1626,19 +1626,6 @@ export default function RecruitmentPage() {
                     <p className="text-[10px] text-slate-400 font-normal mt-1">Khoá bảo mật API dùng để thực hiện chấm điểm và trích xuất dữ liệu CV bằng AI.</p>
                   </div>
 
-                  {/* Webhook Url */}
-                  <div className="space-y-1">
-                    <label className="text-slate-500">Google Apps Script Webhook URL</label>
-                    <input
-                      type="text"
-                      value={webhookUrl}
-                      onChange={(e) => setWebhookUrl(e.target.value)}
-                      placeholder="https://script.google.com/macros/s/.../exec"
-                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs font-medium text-slate-700"
-                    />
-                    <p className="text-[10px] text-slate-400 font-normal mt-1">Đường dẫn Webhook được sinh ra sau khi Deploy Apps Script để ghi dữ liệu thời gian thực.</p>
-                  </div>
-
                   {/* ChatGPT Model */}
                   <div className="space-y-1">
                     <label className="text-slate-500">ChatGPT Model</label>

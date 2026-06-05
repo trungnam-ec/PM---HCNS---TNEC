@@ -245,6 +245,28 @@ export default function DocumentControlPage() {
   };
 
   // File Upload drag/drop handlers
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      setAiFile(file);
+      setFileName(file.name);
+      setHasScan(true);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -252,6 +274,54 @@ export default function DocumentControlPage() {
       setFileName(file.name);
       setHasScan(true);
     }
+  };
+
+  const convertPdfToImage = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async function () {
+        try {
+          const typedarray = new Uint8Array(this.result as ArrayBuffer);
+          const pdfjsLib = (window as any).pdfjsLib;
+          if (!pdfjsLib) {
+            const script = document.createElement("script");
+            script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+            script.onload = async () => {
+              const pdfjs = (window as any).pdfjsLib;
+              pdfjs.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+              try {
+                const imgData = await renderPdfPageToDataUrl(pdfjs, typedarray);
+                resolve(imgData);
+              } catch (err) {
+                reject(err);
+              }
+            };
+            script.onerror = () => reject(new Error("Không thể tải thư viện xử lý PDF.js"));
+            document.head.appendChild(script);
+          } else {
+            const imgData = await renderPdfPageToDataUrl(pdfjsLib, typedarray);
+            resolve(imgData);
+          }
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = () => reject(new Error("Không thể đọc tệp PDF"));
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
+  const renderPdfPageToDataUrl = async (pdfjs: any, typedarray: Uint8Array): Promise<string> => {
+    const pdf = await pdfjs.getDocument({ data: typedarray }).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 2.0 });
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Không thể tạo canvas context");
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+    await page.render({ canvasContext: context, viewport: viewport }).promise;
+    return canvas.toDataURL("image/jpeg", 0.85);
   };
 
   // Trigger AI analysis
@@ -273,7 +343,22 @@ export default function DocumentControlPage() {
       headers["x-openai-model"] = customModel;
 
       const formData = new FormData();
-      formData.append("document_file", aiFile);
+      
+      // If PDF, render to image in browser first so AI Vision can read scanned PDF!
+      if (aiFile.type === "application/pdf" || aiFile.name.toLowerCase().endsWith(".pdf")) {
+        try {
+          const base64DataUrl = await convertPdfToImage(aiFile);
+          const resBlob = await fetch(base64DataUrl);
+          const blob = await resBlob.blob();
+          formData.append("document_file", blob, "scanned_page.jpg");
+        } catch (err) {
+          console.warn("Failed to render PDF to image, falling back to direct PDF upload:", err);
+          formData.append("document_file", aiFile);
+        }
+      } else {
+        formData.append("document_file", aiFile);
+      }
+
       // Simplify to incoming/outgoing for AI prompt structure
       formData.append("doc_type", docType === "incoming" ? "incoming" : "outgoing");
 
@@ -695,7 +780,14 @@ export default function DocumentControlPage() {
                 </div>
                 
                 {/* Drag Drop Area */}
-                <div className="border-2 border-dashed border-slate-200 rounded-2xl p-5 hover:border-blue-400 transition-all bg-slate-50/50 text-center flex flex-col items-center justify-center gap-3 min-h-[160px] relative">
+                <div 
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`border-2 border-dashed rounded-2xl p-5 text-center flex flex-col items-center justify-center gap-3 min-h-[160px] relative transition-all ${
+                    isDragging ? "border-blue-500 bg-blue-50/50" : "border-slate-200 bg-slate-50/50 hover:border-blue-400"
+                  }`}
+                >
                   <Upload className="text-slate-400 animate-bounce" size={24} />
                   <div>
                     <label className="text-[#005BAC] hover:underline cursor-pointer font-bold text-xs">

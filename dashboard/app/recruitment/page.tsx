@@ -336,7 +336,6 @@ const getColumnsForTab = (tab: string) => {
       { key: "region", label: "Khu vực", width: "100px" },
       { key: "department", label: "Phòng Ban", width: "130px" },
       { key: "role", label: "Vị trí", width: "140px" },
-      { key: "status", label: "Trạng thái", width: "120px", type: "status" },
       { key: "source", label: "Nguồn", width: "110px" },
       { key: "v1_interviewer", label: "Người PV V1", width: "130px" },
       { key: "v1_result", label: "Kết quả V1", width: "120px", type: "v1_result" }
@@ -354,7 +353,7 @@ const getColumnsForTab = (tab: string) => {
       { key: "region", label: "Khu vực", width: "100px" },
       { key: "department", label: "Phòng Ban", width: "130px" },
       { key: "role", label: "Vị trí", width: "140px" },
-      { key: "status", label: "Trạng thái", width: "120px", type: "status" },
+      { key: "v1_result", label: "KQ Vòng 1", width: "110px", type: "v1_result_readonly" },
       { key: "source", label: "Nguồn", width: "110px" },
       { key: "v2_interviewer", label: "Người PV V2", width: "130px" },
       { key: "v2_result", label: "Kết quả V2", width: "120px", type: "v2_result" }
@@ -372,12 +371,11 @@ const getColumnsForTab = (tab: string) => {
     { key: "region", label: "Khu vực", width: "100px" },
     { key: "department", label: "Phòng Ban", width: "130px" },
     { key: "role", label: "Vị trí", width: "140px" },
-    { key: "status", label: "Trạng thái", width: "120px", type: "status" },
+    { key: "v2_result", label: "KQ Vòng 2", width: "110px", type: "v2_result_readonly" },
     { key: "source", label: "Nguồn", width: "110px" },
     { key: "v2_interviewer", label: "Người PV V2", width: "130px" },
-    { key: "v2_result", label: "Kết quả V2", width: "120px", type: "v2_result" },
     { key: "probation_result", label: "Kết quả nhận việc", width: "130px", type: "probation_result" },
-    { key: "ai_recommendation", label: "HĐ Chính thức", width: "120px", type: "probation_contract" }, // Store in ai_recommendation
+    { key: "ai_recommendation", label: "HĐ Chính thức", width: "120px", type: "probation_contract" },
     { key: "onboard_date", label: "ONBOARD", width: "110px" },
     { key: "probation_end_date", label: "Hết hạn TV", width: "110px" },
     { key: "probation_salary", label: "Mức lương TV", width: "120px" },
@@ -479,21 +477,23 @@ export default function RecruitmentPage() {
 
     if (subTab === "tong_hop") return sorted;
     if (subTab === "vong_1") {
-      return sorted.filter(c => c.v1_date || c.v1_result || ["screening", "interview", "offer", "hired"].includes(c.status));
+      // Logic: Chỉ hiện ứng viên PASS CV (đã qua vòng lọc CV)
+      // - Loại bỏ: status=rejected VÀ không có v1_result (bị FAIL ở bước Tổng Hợp, chưa vào V1)
+      // - Giữ lại: có v1_result (đã được đánh giá ở V1, kể cả LOẠI)
+      // - Giữ lại: status = screening/interview/offer/hired (đang trong pipeline)
+      return sorted.filter(c => {
+        if (c.status === "rejected" && !c.v1_result) return false; // FAIL ở Tổng Hợp → không vào V1
+        return c.v1_date || c.v1_result || ["screening", "interview", "offer", "hired"].includes(c.status);
+      });
     }
     if (subTab === "vong_2") {
-      return sorted.filter(c => {
-        const hasFailedV1 = c.v1_result && !c.v1_result.includes("ĐẠT");
-        if (hasFailedV1) return false;
-        return c.v2_date || c.v2_result || ["interview", "offer", "hired"].includes(c.status);
-      });
+      // Logic: Chỉ hiện ứng viên có Kết quả V1 = ĐẠT
+      return sorted.filter(c => c.v1_result === "ĐẠT");
     }
     if (subTab === "thu_viec") {
-      return sorted.filter(c => {
-        const hasFailedV2 = c.v2_result && !c.v2_result.includes("ĐẠT");
-        if (hasFailedV2) return false;
-        return c.onboard_date || c.probation_result || ["offer", "hired"].includes(c.status);
-      });
+      // Logic: CHỈ ứng viên có Kết quả V2 = ĐẠT mới vào Thử việc
+      // Chờ đánh giá / LOẠI / TC PV đều không vào
+      return sorted.filter(c => c.v2_result === "ĐẠT");
     }
     return sorted;
   };
@@ -1378,6 +1378,25 @@ export default function RecruitmentPage() {
                                         <option value="PASS CV">PASS CV</option>
                                         <option value="FAIL">FAIL</option>
                                       </select>
+                                    </td>
+                                  );
+                                }
+
+                                if (col.type === "v1_result_readonly" || col.type === "v2_result_readonly") {
+                                  const displayRes = val || "Chờ đánh giá";
+                                  return (
+                                    <td key={col.key} className="px-3 py-2 border border-slate-100 text-center">
+                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg inline-block ${
+                                        displayRes === "ĐẠT"
+                                          ? "bg-emerald-100 text-emerald-700"
+                                          : displayRes === "LOẠI"
+                                          ? "bg-[#FEF3C7] text-[#92400E]"
+                                          : displayRes === "TC PV"
+                                          ? "bg-rose-600 text-white"
+                                          : "bg-slate-100 text-slate-500"
+                                      }`}>
+                                        {displayRes}
+                                      </span>
                                     </td>
                                   );
                                 }

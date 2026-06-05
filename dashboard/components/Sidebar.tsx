@@ -69,19 +69,6 @@ export default function Sidebar() {
           );
         })}
       </nav>
-
-      {/* User Footer Profile */}
-      <div className="px-5 py-4 border-t border-slate-800 bg-slate-950/40">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shadow">
-            JD
-          </div>
-          <div className="min-w-0">
-            <p className="text-white text-xs font-semibold truncate">Phó Trưởng phòng HCNS</p>
-            <p className="text-slate-500 text-[10px] font-medium truncate">Ban Quản trị</p>
-          </div>
-        </div>
-      </div>
     </aside>
   );
 }

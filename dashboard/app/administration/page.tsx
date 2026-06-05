@@ -92,14 +92,15 @@ const KANBAN_COLUMNS = [
 
 const INITIAL_CHECKLIST: ChecklistItem[] = [
   { id: "T1", task: "POST NGÀY BÁO CHÍ CÁCH MẠNG VN 21/6", assignee: "Như Quỳnh", frequency: "Hàng ngày", status: "Kế hoạch", priority: "Trung bình", date: "18-06" },
-  { id: "T2", task: "CẬP NHẬT WEBSITE TIẾNG TRUNG", assignee: "Thùy Quyên", frequency: "Hàng ngày", status: "Đang xử lý", priority: "Trung bình", date: "30-06" },
+  { id: "T2", task: "LỌC HỒ SƠ ỨNG VIÊN & ĐĂNG TIN TUYỂN DỤNG KỸ SƯ DỰ ÁN", assignee: "Thùy Quyên", frequency: "Hàng ngày", status: "Đang xử lý", priority: "Trung bình", date: "30-06" },
   { id: "T3", task: "Bảng thông tin Wifi Văn phòng", assignee: "Như Quỳnh", frequency: "Hàng tuần", status: "Chờ duyệt", priority: "Trung bình", date: "05-06" },
   { id: "T4", task: "ATLD - Lợi ích sử dụng nón bảo hộ", assignee: "Như Quỳnh", frequency: "Hàng ngày", status: "Cần chỉnh sửa", priority: "Trung bình", date: "03-06" },
   { id: "T5", task: "Cập nhật Dự án HSNL Tiếng Trung", assignee: "Như Quỳnh", frequency: "Hàng tháng", status: "Hoàn thành", priority: "Trung bình", date: "10-06" },
   { id: "T6", task: "Kiểm tra và chuẩn bị văn phòng phẩm đầu ngày", assignee: "Như Quỳnh", frequency: "Hàng ngày", status: "Hoàn thành", priority: "Thấp", date: "05-06" },
-  { id: "T7", task: "Đối soát hóa đơn & chuẩn bị hồ sơ thanh toán tuần", assignee: "Thùy Quyên", frequency: "Hàng tuần", status: "Kế hoạch", priority: "Cao", date: "08-06" },
+  { id: "T7", task: "Đối soát hóa đơn & chuẩn bị hồ sơ thanh toán tuần", assignee: "Như Quỳnh", frequency: "Hàng tuần", status: "Kế hoạch", priority: "Cao", date: "08-06" },
   { id: "T8", task: "TIẾP NHẬN VÀ PHÂN LOẠI CÔNG VĂN ĐẾN ĐẦU NGÀY", assignee: "Thanh Hằng", frequency: "Hàng ngày", status: "Đang xử lý", priority: "Cao", date: "05-06" },
-  { id: "T9", task: "LƯU TRỮ VÀ BÀN GIAO HỒ SƠ THẦU/CÔNG VĂN ĐI", assignee: "Thanh Hằng", frequency: "Hàng tuần", status: "Hoàn thành", priority: "Trung bình", date: "04-06" }
+  { id: "T9", task: "LƯU TRỮ VÀ BÀN GIAO HỒ SƠ THẦU/CÔNG VĂN ĐI", assignee: "Thanh Hằng", frequency: "Hàng tuần", status: "Hoàn thành", priority: "Trung bình", date: "04-06" },
+  { id: "T10", task: "LIÊN HỆ ỨNG VIÊN & SẮP XẾP LỊCH PHỎNG VẤN VÒNG 1", assignee: "Thùy Quyên", frequency: "Hàng tuần", status: "Kế hoạch", priority: "Cao", date: "07-06" }
 ];
 
 const INITIAL_RECURRING: RecurringPayment[] = [
@@ -541,11 +542,11 @@ export default function AdministrationPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Như Quỳnh (Phó phòng Hành chính)</strong></p>
-                      <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Phụ trách hậu cần, kho VPP, phòng họp & tiếp khách</p>
+                      <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Phụ trách hậu cần, kho VPP, phòng họp, tiếp khách & làm hồ sơ thanh toán, đối soát hóa đơn</p>
                     </div>
                     <div className="border-l border-slate-200 pl-4">
                       <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Thùy Quyên (Tuyển dụng)</strong></p>
-                      <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Phụ trách đối soát hóa đơn, làm hồ sơ thanh toán, báo cáo chi phí</p>
+                      <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Đăng tin tuyển dụng, lọc hồ sơ ứng viên, liên hệ và sắp xếp lịch phỏng vấn nhân sự mới</p>
                     </div>
                     <div className="border-l border-slate-200 pl-4">
                       <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Thanh Hằng (Văn thư)</strong></p>

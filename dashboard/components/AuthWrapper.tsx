@@ -40,24 +40,46 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
     const checkAdminStatus = async () => {
       setCheckingAdmin(true);
       try {
-        const { data, error } = await supabase
+        // 1. Check allowed_users (Admins / Special Whitelist)
+        const { data: allowedData, error: allowedError } = await supabase
           .from("allowed_users")
           .select("role")
-          .eq("email", userEmail.toLowerCase())
+          .ilike("email", userEmail.trim())
           .maybeSingle();
 
-        if (error) {
-          console.warn("Error checking admin status:", error);
-          setAuthError(error.message || JSON.stringify(error));
+        if (allowedError) {
+          console.warn("Error checking allowed_users:", allowedError);
+          setAuthError(allowedError.message || JSON.stringify(allowedError));
           setIsAdmin(false);
-        } else if (data && data.role === "Admin") {
+          return;
+        }
+
+        if (allowedData && allowedData.role === "Admin") {
           setIsAdmin(true);
           setAuthError(null);
-        } else if (data) {
-          setAuthError(`Tài khoản có vai trò "${data.role}", yêu cầu vai trò "Admin".`);
+          return;
+        }
+
+        // 2. Check employees table (If not in allowed_users or not Admin)
+        const { data: empData, error: empError } = await supabase
+          .from("employees")
+          .select("role")
+          .ilike("email", userEmail.trim())
+          .maybeSingle();
+
+        if (empError) {
+          console.warn("Error checking employees table:", empError);
+          setAuthError(empError.message || JSON.stringify(empError));
           setIsAdmin(false);
+          return;
+        }
+
+        if (empData) {
+          // Found in employees table -> allow login
+          setIsAdmin(true);
+          setAuthError(null);
         } else {
-          setAuthError("Email chưa được khai báo trên hệ thống quản trị (Bảng allowed_users).");
+          setAuthError("Email này chưa được đăng ký trong danh sách nhân sự (Bảng employees) hoặc Whitelist.");
           setIsAdmin(false);
         }
       } catch (err: any) {

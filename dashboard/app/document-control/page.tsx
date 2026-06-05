@@ -260,6 +260,7 @@ export default function DocumentControlPage() {
         headers["x-openai-model"] = customModel;
 
         const formData = new FormData();
+        formData.append("original_filename", item.fileName);
         
         if (item.file.type === "application/pdf" || item.file.name.toLowerCase().endsWith(".pdf")) {
           try {
@@ -470,6 +471,7 @@ export default function DocumentControlPage() {
       headers["x-openai-model"] = customModel;
 
       const formData = new FormData();
+      formData.append("original_filename", file.name);
       
       if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
         try {
@@ -622,6 +624,7 @@ export default function DocumentControlPage() {
       headers["x-openai-model"] = customModel;
 
       const formData = new FormData();
+      formData.append("original_filename", aiFile.name);
       
       // If PDF, render to image in browser first so AI Vision can read scanned PDF!
       if (aiFile.type === "application/pdf" || aiFile.name.toLowerCase().endsWith(".pdf")) {

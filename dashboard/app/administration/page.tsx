@@ -47,7 +47,9 @@ interface ChecklistItem {
   task: string;
   assignee: "Bạn A" | "Bạn B";
   frequency: "Hàng ngày" | "Hàng tuần" | "Hàng tháng";
-  status: "Chưa làm" | "Đang làm" | "Hoàn thành";
+  status: "Kế hoạch" | "Đang xử lý" | "Chờ duyệt" | "Cần chỉnh sửa" | "Hoàn thành";
+  priority?: "Cao" | "Trung bình" | "Thấp";
+  date?: string;
 }
 
 interface Invoice {
@@ -80,11 +82,22 @@ const INITIAL_DEPT_REQUESTS: DeptRequest[] = [
   { id: "REQ-03", dept: "Phòng Dự án", item: "Giấy A4 Double A 70gsm", qty: 10, date: "2026-06-03", status: "Đã cấp phát" }
 ];
 
+const KANBAN_COLUMNS = [
+  { id: "Kế hoạch", label: "KẾ HOẠCH", color: "border-purple-500 bg-purple-50/10 text-purple-700", dotColor: "bg-purple-500", badgeBg: "bg-purple-100 text-purple-800" },
+  { id: "Đang xử lý", label: "ĐANG XỬ LÝ", color: "border-amber-500 bg-amber-50/10 text-amber-700", dotColor: "bg-amber-500", badgeBg: "bg-amber-100 text-amber-800" },
+  { id: "Chờ duyệt", label: "CHỜ DUYỆT", color: "border-blue-500 bg-blue-50/10 text-blue-700", dotColor: "bg-blue-500", badgeBg: "bg-blue-100 text-blue-800" },
+  { id: "Cần chỉnh sửa", label: "CẦN CHỈNH SỬA", color: "border-rose-500 bg-rose-50/10 text-rose-700", dotColor: "bg-rose-500", badgeBg: "bg-rose-100 text-rose-800" },
+  { id: "Hoàn thành", label: "HOÀN THÀNH", color: "border-emerald-500 bg-emerald-50/10 text-emerald-700", dotColor: "bg-emerald-500", badgeBg: "bg-emerald-100 text-emerald-800" }
+];
+
 const INITIAL_CHECKLIST: ChecklistItem[] = [
-  { id: "T1", task: "Kiểm tra và chuẩn bị văn phòng phẩm đầu ngày", assignee: "Bạn A", frequency: "Hàng ngày", status: "Hoàn thành" },
-  { id: "T2", task: "Vệ sinh và kiểm tra thiết bị phòng họp", assignee: "Bạn A", frequency: "Hàng ngày", status: "Đang làm" },
-  { id: "T3", task: "Đối soát hóa đơn & chuẩn bị hồ sơ thanh toán tuần", assignee: "Bạn B", frequency: "Hàng tuần", status: "Chưa làm" },
-  { id: "T4", task: "Lập báo cáo tổng hợp chi phí cuối tháng", assignee: "Bạn B", frequency: "Hàng tháng", status: "Chưa làm" }
+  { id: "T1", task: "POST NGÀY BÁO CHÍ CÁCH MẠNG VN 21/6", assignee: "Bạn A", frequency: "Hàng ngày", status: "Kế hoạch", priority: "Trung bình", date: "18-06" },
+  { id: "T2", task: "CẬP NHẬT WEBSITE TIẾNG TRUNG", assignee: "Bạn B", frequency: "Hàng ngày", status: "Đang xử lý", priority: "Trung bình", date: "30-06" },
+  { id: "T3", task: "Bảng thông tin Wifi Văn phòng", assignee: "Bạn A", frequency: "Hàng tuần", status: "Chờ duyệt", priority: "Trung bình", date: "05-06" },
+  { id: "T4", task: "ATLD - Lợi ích sử dụng nón bảo hộ", assignee: "Bạn A", frequency: "Hàng ngày", status: "Cần chỉnh sửa", priority: "Trung bình", date: "03-06" },
+  { id: "T5", task: "Cập nhật Dự án HSNL Tiếng Trung", assignee: "Bạn A", frequency: "Hàng tháng", status: "Hoàn thành", priority: "Trung bình", date: "10-06" },
+  { id: "T6", task: "Kiểm tra và chuẩn bị văn phòng phẩm đầu ngày", assignee: "Bạn A", frequency: "Hàng ngày", status: "Hoàn thành", priority: "Thấp", date: "05-06" },
+  { id: "T7", task: "Đối soát hóa đơn & chuẩn bị hồ sơ thanh toán tuần", assignee: "Bạn B", frequency: "Hàng tuần", status: "Kế hoạch", priority: "Cao", date: "08-06" }
 ];
 
 const INITIAL_RECURRING: RecurringPayment[] = [
@@ -106,6 +119,52 @@ export default function AdministrationPage() {
     { id: "INV-02", number: "HD-00245", date: "2026-06-03", desc: "Nước uống Lavie tháng 5", amount: 1800000 }
   ]);
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>(INITIAL_RECURRING);
+
+  // Checklist Kanban States
+  const [draggedOverCol, setDraggedOverCol] = useState<string | null>(null);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [newTaskName, setNewTaskName] = useState("");
+  const [newTaskAssignee, setNewTaskAssignee] = useState<"Bạn A" | "Bạn B">("Bạn A");
+  const [newTaskPriority, setNewTaskPriority] = useState<"Cao" | "Trung bình" | "Thấp">("Trung bình");
+  const [newTaskFreq, setNewTaskFreq] = useState<"Hàng ngày" | "Hàng tuần" | "Hàng tháng">("Hàng ngày");
+
+  // Drag and Drop handlers
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData("text/plain", id);
+  };
+
+  const handleDropCard = (e: React.DragEvent, targetStatus: string) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData("text/plain");
+    if (!id) return;
+    
+    setChecklist(prev => prev.map(item => 
+      item.id === id ? { ...item, status: targetStatus as any } : item
+    ));
+  };
+
+  const handleDeleteTask = (id: string) => {
+    setChecklist(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handleAddTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTaskName.trim()) return;
+
+    const newTask: ChecklistItem = {
+      id: `T-${Date.now()}`,
+      task: newTaskName,
+      assignee: newTaskAssignee,
+      frequency: newTaskFreq,
+      status: "Kế hoạch",
+      priority: newTaskPriority,
+      date: new Date().toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }).replace("/", "-")
+    };
+
+    setChecklist(prev => [...prev, newTask]);
+    setNewTaskName("");
+    setShowAddTask(false);
+  };
 
   // VPP Sub-tabs: "inventory" or "allocation"
   const [vppSubTab, setVppSubTab] = useState<"inventory" | "allocation">("inventory");
@@ -144,8 +203,10 @@ export default function AdministrationPage() {
   const toggleChecklistStatus = (id: string) => {
     setChecklist(prev => prev.map(item => {
       if (item.id === id) {
-        const nextStatus = item.status === "Chưa làm" ? "Đang làm" :
-                           item.status === "Đang làm" ? "Hoàn thành" : "Chưa làm";
+        const nextStatus = item.status === "Kế hoạch" ? "Đang xử lý" :
+                           item.status === "Đang xử lý" ? "Chờ duyệt" :
+                           item.status === "Chờ duyệt" ? "Cần chỉnh sửa" :
+                           item.status === "Cần chỉnh sửa" ? "Hoàn thành" : "Kế hoạch";
         return { ...item, status: nextStatus };
       }
       return item;
@@ -400,69 +461,193 @@ export default function AdministrationPage() {
                   <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                     <div>
                       <h3 className="font-heading font-bold text-slate-800 text-sm">Checklist phân việc định kỳ</h3>
-                      <p className="text-slate-400 text-[10px] font-semibold mt-1">Phân chia công việc hàng ngày/tuần/tháng cho 2 nhân sự hành chính</p>
+                      <p className="text-slate-400 text-[10px] font-semibold mt-1">Phân công công việc định kỳ hàng ngày/tuần/tháng cho 2 nhân sự hành chính</p>
                     </div>
-                    <button className="flex items-center gap-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all shadow">
-                      <Plus size={13} /> Thêm công việc
+                    <button 
+                      onClick={() => setShowAddTask(!showAddTask)}
+                      className="flex items-center gap-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all shadow"
+                    >
+                      <Plus size={13} /> {showAddTask ? "Đóng lại" : "Thêm công việc"}
                     </button>
                   </div>
 
-                  <div className="space-y-4">
-                    {/* Two personnel summary */}
-                    <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Bạn A</strong></p>
-                        <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Phụ trách hậu cần, kho VPP, phòng họp & tiếp khách</p>
+                  {/* Add Task Form */}
+                  {showAddTask && (
+                    <form onSubmit={handleAddTask} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="md:col-span-2 space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Tên công việc</label>
+                          <input
+                            type="text"
+                            value={newTaskName}
+                            onChange={(e) => setNewTaskName(e.target.value)}
+                            placeholder="Nhập tên công việc cần làm..."
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold"
+                            required
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Người thực hiện</label>
+                          <select
+                            value={newTaskAssignee}
+                            onChange={(e) => setNewTaskAssignee(e.target.value as any)}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold bg-white"
+                          >
+                            <option value="Bạn A">Bạn A (Hậu cần, VPP, Phòng họp)</option>
+                            <option value="Bạn B">Bạn B (Hóa đơn, HS thanh toán)</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Độ ưu tiên</label>
+                          <select
+                            value={newTaskPriority}
+                            onChange={(e) => setNewTaskPriority(e.target.value as any)}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold bg-white"
+                          >
+                            <option value="Thấp">Thấp</option>
+                            <option value="Trung bình">Trung bình</option>
+                            <option value="Cao">Cao</option>
+                          </select>
+                        </div>
                       </div>
-                      <div className="border-l border-slate-200 pl-4">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Bạn B</strong></p>
-                        <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Phụ trách đối soát hóa đơn, làm hồ sơ thanh toán, báo cáo chi phí</p>
-                      </div>
-                    </div>
 
-                    {/* Task checklist table */}
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left">
-                        <thead>
-                          <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px] pb-2">
-                            <th className="pb-2">Tên công việc định kỳ</th>
-                            <th className="pb-2 w-28">Người làm</th>
-                            <th className="pb-2 w-28">Tần suất</th>
-                            <th className="pb-2 w-28 text-center">Trạng thái</th>
-                            <th className="pb-2 text-right w-16">Thao tác</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
-                          {checklist.map((item) => (
-                            <tr key={item.id} className="hover:bg-slate-50/50">
-                              <td className="py-3.5 font-bold text-slate-800 leading-snug">{item.task}</td>
-                              <td className="py-3.5">
-                                <span className="inline-flex items-center gap-1 text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg text-[10px] font-bold">
-                                  <User size={10} className="text-slate-400" /> {item.assignee}
-                                </span>
-                              </td>
-                              <td className="py-3.5 text-slate-500 font-medium">{item.frequency}</td>
-                              <td className="py-3.5 text-center">
-                                <button
-                                  onClick={() => toggleChecklistStatus(item.id)}
-                                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border ${
-                                    item.status === "Hoàn thành" ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
-                                    item.status === "Đang làm" ? "bg-amber-50 text-amber-600 border-amber-100" :
-                                    "bg-slate-50 text-slate-400 border-slate-200"
-                                  }`}
+                      <div className="flex justify-between items-center gap-4">
+                        <div className="space-y-1 w-48">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Tần suất</label>
+                          <select
+                            value={newTaskFreq}
+                            onChange={(e) => setNewTaskFreq(e.target.value as any)}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold bg-white"
+                          >
+                            <option value="Hàng ngày">Hàng ngày</option>
+                            <option value="Hàng tuần">Hàng tuần</option>
+                            <option value="Hàng tháng">Hàng tháng</option>
+                          </select>
+                        </div>
+                        <button
+                          type="submit"
+                          className="bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow mt-4 self-end"
+                        >
+                          Xác nhận thêm
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Two personnel summary */}
+                  <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Bạn A</strong></p>
+                      <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Phụ trách hậu cần, kho VPP, phòng họp & tiếp khách</p>
+                    </div>
+                    <div className="border-l border-slate-200 pl-4">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Bạn B</strong></p>
+                      <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Phụ trách đối soát hóa đơn, làm hồ sơ thanh toán, báo cáo chi phí</p>
+                    </div>
+                  </div>
+
+                  {/* Kanban Drag and Drop Board */}
+                  <div className="overflow-x-auto pb-4">
+                    <div className="flex gap-4 min-w-[1000px] select-none">
+                      {KANBAN_COLUMNS.map((col) => {
+                        const colItems = checklist.filter(item => item.status === col.id);
+                        const isOver = draggedOverCol === col.id;
+                        
+                        return (
+                          <div 
+                            key={col.id}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDragEnter={() => setDraggedOverCol(col.id)}
+                            onDragLeave={() => setDraggedOverCol(null)}
+                            onDrop={(e) => {
+                              handleDropCard(e, col.id);
+                              setDraggedOverCol(null);
+                            }}
+                            className={`flex-1 min-w-[200px] max-w-[240px] rounded-2xl p-3 flex flex-col gap-3 transition-all ${
+                              isOver 
+                                ? "bg-blue-50/50 border-2 border-dashed border-blue-400" 
+                                : "bg-slate-50/70 border border-slate-200/50"
+                            }`}
+                          >
+                            {/* Column Header */}
+                            <div className="flex items-center justify-between px-1.5 py-1">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className={`w-2.5 h-2.5 rounded-full ${col.dotColor} shrink-0`} />
+                                <h4 className="font-heading font-extrabold text-[10px] text-slate-700 tracking-wider truncate">{col.label}</h4>
+                              </div>
+                              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${col.badgeBg} shrink-0`}>
+                                {colItems.length}
+                              </span>
+                            </div>
+
+                            {/* Cards List */}
+                            <div className="flex flex-col gap-2.5 overflow-y-auto max-h-[420px] min-h-[300px] pr-0.5">
+                              {colItems.map((item) => (
+                                <div
+                                  key={item.id}
+                                  draggable
+                                  onDragStart={(e) => handleDragStart(e, item.id)}
+                                  className="bg-white border border-slate-200/60 rounded-xl p-3.5 shadow-sm hover:shadow-md hover:border-slate-350 transition-all cursor-grab active:cursor-grabbing flex flex-col gap-2 relative group"
                                 >
-                                  {item.status}
-                                </button>
-                              </td>
-                              <td className="py-3.5 text-right">
-                                <button className="p-1 text-slate-400 hover:text-rose-600 hover:bg-slate-50 rounded">
-                                  <Trash2 size={13} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                                  {/* Delete card button */}
+                                  <button
+                                    onClick={() => handleDeleteTask(item.id)}
+                                    className="absolute top-2 right-2 text-slate-300 hover:text-rose-600 p-0.5 rounded transition-colors opacity-0 group-hover:opacity-100"
+                                    title="Xoá công việc"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+
+                                  {/* Priority tag */}
+                                  <div className="flex items-center justify-between">
+                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider ${
+                                      item.priority === "Cao" ? "bg-rose-50 text-rose-600" :
+                                      item.priority === "Thấp" ? "bg-slate-100 text-slate-500" :
+                                      "bg-blue-50 text-[#005BAC]"
+                                    }`}>
+                                      {item.priority || "Trung bình"}
+                                    </span>
+                                    <span className="text-[9px] font-bold text-slate-400">
+                                      {item.frequency}
+                                    </span>
+                                  </div>
+
+                                  {/* Task title */}
+                                  <p className="font-heading font-extrabold text-[11px] text-slate-800 leading-snug uppercase break-words pr-4">
+                                    {item.task}
+                                  </p>
+
+                                  {/* Footer: Assignee & Date */}
+                                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
+                                    {/* Assignee indicator */}
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white uppercase shrink-0 ${
+                                        item.assignee === "Bạn A" ? "bg-pink-500" : "bg-emerald-500"
+                                      }`}>
+                                        {item.assignee === "Bạn A" ? "A" : "B"}
+                                      </div>
+                                      <span className="text-[9px] font-bold text-slate-500 truncate">{item.assignee}</span>
+                                    </div>
+
+                                    {/* Date */}
+                                    {item.date && (
+                                      <span className="text-[9px] font-bold text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded font-mono">
+                                        {item.date}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+
+                              {colItems.length === 0 && (
+                                <div className="flex-1 flex items-center justify-center border border-dashed border-slate-200 rounded-xl py-10 text-[10px] text-slate-400 italic">
+                                  Kéo thả công việc vào đây
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

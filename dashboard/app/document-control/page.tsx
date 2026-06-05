@@ -42,6 +42,27 @@ interface ClericalDoc {
   ai_analysis?: any;
 }
 
+interface BatchItem {
+  id: string;
+  file: File;
+  fileName: string;
+  status: "pending" | "processing" | "success" | "error";
+  error?: string;
+  type: "incoming" | "outgoing_1" | "outgoing_2" | "outgoing_hdqt";
+  stt: number;
+  receive_send_date: string;
+  doc_number: string;
+  doc_date: string;
+  summary: string;
+  sender_receiver: string;
+  signer_recipient: string;
+  has_scan: boolean;
+  has_original: boolean;
+  scan_file_url?: string;
+  original_file_url?: string;
+  saved: boolean;
+}
+
 const TIMELINE_EVENTS = [
   { id: "e1", doc: "Tờ trình phê duyệt vật tư xây dựng Q2", step: "Hành chính trình nộp", time: "09:30 AM", date: "Jun 04", status: "completed" },
   { id: "e2", doc: "Tờ trình phê duyệt vật tư xây dựng Q2", step: "Trưởng phòng HCNS ký duyệt", time: "11:15 AM", date: "Jun 04", status: "completed" },
@@ -76,6 +97,11 @@ export default function DocumentControlPage() {
   // AI Analysis State
   const [aiFile, setAiFile] = useState<File | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Batch AI Processing State
+  const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
+  const [processingBatch, setProcessingBatch] = useState(false);
+  const [batchDragOver, setBatchDragOver] = useState(false);
   
   // API Settings State
   const [apiKey, setApiKey] = useState("");
@@ -145,11 +171,17 @@ export default function DocumentControlPage() {
     );
   }, [currentUser]);
 
-  // Load API Settings & Current User on mount
+  // Load API Settings & Current User & Active Tab on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
       setApiKey(localStorage.getItem("openai_api_key_van_thu") || "");
       setModel(localStorage.getItem("openai_model_van_thu") || "gpt-4o-mini");
+
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      if (tabParam && ["incoming", "outgoing_1", "outgoing_2", "outgoing_hdqt", "timeline", "settings"].includes(tabParam)) {
+        setActiveTab(tabParam);
+      }
     }
     fetchCurrentUser();
   }, [fetchCurrentUser]);
@@ -185,6 +217,171 @@ export default function DocumentControlPage() {
   useEffect(() => {
     fetchDocuments();
   }, [fetchDocuments]);
+
+  // Batch AI Processing Functions
+  const handleBatchFileSelect = (files: File[]) => {
+    const newItems: BatchItem[] = files.map((file, idx) => ({
+      id: `${file.name}-${Date.now()}-${idx}-${Math.random()}`,
+      file,
+      fileName: file.name,
+      status: "pending",
+      type: "incoming",
+      stt: 0,
+      receive_send_date: new Date().toISOString().slice(0, 10),
+      doc_number: "",
+      doc_date: new Date().toISOString().slice(0, 10),
+      summary: "",
+      sender_receiver: "",
+      signer_recipient: "",
+      has_scan: true,
+      has_original: false,
+      saved: false
+    }));
+    setBatchItems((prev) => [...prev, ...newItems]);
+  };
+
+  const runBatchAnalysis = async () => {
+    if (batchItems.length === 0) return;
+    setProcessingBatch(true);
+
+    const itemsToProcess = batchItems.filter(item => item.status === "pending" || item.status === "error");
+
+    for (const item of itemsToProcess) {
+      setBatchItems(prev => prev.map(p => p.id === item.id ? { ...p, status: "processing" } : p));
+
+      try {
+        const customKey = localStorage.getItem("openai_api_key_van_thu") || localStorage.getItem("openai_api_key");
+        const customModel = localStorage.getItem("openai_model_van_thu") || "gpt-4o-mini";
+        
+        const headers: Record<string, string> = {};
+        if (customKey) {
+          headers["Authorization"] = `Bearer ${customKey}`;
+        }
+        headers["x-openai-model"] = customModel;
+
+        const formData = new FormData();
+        
+        if (item.file.type === "application/pdf" || item.file.name.toLowerCase().endsWith(".pdf")) {
+          try {
+            const base64DataUrl = await convertPdfToImage(item.file);
+            const resBlob = await fetch(base64DataUrl);
+            const blob = await resBlob.blob();
+            formData.append("document_file", blob, "scanned_page.jpg");
+          } catch (err) {
+            console.warn("Failed to render PDF to image, uploading direct:", err);
+            formData.append("document_file", item.file);
+          }
+        } else {
+          formData.append("document_file", item.file);
+        }
+
+        const res = await fetch("/api/analyze-document", {
+          method: "POST",
+          headers,
+          body: formData
+        });
+
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        const aiType = data.type || "incoming";
+
+        // Query max STT
+        const activeDocs = docs.filter((d) => d.type === aiType);
+        const maxStt = activeDocs.reduce((max, d) => (d.stt > max ? d.stt : max), 0);
+        const nextStt = maxStt + 1;
+
+        setBatchItems(prev => prev.map(p => p.id === item.id ? {
+          ...p,
+          status: "success",
+          type: aiType,
+          stt: nextStt,
+          doc_number: data.doc_number || "",
+          doc_date: data.doc_date || new Date().toISOString().slice(0, 10),
+          receive_send_date: data.receive_send_date || new Date().toISOString().slice(0, 10),
+          sender_receiver: data.sender_receiver || "",
+          signer_recipient: data.signer_recipient || "",
+          summary: data.summary || "",
+        } : p));
+
+      } catch (err: any) {
+        console.error("Batch item error:", err);
+        setBatchItems(prev => prev.map(p => p.id === item.id ? { 
+          ...p, 
+          status: "error", 
+          error: err.message || "Lỗi xử lý" 
+        } : p));
+      }
+    }
+    setProcessingBatch(false);
+  };
+
+  const saveBatchItemToSupabase = async (item: BatchItem) => {
+    try {
+      const docPayload = {
+        type: item.type,
+        stt: item.stt || 1,
+        receive_send_date: item.receive_send_date,
+        doc_number: item.doc_number,
+        doc_date: item.doc_date || null as any,
+        summary: item.summary,
+        sender_receiver: item.sender_receiver,
+        signer_recipient: item.signer_recipient,
+        has_scan: item.has_scan,
+        has_original: item.has_original,
+        file_name: item.fileName,
+        scan_file_url: item.scan_file_url || "",
+        original_file_url: item.original_file_url || ""
+      };
+
+      const { error } = await supabase.from("clerical_documents").insert([docPayload]);
+      if (error) throw error;
+
+      setBatchItems(prev => prev.map(p => p.id === item.id ? { ...p, saved: true } : p));
+      fetchDocuments();
+    } catch (e) {
+      alert("Lỗi khi lưu công văn: " + (e as Error).message);
+    }
+  };
+
+  const saveAllBatchItems = async () => {
+    const readyItems = batchItems.filter(item => item.status === "success" && !item.saved);
+    if (readyItems.length === 0) {
+      alert("Không có công văn nào đã xử lý thành công để lưu.");
+      return;
+    }
+
+    let successCount = 0;
+    for (const item of readyItems) {
+      try {
+        const docPayload = {
+          type: item.type,
+          stt: item.stt || 1,
+          receive_send_date: item.receive_send_date,
+          doc_number: item.doc_number,
+          doc_date: item.doc_date || null as any,
+          summary: item.summary,
+          sender_receiver: item.sender_receiver,
+          signer_recipient: item.signer_recipient,
+          has_scan: item.has_scan,
+          has_original: item.has_original,
+          file_name: item.fileName,
+          scan_file_url: item.scan_file_url || "",
+          original_file_url: item.original_file_url || ""
+        };
+
+        const { error } = await supabase.from("clerical_documents").insert([docPayload]);
+        if (error) throw error;
+
+        setBatchItems(current => current.map(p => p.id === item.id ? { ...p, saved: true } : p));
+        successCount++;
+      } catch (e) {
+        console.error("Save all error for item:", item.fileName, e);
+      }
+    }
+    fetchDocuments();
+    alert(`Đã lưu thành công ${successCount}/${readyItems.length} công văn vào Supabase.`);
+  };
 
   // browser-side PDF to Image converter
   const convertPdfToImage = async (file: File): Promise<string> => {
@@ -545,8 +742,7 @@ export default function DocumentControlPage() {
               { id: "outgoing_hdqt", label: "Công văn HĐQT", icon: FileText },
               { id: "timeline", label: "Trình duyệt & Ký số", icon: FileCheck },
               { id: "settings", label: "Cấu hình API", icon: Settings },
-            ].filter(tab => tab.id !== "settings" || canManage)
-             .map((tab) => {
+            ].map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
@@ -566,47 +762,7 @@ export default function DocumentControlPage() {
             })}
           </div>
 
-          {/* AI Quick Upload Dropzone */}
-          {["incoming", "outgoing_1", "outgoing_2", "outgoing_hdqt"].includes(activeTab) && canManage && (
-            <div 
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => {
-                handleDrop(e);
-                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                  openNewDocModalWithFile(e.dataTransfer.files[0]);
-                }
-              }}
-              className={`border-2 border-dashed rounded-2xl p-6 text-center flex flex-col items-center justify-center gap-2 transition-all ${
-                isDragging 
-                  ? "border-blue-500 bg-blue-50/20" 
-                  : "border-slate-200 bg-white hover:bg-slate-50/30 hover:border-blue-400"
-              } shadow-sm`}
-            >
-              <Upload className="text-blue-500 animate-bounce" size={24} />
-              <div>
-                <p className="text-xs font-bold text-slate-700">
-                  Kéo thả file công văn (PDF, Ảnh quét, Word) vào đây để AI tự động phân tích & lưu nhanh
-                </p>
-                <label className="text-xs text-blue-600 hover:underline cursor-pointer font-bold mt-1 inline-block">
-                  hoặc Chọn tệp từ máy tính
-                  <input 
-                    type="file" 
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        openNewDocModalWithFile(e.target.files[0]);
-                      }
-                    }} 
-                    className="hidden" 
-                    accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.txt" 
-                  />
-                </label>
-              </div>
-              <p className="text-[10px] text-slate-400 font-medium">
-                Hỗ trợ trích xuất tự động: Số VB, Ngày VB, Đơn vị gửi/nhận, Trích yếu, Người ký bằng AI
-              </p>
-            </div>
-          )}
+          {/* AI Quick Upload Dropzone removed from main views */}
 
           {/* Search bar & Action */}
           {activeTab !== "settings" && activeTab !== "timeline" && (
@@ -811,61 +967,316 @@ export default function DocumentControlPage() {
             </div>
           )}
 
-          {/* API Configuration Tab */}
+          {/* API Configuration & Batch AI Upload Tab */}
           {activeTab === "settings" && (
-            <div className="max-w-2xl glass bg-white rounded-2xl p-8 border border-slate-200/50 shadow-premium space-y-6">
-              <div className="flex items-center gap-3 border-b border-slate-150 pb-4">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
-                  <Settings size={20} />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Left Column: API Settings */}
+              <div className="lg:col-span-1 glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-6 self-start">
+                <div className="flex items-center gap-3 border-b border-slate-150 pb-4">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                    <Settings size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-bold text-slate-800 text-sm">Cấu hình API Văn thư</h3>
+                    <p className="text-slate-400 text-[11px] font-medium">Thiết lập kết nối OpenAI</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-heading font-bold text-slate-800 text-sm">Cấu hình API Văn thư</h3>
-                  <p className="text-slate-400 text-[11px] font-medium">Thiết lập kết nối OpenAI để tự động đọc tài liệu và phân tích công văn</p>
-                </div>
+
+                <form onSubmit={saveSettings} className="space-y-5">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">OpenAI API Key</label>
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="sk-proj-..."
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs font-semibold text-slate-700 bg-slate-50/30"
+                    />
+                    <p className="text-[10px] text-slate-400 font-medium">
+                      Nhập khoá OpenAI API Key dành riêng cho nhân viên Văn thư để chủ động sử dụng. Để trống hệ thống sẽ dùng khoá chung.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Mô hình AI sử dụng</label>
+                    <select
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 cursor-pointer text-xs font-semibold text-slate-700 bg-white"
+                    >
+                      <option value="gpt-4o-mini">gpt-4o-mini (Nhanh chóng & Rất tiết kiệm)</option>
+                      <option value="gpt-4o">gpt-4o (Độ chính xác cao & Đọc ảnh scan tốt hơn)</option>
+                    </select>
+                  </div>
+
+                  {settingsSaved && (
+                    <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-4 py-2.5 rounded-xl border border-emerald-100 text-xs font-semibold">
+                      <CheckCircle size={14} /> Cấu hình đã được lưu!
+                    </div>
+                  )}
+
+                  <div className="pt-4 border-t border-slate-100 flex justify-end">
+                    <button
+                      type="submit"
+                      className="flex items-center gap-2 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-6 py-2.5 rounded-xl transition-all active:scale-95 shadow-md"
+                    >
+                      <Save size={14} /> Lưu cấu hình
+                    </button>
+                  </div>
+                </form>
               </div>
 
-              <form onSubmit={saveSettings} className="space-y-5">
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">OpenAI API Key</label>
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="sk-proj-..."
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs font-semibold text-slate-700 bg-slate-50/30"
-                  />
-                  <p className="text-[10px] text-slate-400 font-medium">
-                    Nhập khoá OpenAI API Key dành riêng cho nhân viên Văn thư để chủ động sử dụng. Để trống hệ thống sẽ dùng khoá chung của hệ thống.
-                  </p>
+              {/* Right Column: Batch AI Document processing */}
+              <div className="lg:col-span-2 glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-6">
+                <div className="flex items-center gap-3 border-b border-slate-150 pb-4">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                    <Brain size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-bold text-slate-800 text-sm">Tải lên & Phân tích Công văn hàng loạt</h3>
+                    <p className="text-slate-400 text-[11px] font-medium">Kéo thả hàng loạt file để AI tự động nhận dạng, phân loại và lưu trữ</p>
+                  </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Mô hình AI sử dụng</label>
-                  <select
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 cursor-pointer text-xs font-semibold text-slate-700 bg-white"
-                  >
-                    <option value="gpt-4o-mini">gpt-4o-mini (Nhanh chóng & Rất tiết kiệm)</option>
-                    <option value="gpt-4o">gpt-4o (Độ chính xác cao & Đọc ảnh scan tốt hơn)</option>
-                  </select>
+                {/* Batch Dropzone */}
+                <div 
+                  onDragOver={(e) => { e.preventDefault(); setBatchDragOver(true); }}
+                  onDragLeave={() => setBatchDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setBatchDragOver(false);
+                    if (e.dataTransfer.files) {
+                      handleBatchFileSelect(Array.from(e.dataTransfer.files));
+                    }
+                  }}
+                  className={`border-2 border-dashed rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-3 transition-all min-h-[160px] ${
+                    batchDragOver ? "border-blue-500 bg-blue-50/50 animate-pulse" : "border-slate-200 bg-slate-50/30 hover:border-blue-400"
+                  }`}
+                >
+                  <Upload className="text-slate-400 animate-bounce" size={28} />
+                  <div>
+                    <label className="text-[#005BAC] hover:underline cursor-pointer font-bold text-xs">
+                      Kéo thả hàng loạt file PDF/Ảnh/Word vào đây hoặc Chọn tệp
+                      <input 
+                        type="file" 
+                        multiple 
+                        onChange={(e) => {
+                          if (e.target.files) {
+                            handleBatchFileSelect(Array.from(e.target.files));
+                          }
+                        }} 
+                        className="hidden" 
+                        accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.txt" 
+                      />
+                    </label>
+                    <p className="text-[10px] text-slate-400 mt-1 font-medium">Hỗ trợ trích xuất, tự phân loại AI (Đến, Đi 1, Đi 2, HĐQT)</p>
+                  </div>
                 </div>
 
-                {settingsSaved && (
-                  <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-4 py-2.5 rounded-xl border border-emerald-100 text-xs font-semibold">
-                    <CheckCircle size={14} /> Cấu hình API đã được lưu thành công vào trình duyệt!
+                {/* Batch controls */}
+                {batchItems.length > 0 && (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                      <span className="text-xs font-bold text-slate-700">Đã chọn: {batchItems.length} file công văn</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={runBatchAnalysis}
+                          disabled={processingBatch || batchItems.filter(item => item.status === "pending" || item.status === "error").length === 0}
+                          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow ${
+                            processingBatch || batchItems.filter(item => item.status === "pending" || item.status === "error").length === 0
+                              ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 shadow-none"
+                              : "bg-[#005BAC] hover:bg-blue-700 text-white active:scale-95"
+                          }`}
+                        >
+                          {processingBatch ? (
+                            <>
+                              <RefreshCw size={13} className="animate-spin" />
+                              <span>Đang phân tích...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Brain size={13} />
+                              <span>Phân tích bằng AI</span>
+                            </>
+                          )}
+                        </button>
+                        <button
+                          onClick={saveAllBatchItems}
+                          disabled={processingBatch || batchItems.filter(item => item.status === "success" && !item.saved).length === 0}
+                          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow ${
+                            processingBatch || batchItems.filter(item => item.status === "success" && !item.saved).length === 0
+                              ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 shadow-none"
+                              : "bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95"
+                          }`}
+                        >
+                          <Save size={13} />
+                          <span>Lưu tất cả hợp lệ</span>
+                        </button>
+                        <button
+                          onClick={() => setBatchItems([])}
+                          disabled={processingBatch}
+                          className="px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-all"
+                        >
+                          Xoá danh sách
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Batch Items list */}
+                    <div className="overflow-x-auto border border-slate-150 rounded-xl max-h-[400px]">
+                      <table className="w-full text-xs text-left min-w-[950px]">
+                        <thead className="bg-[#005BAC] text-white">
+                          <tr>
+                            <th className="p-3">Tên file</th>
+                            <th className="p-3 w-32">Loại công văn</th>
+                            <th className="p-3 w-16">STT</th>
+                            <th className="p-3 w-32">Số VB</th>
+                            <th className="p-3 w-32">Ngày/Tháng</th>
+                            <th className="p-3 w-32">Ngày VB</th>
+                            <th className="p-3 w-40">Đơn vị gửi/nhận</th>
+                            <th className="p-3 w-36">Người ký/nhận</th>
+                            <th className="p-3 min-w-[200px]">Trích yếu nội dung chính</th>
+                            <th className="p-3 text-center">Thao tác</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white font-semibold text-slate-700">
+                          {batchItems.map((item) => (
+                            <tr key={item.id} className="hover:bg-slate-50/50">
+                              <td className="p-3 max-w-[120px] truncate text-slate-500" title={item.fileName}>
+                                <p className="truncate font-semibold text-slate-800">{item.fileName}</p>
+                                {item.status === "processing" && (
+                                  <div className="flex items-center gap-1 text-blue-600 text-[10px] mt-1 font-bold">
+                                    <RefreshCw size={10} className="animate-spin" />
+                                    <span>Đang xử lý...</span>
+                                  </div>
+                                )}
+                                {item.status === "error" && (
+                                  <p className="text-rose-500 text-[9px] mt-1 font-medium leading-tight break-all max-w-[120px]">
+                                    Lỗi: {item.error}
+                                  </p>
+                                )}
+                              </td>
+                              <td className="p-3">
+                                <select
+                                  value={item.type}
+                                  disabled={item.saved || item.status !== "success"}
+                                  onChange={(e) => {
+                                    const newType = e.target.value as any;
+                                    const activeDocs = docs.filter((d) => d.type === newType);
+                                    const maxStt = activeDocs.reduce((max, d) => (d.stt > max ? d.stt : max), 0);
+                                    setBatchItems(prev => prev.map(p => p.id === item.id ? { ...p, type: newType, stt: maxStt + 1 } : p));
+                                  }}
+                                  className="px-2 py-1 border border-slate-200 rounded-lg w-full bg-white text-[11px] font-bold text-slate-700"
+                                >
+                                  <option value="incoming">Công văn đến</option>
+                                  <option value="outgoing_1">Công văn đi 1</option>
+                                  <option value="outgoing_2">Công văn đi 2</option>
+                                  <option value="outgoing_hdqt">Công văn HĐQT</option>
+                                </select>
+                              </td>
+                              <td className="p-3">
+                                <input
+                                  type="number"
+                                  value={item.stt}
+                                  disabled={item.saved || item.status !== "success"}
+                                  onChange={(e) => setBatchItems(prev => prev.map(p => p.id === item.id ? { ...p, stt: Number(e.target.value) } : p))}
+                                  className="px-2 py-1 border border-slate-200 rounded-lg w-full text-[11px] font-mono text-center font-bold text-slate-700"
+                                />
+                              </td>
+                              <td className="p-3">
+                                <input
+                                  type="text"
+                                  value={item.doc_number}
+                                  disabled={item.saved || item.status !== "success"}
+                                  onChange={(e) => setBatchItems(prev => prev.map(p => p.id === item.id ? { ...p, doc_number: e.target.value } : p))}
+                                  className="px-2 py-1 border border-slate-200 rounded-lg w-full text-[11px] font-mono font-bold text-slate-800"
+                                />
+                              </td>
+                              <td className="p-3">
+                                <input
+                                  type="date"
+                                  value={item.receive_send_date}
+                                  disabled={item.saved || item.status !== "success"}
+                                  onChange={(e) => setBatchItems(prev => prev.map(p => p.id === item.id ? { ...p, receive_send_date: e.target.value } : p))}
+                                  className="px-2 py-1 border border-slate-200 rounded-lg w-full text-[11px] font-medium text-slate-600"
+                                />
+                              </td>
+                              <td className="p-3">
+                                <input
+                                  type="date"
+                                  value={item.doc_date}
+                                  disabled={item.saved || item.status !== "success"}
+                                  onChange={(e) => setBatchItems(prev => prev.map(p => p.id === item.id ? { ...p, doc_date: e.target.value } : p))}
+                                  className="px-2 py-1 border border-slate-200 rounded-lg w-full text-[11px] font-medium text-slate-600"
+                                />
+                              </td>
+                              <td className="p-3">
+                                <input
+                                  type="text"
+                                  value={item.sender_receiver}
+                                  disabled={item.saved || item.status !== "success"}
+                                  onChange={(e) => setBatchItems(prev => prev.map(p => p.id === item.id ? { ...p, sender_receiver: e.target.value } : p))}
+                                  className="px-2 py-1 border border-slate-200 rounded-lg w-full text-[11px] font-bold text-slate-700"
+                                />
+                              </td>
+                              <td className="p-3">
+                                <input
+                                  type="text"
+                                  value={item.signer_recipient}
+                                  disabled={item.saved || item.status !== "success"}
+                                  onChange={(e) => setBatchItems(prev => prev.map(p => p.id === item.id ? { ...p, signer_recipient: e.target.value } : p))}
+                                  className="px-2 py-1 border border-slate-200 rounded-lg w-full text-[11px] font-semibold text-slate-600"
+                                />
+                              </td>
+                              <td className="p-3">
+                                <textarea
+                                  rows={1}
+                                  value={item.summary}
+                                  disabled={item.saved || item.status !== "success"}
+                                  onChange={(e) => setBatchItems(prev => prev.map(p => p.id === item.id ? { ...p, summary: e.target.value } : p))}
+                                  className="px-2 py-1 border border-slate-200 rounded-lg w-full text-[11px] leading-relaxed text-slate-600 font-medium"
+                                />
+                              </td>
+                              <td className="p-3 text-center">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  {item.saved ? (
+                                    <span className="inline-flex items-center justify-center bg-emerald-50 text-emerald-600 text-[10px] font-bold px-2 py-1 rounded-lg border border-emerald-100">
+                                      ✓ Đã lưu
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => saveBatchItemToSupabase(item)}
+                                      disabled={item.status !== "success"}
+                                      className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                                        item.status === "success" 
+                                          ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm" 
+                                          : "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
+                                      }`}
+                                    >
+                                      Lưu
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => setBatchItems(prev => prev.filter(p => p.id !== item.id))}
+                                    disabled={item.saved}
+                                    className={`p-1.5 rounded transition-all ${
+                                      item.saved 
+                                        ? "text-slate-300 cursor-not-allowed" 
+                                        : "text-slate-400 hover:text-rose-600 hover:bg-slate-100"
+                                    }`}
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
-
-                <div className="pt-4 border-t border-slate-100 flex justify-end">
-                  <button
-                    type="submit"
-                    className="flex items-center gap-2 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-6 py-2.5 rounded-xl transition-all active:scale-95 shadow-md"
-                  >
-                    <Save size={14} /> Lưu cấu hình
-                  </button>
-                </div>
-              </form>
+              </div>
             </div>
           )}
         </main>

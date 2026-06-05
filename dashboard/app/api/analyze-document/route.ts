@@ -3,27 +3,33 @@ import OpenAI from "openai";
 
 const SYSTEM_PROMPT = `
 Bạn là một AI phân tích công văn chuyên nghiệp cho phòng Văn thư của công ty Trung Nam E&C.
-Nhiệm vụ của bạn là đọc nội dung văn bản (hoặc phân tích hình ảnh quét công văn) và trích xuất chính xác các thông tin cần thiết dưới định dạng JSON.
+Nhiệm vụ của bạn là đọc nội dung văn bản (hoặc phân tích hình ảnh quét công văn) và trích xuất chính xác các thông tin cần thiết dưới định dạng JSON, bao gồm cả việc TỰ ĐỘNG PHÂN LOẠI công văn.
 
 ━━━ CÁC TRƯỜNG THÔNG TIN CẦN TRÍCH XUẤT ━━━
-1. "doc_number": Số hiệu văn bản / Số hiệu công văn (ví dụ: "1577/BQLDAGT-DA5", "575/PMUMT-DHDA1"). Nếu không tìm thấy hoặc chưa có, điền rỗng "".
-2. "doc_date": Ngày ban hành văn bản (định dạng YYYY-MM-DD). Nếu không tìm thấy, điền rỗng "".
-3. "receive_send_date": Ngày nhận hoặc ngày gửi công văn (định dạng YYYY-MM-DD). Thường là ngày đến hoặc ngày đi thực tế. Hãy cố gắng tìm ngày nhận/gửi trong nội dung hoặc ngày gần với ngày ban hành văn bản nếu không tìm thấy.
-4. "sender_receiver": 
+1. "type": Phân loại loại công văn. Phải là một trong bốn giá trị sau:
+   - "incoming": Công văn đến (Văn bản từ cơ quan/đơn vị bên ngoài gửi ĐẾN Trung Nam E&C. Ví dụ kính gửi: Công ty CP Xây dựng và Lắp máy Trung Nam, hoặc Trung Nam E&C).
+   - "outgoing_1": Công văn đi 1 (Công văn đi chung của công ty Trung Nam E&C gửi cho đơn vị khác, ký bởi Ban Giám đốc hoặc Đại diện công ty, số hiệu thường có dạng "TNEC-CV", "TNEC/", "CV/TNEC"...).
+   - "outgoing_2": Công văn đi 2 (Các loại văn bản đi khác như hồ sơ thầu, công văn của ban quản lý dự án, báo giá, yêu cầu vật tư... số hiệu thường chứa ký hiệu các dự án hoặc ban điều hành công trường khác).
+   - "outgoing_hdqt": Công văn HĐQT (Công văn đi phát hành từ Hội đồng Quản trị, số hiệu thường chứa ký hiệu "HĐQT" hoặc ký bởi Chủ tịch HĐQT).
+2. "doc_number": Số hiệu văn bản / Số hiệu công văn (ví dụ: "1577/BQLDAGT-DA5", "575/PMUMT-DHDA1"). Nếu không tìm thấy hoặc chưa có, điền rỗng "".
+3. "doc_date": Ngày ban hành văn bản (định dạng YYYY-MM-DD). Nếu không tìm thấy, điền rỗng "".
+4. "receive_send_date": Ngày nhận hoặc ngày gửi công văn (định dạng YYYY-MM-DD). Thường là ngày đến hoặc ngày đi thực tế. Hãy cố gắng tìm ngày nhận/gửi trong nội dung hoặc ngày gần với ngày ban hành văn bản nếu không tìm thấy.
+5. "sender_receiver": 
    - Nếu là công văn ĐẾN (incoming): Tên cơ quan/đơn vị GỬI ĐẾN (ví dụ: "Sở Xây dựng TP.HCM", "UBND TP. Cần Thơ").
-   - Nếu là công văn ĐI (outgoing): Tên cơ quan/đơn vị NHẬN (ví dụ: "Liên danh Nhà thầu thi công gói thầu XL-01", "Ủy ban nhân dân Quận 2").
-5. "summary": Tóm tắt nội dung chính (trích yếu) của công văn một cách ngắn gọn, súc tích (khoảng 1-3 câu).
-6. "signer_recipient":
+   - Nếu là công văn ĐI (outgoing_1, outgoing_2, outgoing_hdqt): Tên cơ quan/đơn vị NHẬN (ví dụ: "Liên danh Nhà thầu thi công gói thầu XL-01", "Ủy ban nhân dân Quận 2").
+6. "summary": Tóm tắt nội dung chính (trích yếu) của công văn một cách ngắn gọn, súc tích (khoảng 1-3 câu).
+7. "signer_recipient":
    - Nếu là công văn ĐẾN (incoming): Người nhận trực tiếp hoặc đơn vị nhận xử lý chính trong công ty.
-   - Nếu là công văn ĐI (outgoing): Người ký duyệt văn bản (ví dụ: "Giám đốc Dự án", "Trưởng phòng Vật tư").
+   - Nếu là công văn ĐI (outgoing_1, outgoing_2, outgoing_hdqt): Người ký duyệt văn bản (ví dụ: "Giám đốc Dự án", "Trưởng phòng Vật tư").
 
 ━━━ QUY TẮC PHÂN TÍCH ━━━
-- Hãy đọc thật kỹ các phần: Tiêu đề công văn, Nơi nhận (Kính gửi / To), Người ký (Signed by), và phần Trích yếu (V/v...) để lấy đúng thông tin.
+- Hãy đọc thật kỹ các phần: Tiêu đề công văn, Nơi nhận (Kính gửi / To), Người ký (Signed by), và phần Trích yếu (V/v...) để lấy đúng thông tin và phân loại loại công văn chính xác.
 - Chuẩn hoá ngày về dạng YYYY-MM-DD. Ví dụ "ngày 10 tháng 03 năm 2026" hoặc "10/03/2026" đều chuyển thành "2026-03-10".
 - Trả về kết quả CHỈ dạng JSON, không kèm bất kỳ giải thích nào bên ngoài.
 
 ━━━ OUTPUT FORMAT (JSON ONLY) ━━━
 {
+  "type": "incoming | outgoing_1 | outgoing_2 | outgoing_hdqt",
   "doc_number": "...",
   "doc_date": "YYYY-MM-DD",
   "receive_send_date": "YYYY-MM-DD",
@@ -46,7 +52,6 @@ export async function POST(req: NextRequest) {
     }
 
     const form = await req.formData();
-    const docType = (form.get("doc_type") as string) || "incoming"; // incoming, outgoing_1, outgoing_2, outgoing_hdqt
     const file = form.get("document_file") as File | null;
 
     if (!file) {
@@ -58,10 +63,9 @@ export async function POST(req: NextRequest) {
     const fileType = file.name.toLowerCase();
 
     let messages: OpenAI.Chat.ChatCompletionMessageParam[];
-    const isIncoming = docType === "incoming";
 
-    const promptText = `Hãy phân tích công văn này. Đây là Công văn ${isIncoming ? "ĐẾN (incoming)" : "ĐI (outgoing)"}.
-Hãy trích xuất thông tin dạng JSON gồm: doc_number, doc_date, receive_send_date, sender_receiver, summary, signer_recipient.`;
+    const promptText = `Hãy phân tích công văn này và tự động phân loại nó (type). 
+Hãy trích xuất thông tin dạng JSON gồm: type, doc_number, doc_date, receive_send_date, sender_receiver, summary, signer_recipient.`;
 
     if (fileType.endsWith(".pdf")) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase";
@@ -82,13 +82,77 @@ export default function DocumentControlPage() {
   const [model, setModel] = useState("gpt-4o-mini");
   const [settingsSaved, setSettingsSaved] = useState(false);
 
-  // Load API Settings on mount
+  // Current logged in user state
+  const [currentUser, setCurrentUser] = useState<{
+    email: string;
+    name: string;
+    role: string;
+    department: string;
+    isAdmin: boolean;
+  } | null>(null);
+
+  const fetchCurrentUser = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const user = session.user;
+      const email = user.email || "";
+
+      // 1. Check allowed_users
+      const { data: allowedData } = await supabase
+        .from("allowed_users")
+        .select("role")
+        .ilike("email", email)
+        .maybeSingle();
+
+      const isAdmin = allowedData?.role === "Admin";
+
+      // 2. Check employees
+      const { data: empData } = await supabase
+        .from("employees")
+        .select("name, role, department")
+        .ilike("email", email)
+        .maybeSingle();
+
+      setCurrentUser({
+        email,
+        name: empData?.name || user.user_metadata?.full_name || user.user_metadata?.name || "Người dùng",
+        role: empData?.role || (isAdmin ? "Admin" : "Nhân viên"),
+        department: empData?.department || "Chưa xếp phòng",
+        isAdmin
+      });
+    } catch (err) {
+      console.error("Error fetching current user info:", err);
+    }
+  }, []);
+
+  const canManage = useMemo(() => {
+    if (!currentUser) return false;
+    if (currentUser.isAdmin) return true;
+
+    const roleLower = (currentUser.role || "").toLowerCase();
+    const deptLower = (currentUser.department || "").toLowerCase();
+
+    return (
+      deptLower.includes("hành chính") ||
+      deptLower.includes("nhân sự") ||
+      deptLower.includes("văn thư") ||
+      roleLower.includes("văn thư") ||
+      roleLower.includes("trưởng phòng") ||
+      roleLower.includes("phó phòng") ||
+      roleLower.includes("giám đốc")
+    );
+  }, [currentUser]);
+
+  // Load API Settings & Current User on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
       setApiKey(localStorage.getItem("openai_api_key_van_thu") || "");
       setModel(localStorage.getItem("openai_model_van_thu") || "gpt-4o-mini");
     }
-  }, []);
+    fetchCurrentUser();
+  }, [fetchCurrentUser]);
 
   const saveSettings = (e: React.FormEvent) => {
     e.preventDefault();
@@ -314,7 +378,8 @@ export default function DocumentControlPage() {
               { id: "outgoing_hdqt", label: "Công văn HĐQT", icon: FileText },
               { id: "timeline", label: "Trình duyệt & Ký số", icon: FileCheck },
               { id: "settings", label: "Cấu hình API", icon: Settings },
-            ].map((tab) => {
+            ].filter(tab => tab.id !== "settings" || canManage)
+             .map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
@@ -355,12 +420,14 @@ export default function DocumentControlPage() {
                 >
                   <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
                 </button>
-                <button
-                  onClick={openNewDocModal}
-                  className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all active:scale-95 shadow-md"
-                >
-                  <Plus size={14} /> Lưu công văn mới
-                </button>
+                {canManage && (
+                  <button
+                    onClick={openNewDocModal}
+                    className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all active:scale-95 shadow-md"
+                  >
+                    <Plus size={14} /> Lưu công văn mới
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -398,13 +465,13 @@ export default function DocumentControlPage() {
                       <th className="pb-3 text-center">Bản Scan</th>
                       <th className="pb-3 text-center">Bản gốc</th>
                       <th className="pb-3 whitespace-nowrap">Tên file CV</th>
-                      <th className="pb-3 text-right">Thao tác</th>
+                      {canManage && <th className="pb-3 text-right">Thao tác</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
                     {loading ? (
                       <tr>
-                        <td colSpan={11} className="py-20 text-center text-slate-400 italic">
+                        <td colSpan={canManage ? 11 : 10} className="py-20 text-center text-slate-400 italic">
                           <div className="flex flex-col items-center gap-2">
                             <RefreshCw size={24} className="animate-spin text-blue-600" />
                             <span>Đang tải dữ liệu từ Supabase...</span>
@@ -413,7 +480,7 @@ export default function DocumentControlPage() {
                       </tr>
                     ) : filteredDocs.length === 0 ? (
                       <tr>
-                        <td colSpan={11} className="py-20 text-center text-slate-400 font-normal">
+                        <td colSpan={canManage ? 11 : 10} className="py-20 text-center text-slate-400 font-normal">
                           {search ? "Không tìm thấy công văn phù hợp." : "Chưa có công văn nào được lưu trong mục này."}
                         </td>
                       </tr>
@@ -456,24 +523,26 @@ export default function DocumentControlPage() {
                               doc.file_name || "–"
                             )}
                           </td>
-                          <td className="py-4 text-right">
-                            <div className="flex justify-end gap-2">
-                              <button
-                                onClick={() => openEditDocModal(doc)}
-                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded transition-all"
-                                title="Sửa đổi"
-                              >
-                                <Edit size={14} />
-                              </button>
-                              <button
-                                onClick={() => doc.id && handleDeleteDoc(doc.id)}
-                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded transition-all"
-                                title="Xoá"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </td>
+                          {canManage && (
+                            <td className="py-4 text-right">
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  onClick={() => openEditDocModal(doc)}
+                                  className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded transition-all"
+                                  title="Sửa đổi"
+                                >
+                                  <Edit size={14} />
+                                </button>
+                                <button
+                                  onClick={() => doc.id && handleDeleteDoc(doc.id)}
+                                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded transition-all"
+                                  title="Xoá"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       ))
                     )}

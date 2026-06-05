@@ -41,6 +41,14 @@ export default function TaskManagementPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentUser, setCurrentUser] = useState<{
+    email: string;
+    name: string;
+    role: string;
+    department: string;
+    isAdmin: boolean;
+  } | null>(null);
+  const [userDeptEmployees, setUserDeptEmployees] = useState<string[]>([]);
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -49,6 +57,19 @@ export default function TaskManagementPage() {
   const [newPriority, setNewPriority] = useState("Trung bình");
   const [newDueDate, setNewDueDate] = useState("");
   const [newProgress, setNewProgress] = useState(0);
+  const [newDescription, setNewDescription] = useState("");
+  const [newStatus, setNewStatus] = useState("planning");
+  const [newStartDate, setNewStartDate] = useState(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
+  const [newLink, setNewLink] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+  const [isAiSuggesting, setIsAiSuggesting] = useState(false);
+  const [employeesList, setEmployeesList] = useState<{ id: string; name: string }[]>([]);
 
   // Drag State
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
@@ -86,8 +107,111 @@ export default function TaskManagementPage() {
     }
   };
 
+  const fetchUserRoleAndDept = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !session.user) return;
+
+      const user = session.user;
+      const email = user.email || "";
+
+      // 1. Check allowed_users
+      const { data: allowedData } = await supabase
+        .from("allowed_users")
+        .select("role")
+        .ilike("email", email)
+        .maybeSingle();
+
+      const isAdmin = allowedData?.role === "Admin";
+
+      // 2. Check employees
+      const { data: empData } = await supabase
+        .from("employees")
+        .select("name, role, department")
+        .ilike("email", email)
+        .maybeSingle();
+
+      const userInfo = {
+        email,
+        name: empData?.name || user.user_metadata?.full_name || user.user_metadata?.name || "Người dùng",
+        role: empData?.role || (isAdmin ? "Admin" : "Nhân viên"),
+        department: empData?.department || "Chưa xếp phòng",
+        isAdmin
+      };
+      
+      setCurrentUser(userInfo);
+
+      const isUserDeputy = userInfo.role.toLowerCase().includes("phó phòng") || 
+                           userInfo.role.toLowerCase().includes("pho phong") ||
+                           userInfo.role.toLowerCase().includes("phó trưởng phòng") || 
+                           userInfo.role.toLowerCase().includes("pho truong phong");
+
+      if (isUserDeputy) {
+        const { data: deptEmps } = await supabase
+          .from("employees")
+          .select("name")
+          .eq("department", userInfo.department);
+        if (deptEmps) {
+          setUserDeptEmployees(deptEmps.map(e => e.name));
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching user permissions in tasks:", err);
+    }
+  };
+
+  const fetchEmployeesList = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("employees")
+        .select("id, name")
+        .order("name", { ascending: true });
+      if (data) {
+        setEmployeesList(data);
+      }
+    } catch (err) {
+      console.error("Error fetching employees list:", err);
+    }
+  };
+
+  const handleAiSuggest = async () => {
+    if (!newTitle) {
+      alert("Vui lòng nhập Tên công việc trước khi tạo mô tả bằng AI!");
+      return;
+    }
+    
+    setIsAiSuggesting(true);
+    try {
+      const key = localStorage.getItem("openai_api_key");
+      const headers: any = { "Content-Type": "application/json" };
+      if (key) {
+        headers["Authorization"] = `Bearer ${key}`;
+      }
+      
+      const res = await fetch("/api/suggest-task-desc", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ title: newTitle }),
+      });
+      
+      const data = await res.json();
+      if (data.error) {
+        alert(data.error);
+      } else if (data.description) {
+        setNewDescription(data.description);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Lỗi kết nối khi gọi AI!");
+    } finally {
+      setIsAiSuggesting(false);
+    }
+  };
+
   useEffect(() => {
+    fetchUserRoleAndDept();
     fetchTasks();
+    fetchEmployeesList();
   }, []);
 
   // Handle Drag Start
@@ -126,20 +250,30 @@ export default function TaskManagementPage() {
   // Create Task
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim()) {
+      alert("Vui lòng điền Tên công việc!");
+      return;
+    }
+    if (!newAssignee) {
+      alert("Vui lòng chọn Người nhận!");
+      return;
+    }
 
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("tasks")
         .insert([{
           title: newTitle,
-          assignee: newAssignee || "Chưa phân công",
+          assignee: newAssignee,
           priority: newPriority,
           due_date: newDueDate || null,
           progress: Number(newProgress),
-          status: "planning"
-        }])
-        .select();
+          status: newStatus,
+          description: newDescription,
+          start_date: newStartDate || null,
+          link: newLink,
+          notes: newNotes
+        }]);
 
       if (error) throw error;
 
@@ -149,6 +283,10 @@ export default function TaskManagementPage() {
       setNewPriority("Trung bình");
       setNewDueDate("");
       setNewProgress(0);
+      setNewDescription("");
+      setNewStatus("planning");
+      setNewLink("");
+      setNewNotes("");
       setIsModalOpen(false);
 
       // Refresh tasks
@@ -175,10 +313,34 @@ export default function TaskManagementPage() {
     }
   };
 
-  const filteredTasks = tasks.filter(t => 
-    t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.assignee.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredTasks = tasks.filter(t => {
+    const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          t.assignee.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+
+    if (!currentUser) return false;
+
+    const isUserAdmin = currentUser.isAdmin || 
+                        currentUser.role.toLowerCase() === "admin" ||
+                        currentUser.role.toLowerCase().includes("trưởng phòng") || 
+                        currentUser.role.toLowerCase().includes("truong phong");
+
+    const isUserDeputy = currentUser.role.toLowerCase().includes("phó phòng") || 
+                         currentUser.role.toLowerCase().includes("pho phong") ||
+                         currentUser.role.toLowerCase().includes("phó trưởng phòng") || 
+                         currentUser.role.toLowerCase().includes("pho truong phong");
+
+    if (isUserAdmin) return true;
+
+    if (isUserDeputy) {
+      return userDeptEmployees.includes(t.assignee) || 
+             t.assignee === currentUser.name ||
+             t.assignee.toLowerCase() === currentUser.email.toLowerCase();
+    }
+
+    return t.assignee === currentUser.name || 
+           t.assignee.toLowerCase() === currentUser.email.toLowerCase();
+  });
 
   return (
     <div className="flex min-h-screen bg-[#F7F9FC]">
@@ -209,12 +371,21 @@ export default function TaskManagementPage() {
               </button>
             </div>
 
-            <button 
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 shadow-md shadow-blue-600/10"
-            >
-              <Plus size={14} /> Thêm công việc
-            </button>
+            {currentUser && (currentUser.isAdmin || 
+                             currentUser.role.toLowerCase() === "admin" ||
+                             currentUser.role.toLowerCase().includes("trưởng phòng") || 
+                             currentUser.role.toLowerCase().includes("truong phong") ||
+                             currentUser.role.toLowerCase().includes("phó phòng") || 
+                             currentUser.role.toLowerCase().includes("pho phong") ||
+                             currentUser.role.toLowerCase().includes("phó trưởng phòng") || 
+                             currentUser.role.toLowerCase().includes("pho truong phong")) && (
+              <button 
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 shadow-md shadow-blue-600/10 cursor-pointer"
+              >
+                <Plus size={14} /> Thêm công việc
+              </button>
+            )}
           </div>
 
           {loading ? (
@@ -267,12 +438,21 @@ export default function TaskManagementPage() {
                               }`}>
                                 {task.priority}
                               </span>
-                              <button 
-                                onClick={() => handleDeleteTask(task.id)}
-                                className="text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <X size={12} />
-                              </button>
+                              {currentUser && (currentUser.isAdmin || 
+                                               currentUser.role.toLowerCase() === "admin" ||
+                                               currentUser.role.toLowerCase().includes("trưởng phòng") || 
+                                               currentUser.role.toLowerCase().includes("truong phong") ||
+                                               currentUser.role.toLowerCase().includes("phó phòng") || 
+                                               currentUser.role.toLowerCase().includes("pho phong") ||
+                                               currentUser.role.toLowerCase().includes("phó trưởng phòng") || 
+                                               currentUser.role.toLowerCase().includes("pho truong phong")) && (
+                                <button 
+                                  onClick={() => handleDeleteTask(task.id)}
+                                  className="text-slate-350 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
                             </div>
                             <p className="text-slate-800 font-heading font-semibold text-xs leading-snug line-clamp-2">{task.title}</p>
                           </div>
@@ -314,88 +494,172 @@ export default function TaskManagementPage() {
       {/* Add Task Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in-50 zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in-50 zoom-in-95 duration-150">
+            {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="font-heading font-bold text-sm text-slate-800">Thêm công việc mới</h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <h3 className="font-heading font-extrabold text-sm text-slate-800">Tạo công việc mới</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
                 <X size={16} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateTask} className="space-y-4 text-xs">
+            <form onSubmit={handleCreateTask} className="space-y-4 text-xs font-semibold text-slate-700">
+              {/* Task Title */}
               <div className="space-y-1">
-                <label className="font-bold text-slate-600">Tên công việc</label>
+                <label className="text-slate-500">Tên công việc <span className="text-rose-500">*</span></label>
                 <input
                   type="text"
                   required
-                  placeholder="Ví dụ: Soạn thảo văn bản, Ký hợp đồng..."
+                  placeholder="Nhập tên công việc..."
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-slate-800 font-medium placeholder:text-slate-400"
                 />
               </div>
 
+              {/* Description & AI suggest */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-500">Mô tả</label>
+                  <button
+                    type="button"
+                    onClick={handleAiSuggest}
+                    disabled={isAiSuggesting}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-indigo-50 hover:bg-indigo-100 disabled:bg-slate-50 text-[10px] text-indigo-600 disabled:text-slate-400 rounded-lg font-bold transition-all border border-indigo-150/50 cursor-pointer active:scale-95"
+                  >
+                    {isAiSuggesting ? "Đang tạo gợi ý..." : "✨ Gợi ý bằng AI"}
+                  </button>
+                </div>
+                <textarea
+                  placeholder="Mô tả chi tiết công việc..."
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  rows={3}
+                  className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-slate-800 font-medium placeholder:text-slate-400 resize-none"
+                />
+              </div>
+
+              {/* Assignee & Status */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-600">Người thực hiện</label>
-                  <input
-                    type="text"
-                    placeholder="Tên nhân viên..."
+                  <label className="text-slate-500">Người nhận <span className="text-rose-500">*</span></label>
+                  <select
+                    required
                     value={newAssignee}
                     onChange={(e) => setNewAssignee(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
+                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white font-medium text-slate-800 cursor-pointer"
+                  >
+                    <option value="">Chọn...</option>
+                    {employeesList.map((emp) => (
+                      <option key={emp.id} value={emp.name}>
+                        {emp.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-600">Mức độ ưu tiên</label>
+                  <label className="text-slate-500">Trạng thái</label>
                   <select
-                    value={newPriority}
-                    onChange={(e) => setNewPriority(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20"
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white font-medium text-slate-800 cursor-pointer"
                   >
-                    <option value="Thấp">Thấp</option>
-                    <option value="Trung bình">Trung bình</option>
-                    <option value="Cao">Cao</option>
+                    <option value="planning">Kế hoạch</option>
+                    <option value="in_progress">Đang làm</option>
+                    <option value="pending_approval">Chờ duyệt</option>
+                    <option value="need_revision">Cần sửa</option>
+                    <option value="completed">Đã xong</option>
                   </select>
                 </div>
               </div>
 
+              {/* Start Date & Deadline */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-600">Hạn chót</label>
+                  <label className="text-slate-500">Ngày bắt đầu</label>
+                  <input
+                    type="date"
+                    value={newStartDate}
+                    onChange={(e) => setNewStartDate(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 font-medium text-slate-800"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-slate-500">Deadline</label>
                   <input
                     type="date"
                     value={newDueDate}
                     onChange={(e) => setNewDueDate(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-600">Tiến độ (%)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={newProgress}
-                    onChange={(e) => setNewProgress(Number(e.target.value))}
-                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 font-medium text-slate-800"
                   />
                 </div>
               </div>
 
+              {/* Priority Segmented Control */}
+              <div className="space-y-1">
+                <label className="text-slate-500">Ưu tiên</label>
+                <div className="flex gap-2">
+                  {["Thấp", "Trung bình", "Cao"].map((p) => {
+                    const isActive = newPriority === p;
+                    let activeClass = "";
+                    if (p === "Thấp") activeClass = "border-blue-500 bg-blue-50 text-blue-800 font-bold ring-1 ring-blue-500/20";
+                    else if (p === "Trung bình") activeClass = "border-amber-500 bg-amber-50 text-amber-800 font-bold ring-1 ring-amber-500/20";
+                    else activeClass = "border-rose-500 bg-rose-50 text-rose-800 font-bold ring-1 ring-rose-500/20";
+
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setNewPriority(p)}
+                        className={`flex-1 py-2.5 text-xs font-medium rounded-xl border text-center transition-all cursor-pointer ${
+                          isActive ? activeClass : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Attached link & Notes */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-slate-500">Link sản phẩm đính kèm</label>
+                  <input
+                    type="text"
+                    placeholder="https://..."
+                    value={newLink}
+                    onChange={(e) => setNewLink(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 font-medium text-slate-800 placeholder:text-slate-400"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-slate-500">Ghi chú</label>
+                  <input
+                    type="text"
+                    placeholder="Ghi chú thêm..."
+                    value={newNotes}
+                    onChange={(e) => setNewNotes(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 font-medium text-slate-800 placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
+
+              {/* Form Buttons */}
               <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50"
+                  className="flex-1 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl"
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors cursor-pointer shadow-md shadow-blue-500/10"
                 >
-                  Tạo mới
+                  Tạo Task
                 </button>
               </div>
             </form>

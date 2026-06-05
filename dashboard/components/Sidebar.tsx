@@ -11,12 +11,14 @@ import {
   TrendingUp,
   Settings,
   Briefcase,
-  Users
+  Users,
+  CalendarRange
 } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Bảng điều khiển", href: "/", icon: LayoutDashboard },
   { label: "Quản lý Công việc", href: "/tasks", icon: ClipboardList },
+  { label: "Lịch công việc", href: "/calendar", icon: CalendarRange },
   { label: "Tuyển dụng (AI Scorer)", href: "/recruitment", icon: Briefcase },
   { label: "Quản lý Nhân sự", href: "/employees", icon: Users },
   { label: "Lương & Phúc lợi (C&B)", href: "/cb", icon: Calculator },

@@ -81,7 +81,52 @@ export default function EmployeeManagementPage() {
     }
   };
 
+  const [currentUser, setCurrentUser] = useState<{
+    email: string;
+    name: string;
+    role: string;
+    department: string;
+    isAdmin: boolean;
+  } | null>(null);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !session.user) return;
+
+      const user = session.user;
+      const email = user.email || "";
+
+      // 1. Check allowed_users for Admin
+      const { data: allowedData } = await supabase
+        .from("allowed_users")
+        .select("role")
+        .ilike("email", email)
+        .maybeSingle();
+
+      const isAdmin = allowedData?.role === "Admin";
+
+      // 2. Check employees
+      const { data: empData } = await supabase
+        .from("employees")
+        .select("name, role, department")
+        .ilike("email", email)
+        .maybeSingle();
+
+      setCurrentUser({
+        email,
+        name: empData?.name || user.user_metadata?.full_name || user.user_metadata?.name || "Người dùng",
+        role: empData?.role || (isAdmin ? "Admin" : "Nhân viên"),
+        department: empData?.department || "Chưa xếp phòng",
+        isAdmin
+      });
+    } catch (err) {
+      console.error("Error fetching current user info:", err);
+    }
+  };
+
   useEffect(() => {
+    fetchCurrentUser();
     fetchEmployees();
   }, []);
 
@@ -121,6 +166,31 @@ export default function EmployeeManagementPage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
+    if (!currentUser) return;
+
+    const isUserAdmin = currentUser.isAdmin || currentUser.role.toLowerCase() === "admin";
+    const isUserManager = currentUser.role.toLowerCase().includes("trưởng phòng") || 
+                          currentUser.role.toLowerCase().includes("truong phong");
+
+    // Regular employee & deputy are not allowed to delete
+    if (!isUserAdmin && !isUserManager) {
+      alert("Bạn không có quyền thực hiện hành động xóa!");
+      return;
+    }
+
+    // Find the target employee to check their role
+    const targetEmp = employees.find(e => e.id === id);
+    if (!targetEmp) return;
+
+    const isTargetAdmin = targetEmp.position.toLowerCase() === "admin" ||
+                          targetEmp.email.toLowerCase() === "tnechcm@gmail.com";
+
+    // Trưởng phòng cannot delete Admin
+    if (isUserManager && !isUserAdmin && isTargetAdmin) {
+      alert("Trưởng phòng không thể xóa tài khoản của Admin!");
+      return;
+    }
+
     if (confirm(`Bạn có chắc chắn muốn xóa nhân viên ${name}?`)) {
       try {
         const { error } = await supabase
@@ -132,6 +202,7 @@ export default function EmployeeManagementPage() {
         fetchEmployees();
       } catch (err) {
         console.error("Error deleting employee:", err);
+        alert("Lỗi khi xóa nhân viên!");
       }
     }
   };
@@ -141,7 +212,25 @@ export default function EmployeeManagementPage() {
                         emp.id.toLowerCase().includes(search.toLowerCase()) ||
                         emp.email.toLowerCase().includes(search.toLowerCase());
     const matchDept = filterDept === "all" || emp.department === filterDept;
-    return matchSearch && matchDept;
+    
+    if (!matchSearch || !matchDept) return false;
+
+    if (!currentUser) return false;
+
+    const isUserAdmin = currentUser.isAdmin || 
+                        currentUser.role.toLowerCase() === "admin" ||
+                        currentUser.role.toLowerCase().includes("trưởng phòng") || 
+                        currentUser.role.toLowerCase().includes("truong phong");
+
+    const isUserDeputy = currentUser.role.toLowerCase().includes("phó phòng") || 
+                         currentUser.role.toLowerCase().includes("pho phong") ||
+                         currentUser.role.toLowerCase().includes("phó trưởng phòng") || 
+                         currentUser.role.toLowerCase().includes("pho truong phong");
+
+    if (isUserAdmin) return true;
+    if (isUserDeputy) return emp.department === currentUser.department;
+
+    return emp.email.toLowerCase() === currentUser.email.toLowerCase();
   });
 
   return (
@@ -175,11 +264,14 @@ export default function EmployeeManagementPage() {
                   className="text-xs text-slate-600 bg-transparent outline-none font-semibold cursor-pointer"
                 >
                   <option value="all">Tất cả phòng ban</option>
-                  <option value="Phòng Hành Chính Nhân Sự">Hành Chính Nhân Sự</option>
-                  <option value="Phòng Kỹ Thuật">Phòng Kỹ Thuật</option>
-                  <option value="Phòng Dự Án">Phòng Dự Án</option>
-                  <option value="Phòng Kế Hoạch">Phòng Kế Hoạch</option>
-                  <option value="Phòng Trợ Lý">Phòng Trợ Lý</option>
+                  <option value="Phòng Hành Chính Nhân Sự">Hành chính nhân sự</option>
+                  <option value="Phòng Kế Toán">P kế toán</option>
+                  <option value="Phòng Vật Tư Thiết Bị">p Vật tư thiết bị</option>
+                  <option value="Phòng Thị Trường">p thị trường</option>
+                  <option value="Phòng Kế Hoạch Đấu Thầu">p kế hoạch đấu thầu</option>
+                  <option value="Phòng Kỹ Thuật">p kỹ thuật</option>
+                  <option value="Phòng An Toàn Lao Động">p an toàn lao động</option>
+                  <option value="Phòng Quản Lý Dự Án">p quản lý dự án</option>
                 </select>
               </div>
             </div>
@@ -191,12 +283,21 @@ export default function EmployeeManagementPage() {
               >
                 Tải lại
               </button>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all active:scale-95 shadow-md shadow-blue-600/10"
-              >
-                <Plus size={14} /> Thêm nhân viên
-              </button>
+              {currentUser && (currentUser.isAdmin || 
+                               currentUser.role.toLowerCase() === "admin" ||
+                               currentUser.role.toLowerCase().includes("trưởng phòng") || 
+                               currentUser.role.toLowerCase().includes("truong phong") ||
+                               currentUser.role.toLowerCase().includes("phó phòng") || 
+                               currentUser.role.toLowerCase().includes("pho phong") ||
+                               currentUser.role.toLowerCase().includes("phó trưởng phòng") || 
+                               currentUser.role.toLowerCase().includes("pho truong phong")) && (
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-blue-500/10 hover:shadow-blue-500/20 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer"
+                >
+                  <Plus size={14} /> Thêm nhân sự
+                </button>
+              )}
             </div>
           </div>
 
@@ -266,7 +367,14 @@ export default function EmployeeManagementPage() {
                         {/* Actions */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
-                            <button onClick={() => handleDelete(emp.id, emp.name)} className="p-1.5 hover:bg-rose-100 rounded-lg text-rose-500 transition-colors" title="Xóa nhân sự"><Trash2 size={13} /></button>
+                            {currentUser && (currentUser.isAdmin || 
+                                             currentUser.role.toLowerCase() === "admin" ||
+                                             currentUser.role.toLowerCase().includes("trưởng phòng") || 
+                                             currentUser.role.toLowerCase().includes("truong phong")) && (
+                              <button onClick={() => handleDelete(emp.id, emp.name)} className="p-1.5 hover:bg-rose-100 rounded-lg text-rose-500 transition-colors" title="Xóa nhân sự">
+                                <Trash2 size={13} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -312,11 +420,14 @@ export default function EmployeeManagementPage() {
                     value={newDept} onChange={(e) => setNewDept(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 bg-white"
                   >
-                    <option value="Phòng Hành Chính Nhân Sự">Hành Chính Nhân Sự</option>
-                    <option value="Phòng Kỹ Thuật">Phòng Kỹ Thuật</option>
-                    <option value="Phòng Dự Án">Phòng Dự Án</option>
-                    <option value="Phòng Kế Hoạch">Phòng Kế Hoạch</option>
-                    <option value="Phòng Trợ Lý">Phòng Trợ Lý</option>
+                    <option value="Phòng Hành Chính Nhân Sự">Hành chính nhân sự</option>
+                    <option value="Phòng Kế Toán">P kế toán</option>
+                    <option value="Phòng Vật Tư Thiết Bị">p Vật tư thiết bị</option>
+                    <option value="Phòng Thị Trường">p thị trường</option>
+                    <option value="Phòng Kế Hoạch Đấu Thầu">p kế hoạch đấu thầu</option>
+                    <option value="Phòng Kỹ Thuật">p kỹ thuật</option>
+                    <option value="Phòng An Toàn Lao Động">p an toàn lao động</option>
+                    <option value="Phòng Quản Lý Dự Án">p quản lý dự án</option>
                   </select>
                 </div>
 

@@ -279,6 +279,30 @@ function EditableCell({
   );
 }
 
+const normalizeDepartment = (dept: string): string => {
+  if (!dept) return "Chưa xác định";
+  const trim = dept.trim();
+  const lower = trim.toLowerCase();
+  
+  if (lower === "atld" || lower === "atlđ" || lower === "phòng atlđ") {
+    return "ATLĐ";
+  }
+  if (lower === "kỹ thuật" || lower === "kỹ Thuật") {
+    return "Kỹ thuật";
+  }
+  if (lower === "phòng hành chính nhân sự" || lower === "hcns") {
+    return "HCNS";
+  }
+  if (lower === "vt-tb" || lower === "vt_tb" || lower === "vật tư - thiết bị") {
+    return "VT-TB";
+  }
+  if (lower === "kế toán") {
+    return "Kế toán";
+  }
+  
+  return trim.charAt(0).toUpperCase() + trim.slice(1);
+};
+
 const getColumnsForTab = (tab: string) => {
   if (tab === "tong_hop") {
     return [
@@ -363,7 +387,7 @@ const getColumnsForTab = (tab: string) => {
 
 // ─── MAIN RECRUITMENT PAGE ────────────────────────────────────────────────────
 export default function RecruitmentPage() {
-  const [activeTab, setActiveTab] = useState<"pipeline" | "table_view" | "scorer" | "settings">("pipeline");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "table_view" | "scorer" | "settings">("dashboard");
   const [tableSubTab, setTableSubTab] = useState<"tong_hop" | "vong_1" | "vong_2" | "thu_viec">("tong_hop");
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1092,7 +1116,7 @@ export default function RecruitmentPage() {
           })()}
 
           {/* TAB 1: PIPELINE BOARD */}
-          {activeTab === "pipeline" && (
+          {(activeTab as string) === "pipeline" && (
             <div className="space-y-6">
               {/* Subheader Filters */}
               <div className="flex items-center justify-between">

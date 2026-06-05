@@ -244,9 +244,9 @@ export async function POST(req: NextRequest) {
 
     if (fileType.endsWith(".pdf")) {
       // Use require for CJS compat with Next.js
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const pdfParse = require("pdf-parse");
-      const parsed = await pdfParse(fileBuffer);
+      const parseFn = typeof pdfParse === "function" ? pdfParse : (pdfParse.default || pdfParse);
+      const parsed = await parseFn(fileBuffer);
       const cvText = parsed.text || "";
       messages = [
         { role: "system", content: SYSTEM_PROMPT },

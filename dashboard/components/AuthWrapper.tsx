@@ -10,6 +10,7 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
   const [isAdmin, setIsAdmin] = useState(false);
   const [checkingAdmin, setCheckingAdmin] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     // 1. Get initial session
@@ -32,6 +33,7 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (!session || !userEmail) {
       setIsAdmin(false);
+      setAuthError(null);
       return;
     }
 
@@ -45,13 +47,19 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
           .single();
 
         if (error) {
-          console.warn("User email not in allowed_users:", userEmail);
+          console.warn("User email not in allowed_users:", userEmail, error);
+          setAuthError(error.message || JSON.stringify(error));
           setIsAdmin(false);
         } else if (data && data.role === "Admin") {
           setIsAdmin(true);
+          setAuthError(null);
+        } else {
+          setAuthError("Quyền hạn không phải Admin");
+          setIsAdmin(false);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error checking admin status:", err);
+        setAuthError(err?.message || String(err));
         setIsAdmin(false);
       } finally {
         setCheckingAdmin(false);
@@ -178,6 +186,13 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
           <p className="text-slate-350 text-xs leading-relaxed px-2 font-medium">
             Tài khoản Google của bạn hiện **chưa có quyền** truy cập hệ thống quản trị này. Vui lòng liên hệ với ban nhân sự hoặc Quản trị viên để được phê duyệt email của bạn.
           </p>
+
+          {authError && (
+            <div className="text-[11px] text-rose-300 font-mono max-w-full break-all bg-rose-950/20 p-3 rounded-xl border border-rose-900/30 text-left mt-2">
+              <span className="font-bold text-rose-400 block mb-0.5">Chi tiết lỗi (Debug):</span>
+              {authError}
+            </div>
+          )}
 
           <div className="flex flex-col w-full pt-4">
             <button

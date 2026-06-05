@@ -1349,6 +1349,15 @@ export default function RecruitmentPage() {
                               {cols.map(col => {
                                 const val = candidate[col.key];
 
+                                // STT: luôn đánh số lại từ 1 theo thứ tự hiển thị trong tab hiện tại
+                                if (col.key === "stt") {
+                                  return (
+                                    <td key={col.key} className="px-3 py-2 border border-slate-100 text-center text-slate-500 font-medium text-xs">
+                                      {i + 1}
+                                    </td>
+                                  );
+                                }
+
                                 // Format cell content based on type
                                 if (col.readOnly) {
                                   let displayVal = val || "";

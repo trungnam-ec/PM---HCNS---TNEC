@@ -1,0 +1,35 @@
+Step 2596 (MODEL):
+Created At: 2026-06-05T06:50:23Z
+Completed At: 2026-06-05T07:00:36Z
+
+				The command completed successfully.
+				Output:
+				Fetching data from Google Sheets...
+Fetched:
+- Tổng Hợp: 641 rows
+- Vòng 1: 343 rows
+- Vòng 2: 151 rows
+- Thử Việc: 105 rows
+Total normalized candidates to upload: 632
+Clearing existing candidates in Supabase...
+Uploading candidates in batches of 50...
+Uploaded batch 0 to 50
+Uploaded batch 50 to 100
+Uploaded batch 100 to 150
+Uploaded batch 150 to 200
+Uploaded batch 200 to 250
+Uploaded batch 250 to 300
+Uploaded batch 300 to 350
+Uploaded batch 350 to 400
+Uploaded batch 400 to 450
+Uploaded batch 450 to 500
+Uploaded batch 500 to 550
+Uploaded batch 550 to 600
+Uploaded batch 600 to 632
+Migration completed successfully!
+
+
+--------------------------------------------------
+Step 2598 (MODEL):
+Created At: 2026-06-05T07:00:50Z
+Completed At: 2026-06-05T07:00:50Z

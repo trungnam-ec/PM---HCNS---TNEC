@@ -368,6 +368,9 @@ export default function RecruitmentPage() {
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [selectedDept, setSelectedDept] = useState<string>("all");
+  const [groupByDept, setGroupByDept] = useState<boolean>(false);
+  const [collapsedDepts, setCollapsedDepts] = useState<Record<string, boolean>>({});
 
   // Update candidate field directly
   const handleUpdateCandidateField = async (id: string, field: string, val: any) => {
@@ -539,11 +542,18 @@ export default function RecruitmentPage() {
 
   const ACCEPTED = ".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg";
 
+  // Get all unique departments for filtering
+  const departments = Array.from(
+    new Set(candidates.map(c => c.department || "Chưa xác định").filter(Boolean))
+  ).sort();
+
   // Search filter for pipeline
-  const filteredPipeline = candidates.filter(c => 
-    (c.name || "").toLowerCase().includes(search.toLowerCase()) ||
-    (c.role || c.last_position || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredPipeline = candidates.filter(c => {
+    const matchesSearch = (c.name || "").toLowerCase().includes(search.toLowerCase()) ||
+      (c.role || c.last_position || "").toLowerCase().includes(search.toLowerCase());
+    const matchesDept = selectedDept === "all" || (c.department || "Chưa xác định") === selectedDept;
+    return matchesSearch && matchesDept;
+  });
 
   // Scorer dropzone handlers
   const addFiles = useCallback((newFiles: File[]) => {
@@ -844,8 +854,8 @@ export default function RecruitmentPage() {
           {activeTab === "pipeline" && (
             <div className="space-y-6">
               {/* Subheader Filters */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-3">
                   {/* Search */}
                   <div className="relative w-64">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
@@ -857,6 +867,32 @@ export default function RecruitmentPage() {
                       className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 transition-all shadow-sm"
                     />
                   </div>
+
+                  {/* Department Filter */}
+                  <select
+                    value={selectedDept}
+                    onChange={(e) => setSelectedDept(e.target.value)}
+                    className="px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 font-semibold text-slate-600 cursor-pointer shadow-sm"
+                  >
+                    <option value="all">Tất cả Phòng ban</option>
+                    {departments.map(dept => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+
+                  {/* Group By Department Toggle */}
+                  <button
+                    onClick={() => setGroupByDept(!groupByDept)}
+                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border transition-all shadow-sm ${
+                      groupByDept
+                        ? "bg-[#005BAC] border-[#005BAC] text-white"
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Layers size={12} />
+                    Gom nhóm phòng ban: {groupByDept ? "Bật" : "Tắt"}
+                  </button>
+
                   <button 
                     onClick={fetchCandidates}
                     className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
@@ -881,79 +917,148 @@ export default function RecruitmentPage() {
                   <p className="text-xs font-medium">Đang tải phễu tuyển dụng...</p>
                 </div>
               ) : (
-                /* Pipeline Board */
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-start overflow-x-auto pb-4">
-                  {COLUMNS.map((col) => {
-                    const colCandidates = filteredPipeline.filter(c => (c.status || "new") === col.id);
-                    return (
-                      <div 
-                        key={col.id} 
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => handleDrop(e, col.id)}
-                        className="flex flex-col gap-4 min-w-[200px] bg-slate-100/40 p-3 rounded-2xl border border-slate-200/40 min-h-[450px]"
-                      >
-                        {/* Column Header */}
-                        <div className={`flex items-center justify-between border-t-2 ${col.color} pt-2`}>
-                          <div className="flex items-center gap-2">
-                            <span className="font-heading font-bold text-xs text-slate-700">{col.title}</span>
-                            <span className="text-[9px] font-extrabold text-slate-400 bg-slate-200/80 px-2 py-0.5 rounded-full">{colCandidates.length}</span>
-                          </div>
-                        </div>
-
-                        {/* Candidate Cards */}
-                        <div className="space-y-3 flex-1">
-                          {colCandidates.map((candidate) => (
-                            <div
-                              key={candidate.id}
-                              draggable
-                              onDragStart={(e) => handleDragStart(e, candidate.id)}
-                              className="glass rounded-xl p-4 bg-white hover-elevate border border-slate-200/30 flex flex-col justify-between h-40 cursor-grab active:cursor-grabbing relative group"
-                            >
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-md ${
-                                    candidate.ai_score >= 75 ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
-                                    candidate.ai_score >= 50 ? "bg-amber-100 text-amber-700 border border-amber-200" :
-                                    "bg-rose-100 text-rose-700 border border-rose-200"
-                                  }`}>
-                                    Điểm AI: {candidate.ai_score || 0}
-                                  </span>
-                                  <button 
-                                    onClick={() => handleDeleteCandidate(candidate.id)}
-                                    className="text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
-                                
-                                <p className="text-slate-800 font-heading font-bold text-xs truncate leading-snug">{candidate.name}</p>
-                                <p className="text-slate-400 text-[10px] font-semibold truncate">{candidate.role || candidate.last_position || "Chưa cập nhật"}</p>
-                              </div>
-
-                              {/* Contact & Timeline Info */}
-                              <div className="space-y-1.5 pt-2 border-t border-slate-100 text-[9px] text-slate-400 font-semibold">
-                                <span className="flex items-center gap-1.5 text-slate-500"><Phone size={10} /> {candidate.phone || "Không có SĐT"}</span>
-                                <span className="flex items-center gap-1.5 text-slate-500"><Mail size={10} /> {candidate.email || "Không có Email"}</span>
-                                
-                                <div className="flex items-center justify-between pt-1 text-[8px] text-slate-400">
-                                  <span>Nguồn: <strong className="text-slate-600">{candidate.source || "Khác"}</strong></span>
-                                  <span className="flex items-center gap-0.5">
-                                    <Calendar size={9} /> {new Date(candidate.created_at).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit' })}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                          {colCandidates.length === 0 && (
-                            <div className="h-28 border-2 border-dashed border-slate-200/50 rounded-xl flex items-center justify-center text-slate-300 text-[11px] italic">
-                              Kéo thả vào đây
-                            </div>
+                (() => {
+                  const renderCandidateCard = (candidate: any) => (
+                    <div
+                      key={candidate.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, candidate.id)}
+                      className="glass rounded-xl p-3 bg-white hover-elevate border border-slate-200/30 flex flex-col justify-between cursor-grab active:cursor-grabbing relative group transition-all"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-1.5">
+                          <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded-md ${
+                            candidate.ai_score >= 75 ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
+                            candidate.ai_score >= 50 ? "bg-amber-100 text-amber-700 border border-amber-200" :
+                            "bg-rose-100 text-rose-700 border border-rose-200"
+                          }`}>
+                            AI: {candidate.ai_score || 0}
+                          </span>
+                          
+                          {!groupByDept && candidate.department && (
+                            <span className="text-[8px] font-extrabold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-md border border-blue-100 truncate max-w-[85px]">
+                              {candidate.department}
+                            </span>
                           )}
+
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteCandidate(candidate.id);
+                            }}
+                            className="text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity ml-auto"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                        
+                        <div>
+                          <p className="text-slate-800 font-heading font-bold text-xs leading-snug">{candidate.name}</p>
+                          <p className="text-slate-400 text-[10px] font-semibold truncate mt-0.5">{candidate.role || candidate.last_position || "Chưa cập nhật"}</p>
                         </div>
                       </div>
+
+                      <div className="flex items-center justify-between text-[8px] text-slate-400 pt-1.5 border-t border-slate-100 font-medium mt-2">
+                        <span>Nguồn: <strong className="text-slate-500">{candidate.source || "Khác"}</strong></span>
+                        <span className="flex items-center gap-0.5">
+                          <Calendar size={8} /> {new Date(candidate.created_at).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit' })}
+                        </span>
+                      </div>
+                    </div>
+                  );
+
+                  if (groupByDept) {
+                    return (
+                      <div className="space-y-4">
+                        {departments.map((dept) => {
+                          const deptCandidates = filteredPipeline.filter(c => (c.department || "Chưa xác định") === dept);
+                          if (deptCandidates.length === 0) return null;
+
+                          const isCollapsed = collapsedDepts[dept] || false;
+
+                          return (
+                            <div key={dept} className="space-y-3 border border-slate-200/50 rounded-2xl bg-slate-50/50 p-4 transition-all">
+                              <button
+                                onClick={() => setCollapsedDepts(prev => ({ ...prev, [dept]: !isCollapsed }))}
+                                className="flex items-center justify-between w-full text-slate-700 hover:text-slate-900 transition-colors"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="font-heading font-extrabold text-sm text-[#005BAC]">📁 {dept}</span>
+                                  <span className="text-[10px] font-extrabold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
+                                    {deptCandidates.length} ứng viên
+                                  </span>
+                                </div>
+                                {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                              </button>
+
+                              {!isCollapsed && (
+                                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-start overflow-x-auto pb-4 pt-2">
+                                  {COLUMNS.map((col) => {
+                                    const colCandidates = deptCandidates.filter(c => (c.status || "new") === col.id);
+                                    return (
+                                      <div 
+                                        key={col.id} 
+                                        onDragOver={(e) => e.preventDefault()}
+                                        onDrop={(e) => handleDrop(e, col.id)}
+                                        className="flex flex-col gap-3 min-w-[180px] bg-slate-100/30 p-2.5 rounded-xl border border-slate-200/40 min-h-[150px]"
+                                      >
+                                        <div className="flex items-center justify-between border-b border-slate-200/60 pb-1.5">
+                                          <span className="font-heading font-bold text-[10px] text-slate-500">{col.title}</span>
+                                          <span className="text-[8px] font-extrabold text-slate-400 bg-slate-200 px-1.5 py-0.2 rounded-full">{colCandidates.length}</span>
+                                        </div>
+
+                                        <div className="space-y-2.5">
+                                          {colCandidates.map(renderCandidateCard)}
+                                          {colCandidates.length === 0 && (
+                                            <div className="h-16 border border-dashed border-slate-200/50 rounded-lg flex items-center justify-center text-slate-300 text-[9px] italic">
+                                              Kéo thả
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     );
-                  })}
-                </div>
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-start overflow-x-auto pb-4">
+                      {COLUMNS.map((col) => {
+                        const colCandidates = filteredPipeline.filter(c => (c.status || "new") === col.id);
+                        return (
+                          <div 
+                            key={col.id} 
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => handleDrop(e, col.id)}
+                            className="flex flex-col gap-4 min-w-[200px] bg-slate-100/40 p-3 rounded-2xl border border-slate-200/40 min-h-[450px]"
+                          >
+                            <div className={`flex items-center justify-between border-t-2 ${col.color} pt-2`}>
+                              <div className="flex items-center gap-2">
+                                <span className="font-heading font-bold text-xs text-slate-700">{col.title}</span>
+                                <span className="text-[9px] font-extrabold text-slate-400 bg-slate-200/80 px-2 py-0.5 rounded-full">{colCandidates.length}</span>
+                              </div>
+                            </div>
+
+                            <div className="space-y-3 flex-1">
+                              {colCandidates.map(renderCandidateCard)}
+                              {colCandidates.length === 0 && (
+                                <div className="h-28 border-2 border-dashed border-slate-200/50 rounded-xl flex items-center justify-center text-slate-300 text-[11px] italic">
+                                  Kéo thả vào đây
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()
               )}
             </div>
           )}

@@ -92,25 +92,33 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
   // 1. Not Logged In -> Show Login Page
   if (!session) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-[#0F172A] to-[#1E293B]">
-        <div className="glass max-w-md w-full mx-4 p-8 bg-slate-900/60 border border-slate-800/80 rounded-3xl shadow-2xl flex flex-col items-center text-center space-y-6">
+      <div className="relative flex items-center justify-center min-h-screen bg-[#090D1A] overflow-hidden">
+        {/* Glow Spheres */}
+        <div className="absolute top-1/4 left-1/4 w-[350px] h-[350px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-[350px] h-[350px] bg-purple-600/10 rounded-full blur-[120px] pointer-events-none" />
+
+        <div className="relative max-w-md w-full mx-4 p-10 bg-slate-900/80 border border-slate-800/80 rounded-[2rem] shadow-2xl flex flex-col items-center text-center space-y-7 backdrop-blur-xl">
           {/* Logo TNEC */}
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center font-heading font-extrabold text-white text-2xl shadow-lg">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#005BAC] to-[#00AEEF] flex items-center justify-center font-heading font-extrabold text-white text-2xl shadow-lg ring-4 ring-blue-500/10">
             TN
           </div>
           
-          <div className="space-y-2">
-            <h1 className="text-white font-heading font-extrabold text-xl tracking-tight">PM - HCNS - TNEC</h1>
-            <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-wider">Hệ thống Quản lý Hành chính Nhân sự</p>
+          <div className="space-y-2.5">
+            <h1 className="font-heading font-extrabold text-2xl tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
+              PM - HCNS - TNEC
+            </h1>
+            <p className="text-[#00AEEF] text-xs font-bold uppercase tracking-widest">
+              Hệ thống Quản lý Hành chính Nhân sự
+            </p>
           </div>
 
-          <p className="text-slate-400 text-xs leading-relaxed px-4">
-            Chào mừng bạn đến với hệ thống nội bộ Trung Nam E&C. Vui lòng đăng nhập bằng tài khoản Google để tiếp tục.
+          <p className="text-slate-300 text-xs leading-relaxed px-2 font-medium">
+            Chào mừng bạn đến với hệ thống quản trị nội bộ của **Trung Nam E&C**. Vui lòng kết nối bằng tài khoản Google để tiếp tục.
           </p>
 
           <button
             onClick={handleLogin}
-            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-850 text-xs font-bold py-3 rounded-2xl shadow-lg transition-all active:scale-[0.98] border border-slate-200 cursor-pointer"
+            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-900 text-xs font-bold py-3.5 rounded-2xl shadow-xl hover:shadow-blue-500/10 transition-all cursor-pointer border border-slate-200"
           >
             {/* Google Icon */}
             <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -151,29 +159,32 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
   // 3. Logged in but NOT Admin (not in allowed list)
   if (!isAdmin) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-950">
-        <div className="glass max-w-md w-full mx-4 p-8 bg-slate-900/60 border border-slate-800 rounded-3xl shadow-2xl flex flex-col items-center text-center space-y-6">
-          <div className="w-16 h-16 rounded-2xl bg-rose-500/10 flex items-center justify-center text-rose-500 shadow-md">
+      <div className="relative flex items-center justify-center min-h-screen bg-[#090D1A] overflow-hidden">
+        {/* Glow Spheres */}
+        <div className="absolute top-1/4 left-1/4 w-[350px] h-[350px] bg-rose-600/5 rounded-full blur-[120px] pointer-events-none" />
+
+        <div className="relative max-w-md w-full mx-4 p-10 bg-slate-900/80 border border-slate-800 rounded-[2rem] shadow-2xl flex flex-col items-center text-center space-y-6 backdrop-blur-xl">
+          <div className="w-16 h-16 rounded-2xl bg-rose-500/10 flex items-center justify-center text-rose-500 shadow-md ring-4 ring-rose-500/5">
             <ShieldAlert size={32} />
           </div>
 
-          <div className="space-y-1.5">
-            <h2 className="text-white font-heading font-bold text-base">Truy cập bị từ chối</h2>
-            <p className="text-rose-400 text-xs font-semibold truncate max-w-[300px]" title={userEmail || undefined}>
+          <div className="space-y-2">
+            <h2 className="text-white font-heading font-extrabold text-base">Từ chối truy cập</h2>
+            <p className="text-rose-400 font-mono text-xs font-semibold bg-rose-950/30 px-3 py-1 rounded-xl border border-rose-900/20 truncate max-w-[280px]" title={userEmail || undefined}>
               {userEmail}
             </p>
           </div>
 
-          <p className="text-slate-400 text-xs leading-relaxed px-2">
-            Tài khoản Google của bạn chưa được cấp quyền truy cập hệ thống quản trị này. Vui lòng liên hệ với Quản trị viên (Admin) để được phê duyệt email.
+          <p className="text-slate-350 text-xs leading-relaxed px-2 font-medium">
+            Tài khoản Google của bạn hiện **chưa có quyền** truy cập hệ thống quản trị này. Vui lòng liên hệ với ban nhân sự hoặc Quản trị viên để được phê duyệt email của bạn.
           </p>
 
-          <div className="flex flex-col w-full gap-2 pt-2">
+          <div className="flex flex-col w-full pt-4">
             <button
               onClick={handleLogout}
-              className="w-full bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold py-2.5 rounded-xl transition-all cursor-pointer"
+              className="w-full bg-slate-800 hover:bg-slate-750 text-white text-xs font-bold py-3.5 rounded-2xl transition-all cursor-pointer hover:scale-[1.01] active:scale-[0.99]"
             >
-              Đăng xuất và thử tài khoản khác
+              Đăng xuất & Thử tài khoản khác
             </button>
           </div>
         </div>

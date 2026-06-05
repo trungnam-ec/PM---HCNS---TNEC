@@ -95,7 +95,7 @@ const INITIAL_RECURRING: RecurringPayment[] = [
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 export default function AdministrationPage() {
-  const [activeTab, setActiveTab] = useState<"vpp" | "checklist" | "invoice" | "recurring" | "report">("vpp");
+  const [activeTab, setActiveTab] = useState<"checklist" | "invoice" | "recurring" | "report" | "vpp">("checklist");
 
   // State Management
   const [supplies, setSupplies] = useState<SupplyItem[]>(INITIAL_SUPPLIES);
@@ -198,13 +198,13 @@ export default function AdministrationPage() {
               <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                 Danh mục chức năng
               </div>
-              <div className="space-y-1">
+              <div className="space-y-2.5">
                 {[
-                  { id: "vpp", label: "5. VPP (Văn phòng phẩm)", icon: Package, desc: "Tồn kho & cấp phát phòng ban" },
                   { id: "checklist", label: "1. Checklist phân việc định kỳ", icon: ClipboardList, desc: "Phân công việc cho 2 nhân sự" },
                   { id: "invoice", label: "2. Đọc hóa đơn thanh toán", icon: Receipt, desc: "AI trích xuất làm HS thanh toán" },
                   { id: "recurring", label: "3. HS thanh toán định kỳ", icon: RefreshCw, desc: "Ghi nhớ TK ngân hàng định kỳ" },
-                  { id: "report", label: "4. Báo cáo chi phí tháng", icon: BarChart3, desc: "Tổng hợp toàn bộ HS thanh toán" }
+                  { id: "report", label: "4. Báo cáo chi phí tháng", icon: BarChart3, desc: "Tổng hợp toàn bộ HS thanh toán" },
+                  { id: "vpp", label: "5. VPP (Văn phòng phẩm)", icon: Package, desc: "Tồn kho & cấp phát phòng ban" }
                 ].map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
@@ -215,18 +215,18 @@ export default function AdministrationPage() {
                         setActiveTab(item.id as any);
                         setSearchTerm("");
                       }}
-                      className={`w-full text-left p-4 rounded-2xl border transition-all flex items-start gap-3.5 hover-elevate ${
+                      className={`w-full text-left p-4 rounded-2xl border transition-all flex items-start gap-4 hover-elevate ${
                         isActive
-                          ? "bg-slate-900 border-slate-900 text-white shadow-lg shadow-slate-900/10"
-                          : "bg-white border-slate-200/60 text-slate-700 hover:border-slate-300"
+                          ? "bg-gradient-to-r from-blue-600 to-[#005BAC] border-blue-600 text-white shadow-lg shadow-blue-600/15"
+                          : "bg-white border-slate-200/60 text-slate-700 hover:border-slate-300 hover:bg-slate-50/20"
                       }`}
                     >
-                      <div className={`p-2 rounded-xl mt-0.5 ${isActive ? "bg-blue-600 text-white" : "bg-blue-50 text-blue-600"}`}>
+                      <div className={`p-2.5 rounded-xl transition-all ${isActive ? "bg-white/15 text-white" : "bg-blue-50 text-[#005BAC]"}`}>
                         <Icon size={16} />
                       </div>
-                      <div className="min-w-0">
-                        <p className="font-heading font-extrabold text-xs leading-none">{item.label}</p>
-                        <p className={`text-[10px] mt-1 font-medium truncate ${isActive ? "text-slate-400" : "text-slate-400"}`}>
+                      <div className="min-w-0 flex-1">
+                        <p className={`font-heading font-extrabold text-xs leading-tight ${isActive ? "text-white" : "text-slate-800"}`}>{item.label}</p>
+                        <p className={`text-[10px] mt-1 font-medium truncate ${isActive ? "text-blue-100" : "text-slate-400"}`}>
                           {item.desc}
                         </p>
                       </div>

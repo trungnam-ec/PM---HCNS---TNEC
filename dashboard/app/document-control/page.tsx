@@ -856,13 +856,13 @@ export default function DocumentControlPage() {
                           <td className="py-4 whitespace-nowrap">{doc.receive_send_date ? new Date(doc.receive_send_date).toLocaleDateString("vi-VN") : "–"}</td>
                           <td className="py-4 font-mono font-bold text-slate-800 whitespace-nowrap">{doc.doc_number}</td>
                           <td className="py-4 whitespace-nowrap">{doc.doc_date ? new Date(doc.doc_date).toLocaleDateString("vi-VN") : "–"}</td>
-                          <td className="py-4 max-w-[280px] truncate pr-4" title={doc.summary}>
+                          <td className="py-4 max-w-[300px] break-words pr-4 whitespace-normal" title={doc.summary}>
                             {doc.summary || "–"}
                           </td>
-                          <td className="py-4 max-w-[150px] truncate whitespace-nowrap" title={doc.sender_receiver}>
+                          <td className="py-4 max-w-[180px] break-words pr-4 whitespace-normal" title={doc.sender_receiver}>
                             {doc.sender_receiver || "–"}
                           </td>
-                          <td className="py-4 max-w-[120px] truncate whitespace-nowrap" title={doc.signer_recipient}>
+                          <td className="py-4 max-w-[140px] break-words pr-4 whitespace-normal" title={doc.signer_recipient}>
                             {doc.signer_recipient || "–"}
                           </td>
                           <td className="py-4 text-center">

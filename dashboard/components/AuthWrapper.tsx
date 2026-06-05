@@ -44,17 +44,20 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
           .from("allowed_users")
           .select("role")
           .eq("email", userEmail.toLowerCase())
-          .single();
+          .maybeSingle();
 
         if (error) {
-          console.warn("User email not in allowed_users:", userEmail, error);
+          console.warn("Error checking admin status:", error);
           setAuthError(error.message || JSON.stringify(error));
           setIsAdmin(false);
         } else if (data && data.role === "Admin") {
           setIsAdmin(true);
           setAuthError(null);
+        } else if (data) {
+          setAuthError(`Tài khoản có vai trò "${data.role}", yêu cầu vai trò "Admin".`);
+          setIsAdmin(false);
         } else {
-          setAuthError("Quyền hạn không phải Admin");
+          setAuthError("Email chưa được khai báo trên hệ thống quản trị (Bảng allowed_users).");
           setIsAdmin(false);
         }
       } catch (err: any) {
@@ -120,9 +123,6 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
             </p>
           </div>
 
-          <p className="text-slate-300 text-xs leading-relaxed px-2 font-medium">
-            Chào mừng bạn đến với hệ thống quản trị nội bộ của **Trung Nam E&C**. Vui lòng kết nối bằng tài khoản Google để tiếp tục.
-          </p>
 
           <button
             onClick={handleLogin}

@@ -482,10 +482,18 @@ export default function RecruitmentPage() {
       return sorted.filter(c => c.v1_date || c.v1_result || ["screening", "interview", "offer", "hired"].includes(c.status));
     }
     if (subTab === "vong_2") {
-      return sorted.filter(c => c.v2_date || c.v2_result || ["interview", "offer", "hired"].includes(c.status));
+      return sorted.filter(c => {
+        const hasFailedV1 = c.v1_result && !c.v1_result.includes("ĐẠT");
+        if (hasFailedV1) return false;
+        return c.v2_date || c.v2_result || ["interview", "offer", "hired"].includes(c.status);
+      });
     }
     if (subTab === "thu_viec") {
-      return sorted.filter(c => c.onboard_date || c.probation_result || ["offer", "hired"].includes(c.status));
+      return sorted.filter(c => {
+        const hasFailedV2 = c.v2_result && !c.v2_result.includes("ĐẠT");
+        if (hasFailedV2) return false;
+        return c.onboard_date || c.probation_result || ["offer", "hired"].includes(c.status);
+      });
     }
     return sorted;
   };

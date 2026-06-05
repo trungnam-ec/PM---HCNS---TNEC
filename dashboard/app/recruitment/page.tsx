@@ -32,13 +32,23 @@ import {
 } from "lucide-react";
 
 // ─── TYPES FOR CV SCORER ──────────────────────────────────────────────────────
-type ScoreBreakdownItem = { diem: number; toi_da: number; ly_do: string };
+type ScoreBreakdownItem = { diem: number; toi_da: number; ly_do: string; phan_tram_dap_ung?: number };
 type ScoreBreakdown = {
   kinh_nghiem?: ScoreBreakdownItem;
   ky_nang?: ScoreBreakdownItem;
   hoc_van?: ScoreBreakdownItem;
   soft_skill?: ScoreBreakdownItem;
   phat?: ScoreBreakdownItem;
+};
+type JdRequirements = {
+  bat_buoc?: string[];
+  uu_tien?: string[];
+  hoc_van?: string;
+  kinh_nghiem_yeu_cau?: string;
+};
+type CvEvidence = {
+  dap_ung?: string[];
+  khong_dap_ung?: string[];
 };
 
 type ScoringResult = {
@@ -50,6 +60,8 @@ type ScoringResult = {
   missing_skills: string[];
   summary: string;
   score_breakdown?: ScoreBreakdown;
+  jd_requirements?: JdRequirements;
+  cv_evidence?: CvEvidence;
   extracted_info: Record<string, string>;
   submitted?: boolean;
   saved_db?: boolean;
@@ -308,6 +320,84 @@ function ResultCard({
               </div>
             </div>
           </div>
+
+          {/* Đối chiếu yêu cầu JD & Bằng chứng CV */}
+          {(result.jd_requirements || result.cv_evidence) && (
+            <div className="border-t border-slate-200/40 pt-4">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">🔍 Chi tiết đối chiếu JD vs CV</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* JD Requirements */}
+                <div className="bg-slate-50/50 rounded-xl p-3.5 border border-slate-100/60">
+                  <p className="text-xs font-bold text-[#005BAC] mb-2.5 flex items-center gap-1.5">
+                    📋 Tiêu chuẩn tuyển dụng (JD)
+                  </p>
+                  <div className="space-y-3 text-[11px] text-slate-600">
+                    {result.jd_requirements?.bat_buoc && result.jd_requirements.bat_buoc.length > 0 && (
+                      <div>
+                        <span className="font-semibold text-slate-700">Yêu cầu bắt buộc (Must-have):</span>
+                        <ul className="list-disc pl-4 mt-1 space-y-1">
+                          {result.jd_requirements.bat_buoc.map((req, idx) => (
+                            <li key={idx} className="leading-relaxed">{req}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {result.jd_requirements?.uu_tien && result.jd_requirements.uu_tien.length > 0 && (
+                      <div>
+                        <span className="font-semibold text-slate-700">Ưu tiên (Nice-to-have):</span>
+                        <ul className="list-disc pl-4 mt-1 space-y-1">
+                          {result.jd_requirements.uu_tien.map((req, idx) => (
+                            <li key={idx} className="leading-relaxed">{req}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {result.jd_requirements?.hoc_van && (
+                      <div className="pt-1 border-t border-slate-200/40">
+                        <span className="font-semibold text-slate-700">Học vấn tối thiểu: </span>
+                        <span className="text-slate-600">{result.jd_requirements.hoc_van}</span>
+                      </div>
+                    )}
+                    {result.jd_requirements?.kinh_nghiem_yeu_cau && (
+                      <div className="pt-1">
+                        <span className="font-semibold text-slate-700">Kinh nghiệm tối thiểu: </span>
+                        <span className="text-slate-600">{result.jd_requirements.kinh_nghiem_yeu_cau}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* CV Evidence */}
+                <div className="bg-slate-50/50 rounded-xl p-3.5 border border-slate-100/60">
+                  <p className="text-xs font-bold text-[#005BAC] mb-2.5 flex items-center gap-1.5">
+                    🔎 Bằng chứng đối chiếu từ CV
+                  </p>
+                  <div className="space-y-3 text-[11px] text-slate-600">
+                    {result.cv_evidence?.dap_ung && result.cv_evidence.dap_ung.length > 0 && (
+                      <div>
+                        <span className="font-semibold text-emerald-600">Các điểm ĐÁP ỨNG:</span>
+                        <ul className="list-disc pl-4 mt-1 space-y-1">
+                          {result.cv_evidence.dap_ung.map((ev, idx) => (
+                            <li key={idx} className="text-slate-600 leading-relaxed">{ev}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {result.cv_evidence?.khong_dap_ung && result.cv_evidence.khong_dap_ung.length > 0 && (
+                      <div>
+                        <span className="font-semibold text-rose-500">Các điểm CHƯA ĐÁP ỨNG:</span>
+                        <ul className="list-disc pl-4 mt-1 space-y-1">
+                          {result.cv_evidence.khong_dap_ung.map((ev, idx) => (
+                            <li key={idx} className="text-slate-500 leading-relaxed">{ev}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -710,6 +800,8 @@ export default function RecruitmentPage() {
           missing_skills: data.missing_skills ?? [],
           summary: data.summary ?? "",
           score_breakdown: data.score_breakdown ?? undefined,
+          jd_requirements: data.jd_requirements ?? undefined,
+          cv_evidence: data.cv_evidence ?? undefined,
           extracted_info: data.extracted_info ?? {},
           submitted: false,
           saved_db: false

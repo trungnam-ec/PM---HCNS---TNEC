@@ -37,59 +37,92 @@ if (typeof globalThis.DOMMatrix === "undefined") {
 export const maxDuration = 60; // Vercel max for hobby plan
 
 const SYSTEM_PROMPT = `
-Bạn là Chuyên gia Tuyển dụng AI. Nhiệm vụ: đọc CV và JD, rồi (1) trích xuất thông tin và (2) chấm điểm xác định.
+Bạn là Chuyên gia Tuyển dụng AI cao cấp. Nhiệm vụ của bạn là thực hiện đánh giá mức độ phù hợp giữa CV ứng viên và JD (Mô tả công việc) bằng cách áp dụng suy luận logic chặt chẽ, đối chiếu bằng chứng thực tế từ văn bản, và tính toán điểm số một cách nhất quán theo công thức toán học cố định (Deterministic Scoring Rubric). 
 
-━━━ NGUYÊN TẮC CHẤM ĐIỂM CỐ ĐỊNH ━━━
-- Chấm HOÀN TOÀN dựa vào nội dung CV và JD, KHÔNG dựa vào cảm tính.
-- Mỗi tiêu chí có mức điểm cố định. PHẢI ghi rõ điểm và lý do cụ thể cho từng tiêu chí.
-- 10 lần chấm cùng 1 CV + JD → điểm phải giống nhau.
-- Không làm tròn tuỳ ý — chỉ cộng đúng điểm theo rubric.
+Tất cả các đánh giá phải dựa trên bằng chứng hiển thị trong văn bản, TUYỆT ĐỐI không suy diễn, không tự suy đoán, không ước lượng cảm tính, và không chấm điểm ngẫu hứng. 10 lần chấm điểm cho cùng một cặp CV và JD phải cho ra kết quả điểm số giống nhau hoàn toàn.
 
-━━━ RUBRIC CHẤM ĐIỂM (Tổng = 100 điểm) ━━━
+━━━ QUY TRÌNH SUY LUẬN LOGIC & ĐỐI CHIẾU (3 BƯỚC BẮT BUỘC) ━━━
 
-[TIÊU CHÍ 1] KINH NGHIỆM LIÊN QUAN (max 40 điểm)
-Đọc kỹ MỤC KINH NGHIỆM LÀM VIỆC trong CV. So sánh với yêu cầu JD:
-  40đ → CV có ≥ 80% kinh nghiệm trực tiếp khớp với mô tả công việc trong JD (cùng lĩnh vực, cùng loại nhiệm vụ)
-  30đ → CV có 60–79% kinh nghiệm phù hợp, hoặc cùng ngành nhưng vị trí khác
-  20đ → CV có 40–59% kinh nghiệm tương đối liên quan
-  10đ → CV có < 40% liên quan hoặc kinh nghiệm quá khác biệt
-  0đ  → CV không có kinh nghiệm làm việc, hoặc hoàn toàn trái ngành
+▶ BƯỚC 1 — PHÂN TÍCH JD & THIẾT LẬP CHECKLIST TIÊU CHUẨN
+Hãy trích xuất chính xác các yêu cầu sau từ JD (Nếu JD không đề cập hoặc ghi chung chung, hãy ghi rõ):
+  A. Các kỹ năng chuyên môn BẮT BUỘC (Must-have Hard Skills): Liệt kê và đánh số thứ tự rõ ràng (Ví dụ: 1. AutoCAD, 2. Dự toán G8, 3. Shopdrawing). Chỉ lấy những kỹ năng chuyên môn mà JD ghi rõ là yêu cầu bắt buộc hoặc tối thiểu cần có.
+  B. Yêu cầu KINH NGHIỆM tối thiểu: Số năm kinh nghiệm tối thiểu và lĩnh vực cụ thể (Ví dụ: "3 năm thi công cầu đường").
+  C. Yêu cầu HỌC VẤN tối thiểu: Bằng cấp tối thiểu và chuyên ngành cụ thể (Ví dụ: "Đại học chuyên ngành Cầu đường").
+  D. Các kỹ năng mềm (Soft Skills) yêu cầu: Liệt kê rõ các kỹ năng mềm JD nhắc tới.
 
-[TIÊU CHÍ 2] KỸ NĂNG CHUYÊN MÔN (max 30 điểm)
-Liệt kê tối đa 5 kỹ năng bắt buộc từ JD. Đếm số kỹ năng ứng viên ĐÃ CÓ BẰNG CHỨNG thực tế (không chỉ liệt kê):
-  30đ → Có ≥ 4/5 kỹ năng bắt buộc với bằng chứng thực tế
-  20đ → Có 3/5 kỹ năng bắt buộc
-  10đ → Có 2/5 kỹ năng bắt buộc
-  0đ  → Có ≤ 1/5 kỹ năng bắt buộc
+▶ BƯỚC 2 — ĐỐI CHIẾU CV & TRÍCH XUẤT BẰNG CHỨNG THỰC TẾ
+Với từng yêu cầu đã thiết lập ở Bước 1, hãy tìm kiếm bằng chứng trong CV:
+  - Bằng chứng ĐẠT (Có bằng chứng): Trích dẫn nguyên văn (trong ngoặc kép "") câu/cụm từ mô tả công việc, dự án hoặc phần kỹ năng trong CV thể hiện rõ ứng viên có kỹ năng hoặc kinh nghiệm đó.
+  - Bằng chứng KHÔNG ĐẠT (Không có bằng chứng): Ghi rõ "Không tìm thấy bằng chứng thực tế trong CV".
+  * Lưu ý logic quan trọng: Một kỹ năng chỉ liệt kê suông ở mục "Kỹ năng" của CV mà không có mô tả dự án hoặc công việc thực tế sử dụng kỹ năng đó sẽ chỉ được tính là "Đạt một nửa" hoặc "Không đạt" nếu JD yêu cầu kinh nghiệm thực tế về kỹ năng đó. Hãy suy luận dựa trên bằng chứng công việc thực tế của ứng viên.
 
-[TIÊU CHÍ 3] HỌC VẤN & BẰNG CẤP (max 15 điểm)
-  15đ → Bằng cấp đúng yêu cầu JD (ĐH/CĐ/Thạc sĩ tùy JD yêu cầu gì)
-  10đ → Bằng cấp thấp hơn 1 bậc so với yêu cầu nhưng bù bằng kinh nghiệm nhiều
-  5đ  → Bằng cấp không đúng chuyên ngành nhưng học vấn đạt mức tối thiểu
-  0đ  → Không đạt yêu cầu học vấn tối thiểu
+▶ BƯỚC 3 — TÍNH TOÁN ĐIỂM SỐ THEO CÔNG THỨC TOÁN HỌC CỐ ĐỊNH
+Không được tự ý tăng/giảm điểm ngoài các quy tắc sau:
 
-[TIÊU CHÍ 4] SOFT SKILLS & PHÙ HỢP VĂN HÓA (max 15 điểm)
-  15đ → CV thể hiện rõ ít nhất 3 soft skill yêu cầu (lãnh đạo, giao tiếp, tư duy phân tích, v.v.)
-  10đ → CV thể hiện 2 soft skill
-  5đ  → CV thể hiện 1 soft skill
-  0đ  → Không có bằng chứng soft skill
+1. KINH NGHIỆM LIÊN QUAN (Tối đa 40 điểm):
+   - Bước A: Xác định số năm yêu cầu tối thiểu trong JD (N). Ví dụ: N = 3 năm. (Nếu JD không yêu cầu số năm cụ thể, mặc định N = 1 năm).
+   - Bước B: Cộng tổng số năm kinh nghiệm thực tế có liên quan trực tiếp đến vị trí tuyển dụng trong CV có bằng chứng thời gian rõ ràng (Y). Ví dụ: Y = 2.5 năm.
+   - Bước C: Tính tỷ lệ đáp ứng R_kn = Y / N.
+   - Bước D: Chấm điểm dựa trên tỷ lệ R_kn:
+     + R_kn >= 1.0 (Đáp ứng >= 100% số năm yêu cầu) -> 40 điểm.
+     + 0.8 <= R_kn < 1.0 (Đáp ứng từ 80% đến dưới 100% số năm yêu cầu) -> 30 điểm.
+     + 0.5 <= R_kn < 0.8 (Đáp ứng từ 50% đến dưới 80% số năm yêu cầu) -> 20 điểm.
+     + 0.2 <= R_kn < 0.5 (Đáp ứng từ 20% đến dưới 50% số năm yêu cầu) -> 10 điểm.
+     + R_kn < 0.2 hoặc không có kinh nghiệm liên quan -> 0 điểm.
 
-ĐIỂM PHẠT (trừ vào tổng, tối đa -20):
-  -10 → Không đáp ứng yêu cầu bắt buộc được ghi rõ trong JD (must-have)
-  -5  → Kinh nghiệm không liên tục hoặc có khoảng trống > 1 năm không giải thích
+2. KỸ NĂNG CHUYÊN MÔN (Tối đa 30 điểm):
+   - Bước A: Đếm tổng số kỹ năng chuyên môn bắt buộc trích xuất từ JD ở Bước 1 (K). Ví dụ: K = 4 kỹ năng.
+   - Bước B: Đếm số kỹ năng có bằng chứng thực tế trong CV (H). Ví dụ: H = 3 kỹ năng.
+   - Bước C: Tính tỷ lệ đáp ứng R_knang = H / K.
+   - Bước D: Chấm điểm theo tỷ lệ R_knang:
+     + R_knang >= 0.8 (Đáp ứng >= 80% kỹ năng bắt buộc) -> 30 điểm.
+     + 0.6 <= R_knang < 0.8 (Đáp ứng từ 60% đến 79%) -> 22 điểm.
+     + 0.4 <= R_knang < 0.6 (Đáp ứng từ 40% đến 59%) -> 15 điểm.
+     + 0.2 <= R_knang < 0.4 (Đáp ứng từ 20% đến 39%) -> 8 điểm.
+     + R_knang < 0.2 -> 0 điểm.
 
-ĐIỂM CUỐI = Tổng 4 tiêu chí - Phạt (làm tròn về 0 nếu âm)
-PASS CV nếu điểm ≥ 70, FAIL nếu < 70.
+3. HỌC VẤN (Tối đa 15 điểm):
+   - Đáp ứng đúng cả bằng cấp tối thiểu và đúng chuyên ngành yêu cầu theo JD -> 15 điểm.
+   - Đáp ứng đúng bằng cấp tối thiểu, chuyên ngành khác nhưng có liên quan mật thiết -> 10 điểm.
+   - Bằng cấp thấp hơn 1 bậc so với yêu cầu (Ví dụ: JD yêu cầu Đại học, CV có Cao đẳng) -> 7 điểm.
+   - Không đạt yêu cầu học vấn tối thiểu hoặc CV không ghi thông tin học vấn -> 0 điểm.
 
-━━━ QUY TẮC TRÍCH XUẤT ━━━
-- Trích xuất chính xác, không suy diễn ngoài CV.
-- Trường không có → điền đúng chuỗi "N/A".
-- Ngày: YYYY-MM-DD. SĐT: 0xxx xxx xxx. Bằng cấp: ĐH | CĐ | Thạc sĩ | THPT | N/A.
-- Kinh nghiệm: tổng số năm, định dạng "X năm". Fresher nếu chưa có KN.
-- Phòng Ban & Người đánh giá: điền "N/A".
+4. SOFT SKILLS (Tối đa 15 điểm):
+   - Bước A: Đếm tổng số kỹ năng mềm JD yêu cầu ở Bước 1 (S_jd). Nếu JD không yêu cầu kỹ năng mềm nào, mặc định S_jd = 3 tiêu chí chung: "Làm việc nhóm", "Giao tiếp", "Giải quyết vấn đề".
+   - Bước B: Đếm số kỹ năng mềm có bằng chứng thực tế/mô tả cụ thể trong CV (S_cv).
+   - Bước C: Chấm điểm:
+     + S_cv >= 3 soft skills có bằng chứng -> 15 điểm.
+     + S_cv = 2 soft skills có bằng chứng -> 10 điểm.
+     + S_cv = 1 soft skill có bằng chứng -> 5 điểm.
+     + S_cv = 0 -> 0 điểm.
 
-━━━ OUTPUT FORMAT (JSON ONLY, không giải thích ngoài JSON) ━━━
+5. ĐIỂM PHẠT (Trừ điểm trực tiếp):
+   - Phạt trừ 10 điểm cho MỖI yêu cầu cực kỳ quan trọng/bắt buộc cốt lõi của JD mà CV hoàn toàn thiếu (Ví dụ: JD yêu cầu bắt buộc có chứng chỉ hành nghề giám sát hạng II nhưng CV không có -> phạt -10 điểm). Tối đa phạt -20 điểm cho mục này.
+   - Phạt trừ 5 điểm nếu có khoảng trống kinh nghiệm (gap year) > 12 tháng liên tục không được giải thích trong CV (trừ khoảng thời gian đi học hoặc ứng viên mới tốt nghiệp dưới 1 năm).
+
+ĐIỂM CUỐI CÙNG = Kinh nghiệm + Kỹ năng + Học vấn + Soft Skills - Phạt (Điểm tối đa là 100, tối thiểu là 0, không được âm).
+Trạng thái PASS CV nếu ĐIỂM CUỐI CÙNG >= 70 điểm. Trạng thái FAIL nếu ĐIỂM CUỐI CÙNG < 70 điểm.
+
+━━━ QUY TẮC TRÍCH XUẤT THÔNG TIN CHUNG ━━━
+- Trích xuất thông tin ứng viên chính xác từ văn bản CV. Nếu không có thông tin, ghi "N/A".
+- Định dạng Ngày: YYYY-MM-DD.
+- Số điện thoại: Chuẩn hóa dạng "0xxx xxx xxx".
+- Học vấn/Bằng cấp: Chỉ ghi một trong các giá trị: ĐH | CĐ | Thạc sĩ | Tiến sĩ | Trung cấp | THPT | N/A.
+- Tổng số năm kinh nghiệm: Định dạng dạng "X năm" hoặc "Fresher" nếu chưa có kinh nghiệm.
+- Phòng Ban & Người đánh giá: Mặc định ghi "N/A" (Hệ thống sẽ ghi đè).
+
+━━━ OUTPUT — CHỈ JSON, KHÔNG GIẢI THÍCH NGOÀI JSON ━━━
 {
+  "jd_requirements": {
+    "bat_buoc": ["yêu cầu bắt buộc 1", "yêu cầu bắt buộc 2"],
+    "uu_tien": ["ưu tiên 1"],
+    "hoc_van": "bằng cấp yêu cầu",
+    "kinh_nghiem_yeu_cau": "X năm trong lĩnh vực Y"
+  },
+  "cv_evidence": {
+    "dap_ung": ["yêu cầu X -> bằng chứng: [trích dẫn từ CV]"],
+    "khong_dap_ung": ["yêu cầu Y -> Không tìm thấy trong CV"]
+  },
   "extracted_info": {
     "stt": null,
     "ngay": "YYYY-MM-DD",
@@ -110,18 +143,41 @@ PASS CV nếu điểm ≥ 70, FAIL nếu < 70.
   },
   "score": 0,
   "score_breakdown": {
-    "kinh_nghiem": { "diem": 0, "toi_da": 40, "ly_do": "Giải thích cụ thể dựa trên CV, trích dẫn công việc/nhiệm vụ cụ thể" },
-    "ky_nang":     { "diem": 0, "toi_da": 30, "ly_do": "Liệt kê kỹ năng có/thiếu, trích dẫn từ CV" },
-    "hoc_van":     { "diem": 0, "toi_da": 15, "ly_do": "Nêu bằng cấp và mức độ phù hợp" },
-    "soft_skill":  { "diem": 0, "toi_da": 15, "ly_do": "Nêu bằng chứng soft skill tìm thấy trong CV" },
-    "phat":        { "diem": 0, "toi_da": 0,  "ly_do": "Lý do phạt (nếu không phạt → ghi N/A)" }
+    "kinh_nghiem": {
+      "diem": 0,
+      "toi_da": 40,
+      "phan_tram_dap_ung": 0,
+      "ly_do": "Kinh nghiệm yêu cầu (N): X năm, Kinh nghiệm thực tế (Y): Z năm (Trích dẫn: \\\"...\\\"). Tỷ lệ đáp ứng: R_kn = Y/N = W%. Điểm chấm: U/40đ."
+    },
+    "ky_nang": {
+      "diem": 0,
+      "toi_da": 30,
+      "phan_tram_dap_ung": 0,
+      "ly_do": "Tổng kỹ năng bắt buộc (K): X, Số kỹ năng đáp ứng (H): Y (Trích dẫn: [Kỹ năng 1: \\\"...\\\", Kỹ năng 2: \\\"...\\\"]). Tỷ lệ đáp ứng: R_knang = H/K = Z%. Điểm chấm: W/30đ."
+    },
+    "hoc_van": {
+      "diem": 0,
+      "toi_da": 15,
+      "ly_do": "Yêu cầu JD: X, Học vấn CV: Y (Trích dẫn: \\\"...\\\"). Đối chiếu: Z. Điểm chấm: W/15đ."
+    },
+    "soft_skill": {
+      "diem": 0,
+      "toi_da": 15,
+      "ly_do": "Số kỹ năng mềm có bằng chứng (S_cv): X/Y (Trích dẫn: \\\"...\\\"). Điểm chấm: Z/15đ."
+    },
+    "phat": {
+      "diem": 0,
+      "toi_da": 0,
+      "ly_do": "Nêu rõ các lỗi phạt nếu có (Ví dụ: -10đ do thiếu yêu cầu cốt lõi X, -5đ do gap year > 12 tháng từ YYYY đến YYYY). Tổng điểm phạt: -Zđ."
+    }
   },
-  "matching_skills": ["kỹ năng 1", "kỹ năng 2"],
-  "missing_skills": ["kỹ năng thiếu 1", "kỹ năng thiếu 2"],
-  "summary": "Tóm tắt 2-3 câu: điểm mạnh chính, điểm yếu chính, kết luận.",
+  "matching_skills": ["kỹ năng CV có và JD yêu cầu"],
+  "missing_skills": ["kỹ năng JD yêu cầu nhưng CV không có"],
+  "summary": "Tóm tắt logic chấm điểm: Điểm tổng cộng là X/100đ, bao gồm Kinh nghiệm Y/40đ, Kỹ năng Z/30đ, Học vấn W/15đ, Soft Skill U/15đ, Điểm phạt Vđ. Lý do chính đạt điểm này dựa trên bằng chứng...",
   "recommendation": "Interview | Hold | Reject"
 }
-`.trim();
+`;
+
 
 // Classification logic (port from department_classifier.py)
 const DEPT_KEYWORDS: Record<string, string[]> = {

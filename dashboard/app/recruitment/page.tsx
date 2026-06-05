@@ -1655,22 +1655,10 @@ export default function RecruitmentPage() {
                 <h2 className="font-heading font-bold text-slate-800 text-sm flex items-center gap-2">
                   <Info size={18} className="text-[#005BAC]" /> Thông tin nền tảng
                 </h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-semibold text-slate-600">
-                  <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
+                <div className="text-xs font-semibold text-slate-600">
+                  <div className="bg-slate-50 rounded-xl p-4 space-y-0.5 w-fit min-w-[200px]">
                     <p className="text-slate-400 text-[10px]">Phiên bản</p>
-                    <p className="text-[#005BAC] font-bold">HRA Platform v2.5</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
-                    <p className="text-slate-400 text-[10px]">Phòng ban kết nối</p>
-                    <p className="text-emerald-600 font-bold">Tuyển dụng & HCNS</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
-                    <p className="text-slate-400 text-[10px]">Cơ sở dữ liệu chính</p>
-                    <p className="text-blue-600 font-bold">Supabase PostgreSQL</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
-                    <p className="text-slate-400 text-[10px]">Môi trường</p>
-                    <p className="text-emerald-600 font-bold">Online Production</p>
+                    <p className="text-[#005BAC] font-bold">HR Platform 1.0</p>
                   </div>
                 </div>
               </div>

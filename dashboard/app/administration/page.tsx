@@ -45,7 +45,7 @@ interface DeptRequest {
 interface ChecklistItem {
   id: string;
   task: string;
-  assignee: "Bạn A" | "Bạn B" | "Bạn C";
+  assignee: "Như Quỳnh" | "Thùy Quyên" | "Thanh Hằng";
   frequency: "Hàng ngày" | "Hàng tuần" | "Hàng tháng";
   status: "Kế hoạch" | "Đang xử lý" | "Chờ duyệt" | "Cần chỉnh sửa" | "Hoàn thành";
   priority?: "Cao" | "Trung bình" | "Thấp";
@@ -91,15 +91,15 @@ const KANBAN_COLUMNS = [
 ];
 
 const INITIAL_CHECKLIST: ChecklistItem[] = [
-  { id: "T1", task: "POST NGÀY BÁO CHÍ CÁCH MẠNG VN 21/6", assignee: "Bạn A", frequency: "Hàng ngày", status: "Kế hoạch", priority: "Trung bình", date: "18-06" },
-  { id: "T2", task: "CẬP NHẬT WEBSITE TIẾNG TRUNG", assignee: "Bạn B", frequency: "Hàng ngày", status: "Đang xử lý", priority: "Trung bình", date: "30-06" },
-  { id: "T3", task: "Bảng thông tin Wifi Văn phòng", assignee: "Bạn A", frequency: "Hàng tuần", status: "Chờ duyệt", priority: "Trung bình", date: "05-06" },
-  { id: "T4", task: "ATLD - Lợi ích sử dụng nón bảo hộ", assignee: "Bạn A", frequency: "Hàng ngày", status: "Cần chỉnh sửa", priority: "Trung bình", date: "03-06" },
-  { id: "T5", task: "Cập nhật Dự án HSNL Tiếng Trung", assignee: "Bạn A", frequency: "Hàng tháng", status: "Hoàn thành", priority: "Trung bình", date: "10-06" },
-  { id: "T6", task: "Kiểm tra và chuẩn bị văn phòng phẩm đầu ngày", assignee: "Bạn A", frequency: "Hàng ngày", status: "Hoàn thành", priority: "Thấp", date: "05-06" },
-  { id: "T7", task: "Đối soát hóa đơn & chuẩn bị hồ sơ thanh toán tuần", assignee: "Bạn B", frequency: "Hàng tuần", status: "Kế hoạch", priority: "Cao", date: "08-06" },
-  { id: "T8", task: "TIẾP NHẬN VÀ PHÂN LOẠI CÔNG VĂN ĐẾN ĐẦU NGÀY", assignee: "Bạn C", frequency: "Hàng ngày", status: "Đang xử lý", priority: "Cao", date: "05-06" },
-  { id: "T9", task: "LƯU TRỮ VÀ BÀN GIAO HỒ SƠ THẦU/CÔNG VĂN ĐI", assignee: "Bạn C", frequency: "Hàng tuần", status: "Hoàn thành", priority: "Trung bình", date: "04-06" }
+  { id: "T1", task: "POST NGÀY BÁO CHÍ CÁCH MẠNG VN 21/6", assignee: "Như Quỳnh", frequency: "Hàng ngày", status: "Kế hoạch", priority: "Trung bình", date: "18-06" },
+  { id: "T2", task: "CẬP NHẬT WEBSITE TIẾNG TRUNG", assignee: "Thùy Quyên", frequency: "Hàng ngày", status: "Đang xử lý", priority: "Trung bình", date: "30-06" },
+  { id: "T3", task: "Bảng thông tin Wifi Văn phòng", assignee: "Như Quỳnh", frequency: "Hàng tuần", status: "Chờ duyệt", priority: "Trung bình", date: "05-06" },
+  { id: "T4", task: "ATLD - Lợi ích sử dụng nón bảo hộ", assignee: "Như Quỳnh", frequency: "Hàng ngày", status: "Cần chỉnh sửa", priority: "Trung bình", date: "03-06" },
+  { id: "T5", task: "Cập nhật Dự án HSNL Tiếng Trung", assignee: "Như Quỳnh", frequency: "Hàng tháng", status: "Hoàn thành", priority: "Trung bình", date: "10-06" },
+  { id: "T6", task: "Kiểm tra và chuẩn bị văn phòng phẩm đầu ngày", assignee: "Như Quỳnh", frequency: "Hàng ngày", status: "Hoàn thành", priority: "Thấp", date: "05-06" },
+  { id: "T7", task: "Đối soát hóa đơn & chuẩn bị hồ sơ thanh toán tuần", assignee: "Thùy Quyên", frequency: "Hàng tuần", status: "Kế hoạch", priority: "Cao", date: "08-06" },
+  { id: "T8", task: "TIẾP NHẬN VÀ PHÂN LOẠI CÔNG VĂN ĐẾN ĐẦU NGÀY", assignee: "Thanh Hằng", frequency: "Hàng ngày", status: "Đang xử lý", priority: "Cao", date: "05-06" },
+  { id: "T9", task: "LƯU TRỮ VÀ BÀN GIAO HỒ SƠ THẦU/CÔNG VĂN ĐI", assignee: "Thanh Hằng", frequency: "Hàng tuần", status: "Hoàn thành", priority: "Trung bình", date: "04-06" }
 ];
 
 const INITIAL_RECURRING: RecurringPayment[] = [
@@ -126,7 +126,7 @@ export default function AdministrationPage() {
   const [draggedOverCol, setDraggedOverCol] = useState<string | null>(null);
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskName, setNewTaskName] = useState("");
-  const [newTaskAssignee, setNewTaskAssignee] = useState<"Bạn A" | "Bạn B" | "Bạn C">("Bạn A");
+  const [newTaskAssignee, setNewTaskAssignee] = useState<"Như Quỳnh" | "Thùy Quyên" | "Thanh Hằng">("Như Quỳnh");
   const [newTaskPriority, setNewTaskPriority] = useState<"Cao" | "Trung bình" | "Thấp">("Trung bình");
   const [newTaskFreq, setNewTaskFreq] = useState<"Hàng ngày" | "Hàng tuần" | "Hàng tháng">("Hàng ngày");
 
@@ -495,9 +495,9 @@ export default function AdministrationPage() {
                             onChange={(e) => setNewTaskAssignee(e.target.value as any)}
                             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold bg-white"
                           >
-                            <option value="Bạn A">Bạn A (Hành chính - Hậu cần, VPP, Phòng họp)</option>
-                            <option value="Bạn B">Bạn B (Hành chính - Hóa đơn, HS thanh toán)</option>
-                            <option value="Bạn C">Bạn C (Văn thư - Tiếp nhận, lưu trữ công văn)</option>
+                            <option value="Như Quỳnh">Như Quỳnh (Hành chính - Hậu cần, VPP, Phòng họp)</option>
+                            <option value="Thùy Quyên">Thùy Quyên (Hành chính - Hóa đơn, HS thanh toán)</option>
+                            <option value="Thanh Hằng">Thanh Hằng (Văn thư - Tiếp nhận, lưu trữ công văn)</option>
                           </select>
                         </div>
                         <div className="space-y-1">
@@ -540,15 +540,15 @@ export default function AdministrationPage() {
                   {/* Three personnel summary */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
                     <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Bạn A (Hành chính)</strong></p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Như Quỳnh (Hành chính)</strong></p>
                       <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Phụ trách hậu cần, kho VPP, phòng họp & tiếp khách</p>
                     </div>
                     <div className="border-l border-slate-200 pl-4">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Bạn B (Hành chính)</strong></p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Thùy Quyên (Hành chính)</strong></p>
                       <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Phụ trách đối soát hóa đơn, làm hồ sơ thanh toán, báo cáo chi phí</p>
                     </div>
                     <div className="border-l border-slate-200 pl-4">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Bạn C (Văn thư)</strong></p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Thanh Hằng (Văn thư)</strong></p>
                       <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Phụ trách tiếp nhận, phân loại, lưu trữ và chuyển phát công văn</p>
                     </div>
                   </div>
@@ -629,11 +629,11 @@ export default function AdministrationPage() {
                                     {/* Assignee indicator */}
                                     <div className="flex items-center gap-1.5 min-w-0">
                                       <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white uppercase shrink-0 ${
-                                        item.assignee === "Bạn A" ? "bg-pink-500" :
-                                        item.assignee === "Bạn B" ? "bg-emerald-500" :
+                                        item.assignee === "Như Quỳnh" ? "bg-pink-500" :
+                                        item.assignee === "Thùy Quyên" ? "bg-emerald-500" :
                                         "bg-blue-500"
                                       }`}>
-                                        {item.assignee === "Bạn A" ? "A" : item.assignee === "Bạn B" ? "B" : "C"}
+                                        {item.assignee === "Như Quỳnh" ? "NQ" : item.assignee === "Thùy Quyên" ? "TQ" : "TH"}
                                       </div>
                                       <span className="text-[9px] font-bold text-slate-500 truncate">{item.assignee}</span>
                                     </div>

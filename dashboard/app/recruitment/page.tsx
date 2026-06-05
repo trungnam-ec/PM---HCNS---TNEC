@@ -131,11 +131,41 @@ function ResultCard({
 
   // Breakdown tiêu chí hiển thị
   const breakdownItems = result.score_breakdown ? [
-    { key: "kinh_nghiem", label: "Kinh nghiệm liên quan", icon: "💼", color: "bg-blue-500",    data: result.score_breakdown.kinh_nghiem },
-    { key: "ky_nang",     label: "Kỹ năng chuyên môn",   icon: "🛠️", color: "bg-violet-500", data: result.score_breakdown.ky_nang },
-    { key: "hoc_van",     label: "Học vấn & Bằng cấp",   icon: "🎓", color: "bg-amber-500",  data: result.score_breakdown.hoc_van },
-    { key: "soft_skill",  label: "Soft skills",           icon: "🤝", color: "bg-teal-500",  data: result.score_breakdown.soft_skill },
-    { key: "phat",        label: "Điểm trừ (phạt)",       icon: "⚠️", color: "bg-rose-500",  data: result.score_breakdown.phat },
+    { 
+      key: "kinh_nghiem", 
+      label: result.score_breakdown.kinh_nghiem?.toi_da === 25 ? "Kinh nghiệm trợ lý/thư ký" : "Kinh nghiệm liên quan", 
+      icon: "💼", 
+      color: "bg-blue-500",    
+      data: result.score_breakdown.kinh_nghiem 
+    },
+    { 
+      key: "ky_nang",     
+      label: result.score_breakdown.ky_nang?.toi_da === 30 && result.score_breakdown.kinh_nghiem?.toi_da === 25 ? "Kỹ năng văn phòng & tổng hợp" : "Kỹ năng chuyên môn",   
+      icon: "🛠️", 
+      color: "bg-violet-500", 
+      data: result.score_breakdown.ky_nang 
+    },
+    { 
+      key: "hoc_van",     
+      label: result.score_breakdown.hoc_van?.toi_da === 25 ? "Hiểu biết & kinh nghiệm xây dựng" : "Học vấn & Bằng cấp",   
+      icon: "🎓", 
+      color: "bg-amber-500",  
+      data: result.score_breakdown.hoc_van 
+    },
+    { 
+      key: "soft_skill",  
+      label: result.score_breakdown.soft_skill?.toi_da === 20 ? "Soft skills & ưu tiên" : "Soft skills",           
+      icon: "🤝", 
+      color: "bg-teal-500",  
+      data: result.score_breakdown.soft_skill 
+    },
+    { 
+      key: "phat",        
+      label: "Điểm trừ (phạt)",       
+      icon: "⚠️", 
+      color: "bg-rose-500",  
+      data: result.score_breakdown.phat 
+    },
   ] : [];
 
   return (

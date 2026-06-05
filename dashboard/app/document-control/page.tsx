@@ -186,6 +186,134 @@ export default function DocumentControlPage() {
     fetchDocuments();
   }, [fetchDocuments]);
 
+  // browser-side PDF to Image converter
+  const convertPdfToImage = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async function () {
+        try {
+          const typedarray = new Uint8Array(this.result as ArrayBuffer);
+          const pdfjsLib = (window as any).pdfjsLib;
+          if (!pdfjsLib) {
+            const script = document.createElement("script");
+            script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+            script.onload = async () => {
+              const pdfjs = (window as any).pdfjsLib;
+              pdfjs.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+              try {
+                const imgData = await renderPdfPageToDataUrl(pdfjs, typedarray);
+                resolve(imgData);
+              } catch (err) {
+                reject(err);
+              }
+            };
+            script.onerror = () => reject(new Error("Không thể tải thư viện xử lý PDF.js"));
+            document.head.appendChild(script);
+          } else {
+            const imgData = await renderPdfPageToDataUrl(pdfjsLib, typedarray);
+            resolve(imgData);
+          }
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = () => reject(new Error("Không thể đọc tệp PDF"));
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
+  const renderPdfPageToDataUrl = async (pdfjs: any, typedarray: Uint8Array): Promise<string> => {
+    const pdf = await pdfjs.getDocument({ data: typedarray }).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 2.0 });
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Không thể tạo canvas context");
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+    await page.render({ canvasContext: context, viewport: viewport }).promise;
+    return canvas.toDataURL("image/jpeg", 0.85);
+  };
+
+  // Open Modal and auto-analyze with dropped/selected file
+  const openNewDocModalWithFile = async (file: File) => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    setEditingDoc(null);
+    const targetType = activeTab && ["incoming", "outgoing_1", "outgoing_2", "outgoing_hdqt"].includes(activeTab) ? (activeTab as any) : "incoming";
+    setDocType(targetType);
+    setReceiveSendDate(todayStr);
+    setDocNumber("");
+    setDocDate(todayStr);
+    setSummary("");
+    setSenderReceiver("");
+    setSignerRecipient("");
+    setHasScan(true);
+    setHasOriginal(false);
+    setFileName(file.name);
+    setScanFileUrl("");
+    setOriginalFileUrl("");
+    setAiFile(file);
+    
+    // Auto-calculate STT
+    const activeDocs = docs.filter((d) => d.type === targetType);
+    const maxStt = activeDocs.reduce((max, d) => (d.stt > max ? d.stt : max), 0);
+    setStt(maxStt + 1);
+    
+    setShowModal(true);
+
+    setIsAnalyzing(true);
+    try {
+      const customKey = localStorage.getItem("openai_api_key_van_thu") || localStorage.getItem("openai_api_key");
+      const customModel = localStorage.getItem("openai_model_van_thu") || "gpt-4o-mini";
+      
+      const headers: Record<string, string> = {};
+      if (customKey) {
+        headers["Authorization"] = `Bearer ${customKey}`;
+      }
+      headers["x-openai-model"] = customModel;
+
+      const formData = new FormData();
+      
+      if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+        try {
+          const base64DataUrl = await convertPdfToImage(file);
+          const resBlob = await fetch(base64DataUrl);
+          const blob = await resBlob.blob();
+          formData.append("document_file", blob, "scanned_page.jpg");
+        } catch (err) {
+          console.warn("Failed to render PDF to image, falling back to direct PDF upload:", err);
+          formData.append("document_file", file);
+        }
+      } else {
+        formData.append("document_file", file);
+      }
+
+      formData.append("doc_type", targetType === "incoming" ? "incoming" : "outgoing");
+
+      const res = await fetch("/api/analyze-document", {
+        method: "POST",
+        headers,
+        body: formData
+      });
+
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      if (data.doc_number) setDocNumber(data.doc_number);
+      if (data.doc_date) setDocDate(data.doc_date);
+      if (data.receive_send_date) setReceiveSendDate(data.receive_send_date);
+      if (data.sender_receiver) setSenderReceiver(data.sender_receiver);
+      if (data.summary) setSummary(data.summary);
+      if (data.signer_recipient) setSignerRecipient(data.signer_recipient);
+      
+    } catch (e) {
+      console.error(e);
+      alert("Lỗi phân tích AI: " + (e as Error).message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   // Set default dates when opening modal for new document
   const openNewDocModal = () => {
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -276,53 +404,7 @@ export default function DocumentControlPage() {
     }
   };
 
-  const convertPdfToImage = async (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = async function () {
-        try {
-          const typedarray = new Uint8Array(this.result as ArrayBuffer);
-          const pdfjsLib = (window as any).pdfjsLib;
-          if (!pdfjsLib) {
-            const script = document.createElement("script");
-            script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-            script.onload = async () => {
-              const pdfjs = (window as any).pdfjsLib;
-              pdfjs.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-              try {
-                const imgData = await renderPdfPageToDataUrl(pdfjs, typedarray);
-                resolve(imgData);
-              } catch (err) {
-                reject(err);
-              }
-            };
-            script.onerror = () => reject(new Error("Không thể tải thư viện xử lý PDF.js"));
-            document.head.appendChild(script);
-          } else {
-            const imgData = await renderPdfPageToDataUrl(pdfjsLib, typedarray);
-            resolve(imgData);
-          }
-        } catch (err) {
-          reject(err);
-        }
-      };
-      reader.onerror = () => reject(new Error("Không thể đọc tệp PDF"));
-      reader.readAsArrayBuffer(file);
-    });
-  };
-
-  const renderPdfPageToDataUrl = async (pdfjs: any, typedarray: Uint8Array): Promise<string> => {
-    const pdf = await pdfjs.getDocument({ data: typedarray }).promise;
-    const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 2.0 });
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("Không thể tạo canvas context");
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
-    await page.render({ canvasContext: context, viewport: viewport }).promise;
-    return canvas.toDataURL("image/jpeg", 0.85);
-  };
+  // Render helpers moved to top
 
   // Trigger AI analysis
   const analyzeWithAI = async () => {
@@ -483,6 +565,48 @@ export default function DocumentControlPage() {
               );
             })}
           </div>
+
+          {/* AI Quick Upload Dropzone */}
+          {["incoming", "outgoing_1", "outgoing_2", "outgoing_hdqt"].includes(activeTab) && canManage && (
+            <div 
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => {
+                handleDrop(e);
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                  openNewDocModalWithFile(e.dataTransfer.files[0]);
+                }
+              }}
+              className={`border-2 border-dashed rounded-2xl p-6 text-center flex flex-col items-center justify-center gap-2 transition-all ${
+                isDragging 
+                  ? "border-blue-500 bg-blue-50/20" 
+                  : "border-slate-200 bg-white hover:bg-slate-50/30 hover:border-blue-400"
+              } shadow-sm`}
+            >
+              <Upload className="text-blue-500 animate-bounce" size={24} />
+              <div>
+                <p className="text-xs font-bold text-slate-700">
+                  Kéo thả file công văn (PDF, Ảnh quét, Word) vào đây để AI tự động phân tích & lưu nhanh
+                </p>
+                <label className="text-xs text-blue-600 hover:underline cursor-pointer font-bold mt-1 inline-block">
+                  hoặc Chọn tệp từ máy tính
+                  <input 
+                    type="file" 
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        openNewDocModalWithFile(e.target.files[0]);
+                      }
+                    }} 
+                    className="hidden" 
+                    accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.txt" 
+                  />
+                </label>
+              </div>
+              <p className="text-[10px] text-slate-400 font-medium">
+                Hỗ trợ trích xuất tự động: Số VB, Ngày VB, Đơn vị gửi/nhận, Trích yếu, Người ký bằng AI
+              </p>
+            </div>
+          )}
 
           {/* Search bar & Action */}
           {activeTab !== "settings" && activeTab !== "timeline" && (

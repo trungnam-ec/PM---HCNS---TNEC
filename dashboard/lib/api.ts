@@ -170,6 +170,7 @@ export async function addCandidate(row: unknown[]): Promise<unknown> {
       department: department || null,
       role: role || null,
       status: String(status).toUpperCase() === "FAIL" ? "rejected" : "new",
+      v1_date: date || new Date().toLocaleDateString('sv-SE'),
       source: source || null,
       reviewer: reviewer || null
     }])

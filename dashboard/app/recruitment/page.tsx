@@ -892,6 +892,7 @@ export default function RecruitmentPage() {
           department: info.phong_ban || null,
           role: info.vi_tri || null,
           status: "new", // Starts in "new" column
+          v1_date: new Date().toLocaleDateString('sv-SE'),
           source: nguon,
           reviewer: info.nguoi_danh_gia || "AI Auto",
           ai_score: result.score,
@@ -975,6 +976,7 @@ export default function RecruitmentPage() {
           phone: addPhone || null,
           source: addSource,
           status: "new",
+          v1_date: new Date().toLocaleDateString('sv-SE'),
           ai_score: 0,
           reviewer: "Tự tạo"
         }]);
@@ -1664,10 +1666,18 @@ export default function RecruitmentPage() {
                                   );
                                 }
 
+                                let cellValue = val || "";
+                                if (col.key === "v1_date" && !val && candidate.created_at) {
+                                  const d = new Date(candidate.created_at);
+                                  const year = d.getFullYear();
+                                  const month = String(d.getMonth() + 1).padStart(2, '0');
+                                  const day = String(d.getDate()).padStart(2, '0');
+                                  cellValue = `${year}-${month}-${day}`;
+                                }
                                 return (
                                   <td key={col.key} className="p-0 border border-slate-100">
                                     <EditableCell
-                                      value={val || ""}
+                                      value={cellValue}
                                       onSave={(newVal) => handleUpdateCandidateField(candidate.id, col.key, newVal)}
                                     />
                                   </td>

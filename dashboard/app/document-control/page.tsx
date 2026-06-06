@@ -332,6 +332,32 @@ export default function DocumentControlPage() {
         const maxStt = activeDocs.reduce((max, d) => (d.stt > max ? d.stt : max), 0);
         const nextStt = maxStt + 1;
 
+        // Auto-upload file to Supabase Storage in parallel if size <= 5MB
+        let uploadedUrl = "";
+        if (item.file.size <= 5 * 1024 * 1024) {
+          try {
+            const cleanFileName = item.file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+            const filePath = `${Date.now()}_${cleanFileName}`;
+
+            const { data: uploadData, error: uploadError } = await supabase.storage
+              .from("clerical-documents")
+              .upload(filePath, item.file, {
+                cacheControl: "3600",
+                upsert: true,
+              });
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl } } = supabase.storage
+              .from("clerical-documents")
+              .getPublicUrl(filePath);
+            
+            uploadedUrl = publicUrl;
+          } catch (uploadErr) {
+            console.error("Batch upload error for file:", item.fileName, uploadErr);
+          }
+        }
+
         setBatchItems(prev => prev.map(p => p.id === item.id ? {
           ...p,
           status: "success",
@@ -343,6 +369,8 @@ export default function DocumentControlPage() {
           sender_receiver: data.sender_receiver || "",
           signer_recipient: data.signer_recipient || "",
           summary: data.summary || "",
+          scan_file_url: uploadedUrl || "",
+          has_scan: uploadedUrl ? true : p.has_scan
         } : p));
 
       } catch (err: any) {
@@ -1221,7 +1249,7 @@ export default function DocumentControlPage() {
 
                     {/* Batch Items list */}
                     <div className="overflow-x-auto border border-slate-150 rounded-xl max-h-[400px]">
-                      <table className="w-full text-xs text-left min-w-[950px]">
+                      <table className="w-full text-xs text-left min-w-[1300px]">
                         <thead className="bg-[#005BAC] text-white">
                           <tr>
                             <th className="p-3">Tên file</th>
@@ -1232,7 +1260,9 @@ export default function DocumentControlPage() {
                             <th className="p-3 w-32">Ngày VB</th>
                             <th className="p-3 w-40">Đơn vị gửi/nhận</th>
                             <th className="p-3 w-36">Người ký/nhận</th>
-                            <th className="p-3 min-w-[200px]">Trích yếu nội dung chính</th>
+                            <th className="p-3 min-w-[180px]">Trích yếu nội dung chính</th>
+                            <th className="p-3 w-40">Link bản quét (scan)</th>
+                            <th className="p-3 w-40">Link bản gốc</th>
                             <th className="p-3 text-center">Thao tác</th>
                           </tr>
                         </thead>
@@ -1251,6 +1281,17 @@ export default function DocumentControlPage() {
                                   <p className="text-rose-500 text-[9px] mt-1 font-medium leading-tight break-all max-w-[120px]">
                                     Lỗi: {item.error}
                                   </p>
+                                )}
+                                {item.status === "success" && (
+                                  item.scan_file_url ? (
+                                    <p className="text-emerald-600 text-[9px] mt-1 font-bold">
+                                      ✓ Đã upload Supabase
+                                    </p>
+                                  ) : (
+                                    <p className="text-amber-600 text-[9px] mt-1 font-bold" title="Dung lượng > 5MB, vui lòng dán link ngoài">
+                                      ⚠ File &gt; 5MB. Hãy dán link.
+                                    </p>
+                                  )
                                 )}
                               </td>
                               <td className="p-3">
@@ -1332,6 +1373,26 @@ export default function DocumentControlPage() {
                                   disabled={item.saved || item.status !== "success"}
                                   onChange={(e) => setBatchItems(prev => prev.map(p => p.id === item.id ? { ...p, summary: e.target.value } : p))}
                                   className="px-2 py-1 border border-slate-200 rounded-lg w-full text-[11px] leading-relaxed text-slate-600 font-medium"
+                                />
+                              </td>
+                              <td className="p-3">
+                                <input
+                                  type="text"
+                                  value={item.scan_file_url || ""}
+                                  disabled={item.saved || item.status !== "success"}
+                                  placeholder="Dán link hoặc tự sinh"
+                                  onChange={(e) => setBatchItems(prev => prev.map(p => p.id === item.id ? { ...p, scan_file_url: e.target.value } : p))}
+                                  className="px-2 py-1 border border-slate-200 rounded-lg w-full text-[11px] font-semibold text-slate-700"
+                                />
+                              </td>
+                              <td className="p-3">
+                                <input
+                                  type="text"
+                                  value={item.original_file_url || ""}
+                                  disabled={item.saved || item.status !== "success"}
+                                  placeholder="Dán link bản gốc"
+                                  onChange={(e) => setBatchItems(prev => prev.map(p => p.id === item.id ? { ...p, original_file_url: e.target.value } : p))}
+                                  className="px-2 py-1 border border-slate-200 rounded-lg w-full text-[11px] font-semibold text-slate-700"
                                 />
                               </td>
                               <td className="p-3 text-center">

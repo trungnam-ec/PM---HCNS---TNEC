@@ -84,16 +84,45 @@ export async function POST(req: NextRequest) {
       const text = (parsed.text || "").trim();
 
       if (text.length < 20) {
-        return NextResponse.json(
-          { error: "Không thể trích xuất văn bản trực tiếp từ file PDF này (có thể đây là file scan hoặc ảnh chụp lưu dưới dạng PDF). Vui lòng chuyển đổi/chụp màn hình hóa đơn thành file ảnh (PNG, JPG, JPEG) và tải lên lại để AI có thể đọc bằng mắt (Vision) với độ chính xác cao nhất." },
-          { status: 400 }
-        );
+        // PDF scan (ảnh chụp) – tự động fallback sang Vision API bằng cách render ảnh từ PDF
+        try {
+          const screenshotResult = await parser.getScreenshot({ imageDataUrl: true, scale: 2 });
+          if (!screenshotResult || !screenshotResult.pages || screenshotResult.pages.length === 0) {
+            return NextResponse.json(
+              { error: "Không thể đọc nội dung PDF này. File có thể bị hỏng hoặc được bảo vệ bằng mật khẩu." },
+              { status: 400 }
+            );
+          }
+          // Build Vision message with all pages (max 4 pages to avoid token limits)
+          const imageContents: OpenAI.Chat.ChatCompletionContentPart[] = [
+            { type: "text", text: `${promptText}\n\n(File PDF scan - phân tích hình ảnh tất cả các trang bên dưới)` },
+          ];
+          const maxPages = Math.min(screenshotResult.pages.length, 4);
+          for (let i = 0; i < maxPages; i++) {
+            const page = screenshotResult.pages[i];
+            if (page.dataUrl) {
+              imageContents.push({
+                type: "image_url",
+                image_url: { url: page.dataUrl, detail: "high" },
+              });
+            }
+          }
+          messages = [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: imageContents },
+          ];
+        } catch (screenshotErr: any) {
+          return NextResponse.json(
+            { error: `PDF scan không thể đọc: ${screenshotErr.message || "Lỗi render ảnh từ PDF"}. Hãy thử chụp màn hình hóa đơn thành file ảnh PNG/JPG rồi tải lên lại.` },
+            { status: 400 }
+          );
+        }
+      } else {
+        messages = [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: `${promptText}\n\n--- NỘI DUNG VĂN BẢN ---\n${text}` },
+        ];
       }
-
-      messages = [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `${promptText}\n\n--- NỘI DUNG VĂN BẢN ---\n${text}` },
-      ];
     } else if (fileType.endsWith(".docx") || fileType.endsWith(".doc")) {
       const mammoth = await import("mammoth");
       const result = await mammoth.extractRawText({ buffer: fileBuffer });

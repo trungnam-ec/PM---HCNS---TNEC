@@ -80,6 +80,43 @@ export default function DocumentControlPage() {
   // Modal State
   const [showModal, setShowModal] = useState(false);
   const [editingDoc, setEditingDoc] = useState<ClericalDoc | null>(null);
+
+  // Preview Modal State
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewTitle, setPreviewTitle] = useState("");
+
+  // Handle open preview
+  const handleOpenPreview = (url: string, title: string) => {
+    setPreviewUrl(url);
+    setPreviewTitle(title);
+    setShowPreviewModal(true);
+  };
+
+  // Immediate download helper (CORS-friendly download bypass)
+  const downloadFile = async (url: string, filename: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      
+      let downloadName = filename;
+      if (!filename.toLowerCase().endsWith(".pdf") && url.toLowerCase().includes(".pdf")) {
+        downloadName += ".pdf";
+      }
+      link.download = downloadName;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error("Download error:", error);
+      window.open(url, "_blank");
+    }
+  };
   
   // Form Values
   const [docType, setDocType] = useState<"incoming" | "outgoing_1" | "outgoing_2" | "outgoing_hdqt">("incoming");
@@ -973,15 +1010,13 @@ export default function DocumentControlPage() {
                           </td>
                           <td className="py-4 text-center">
                             {doc.original_file_url ? (
-                              <a 
-                                href={doc.original_file_url} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-all inline-flex items-center justify-center"
+                              <button 
+                                onClick={() => handleOpenPreview(doc.original_file_url!, doc.file_name || "Bản gốc")}
+                                className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-all inline-flex items-center justify-center cursor-pointer bg-transparent border-none"
                                 title="Xem bản gốc"
                               >
                                 <Eye size={15} />
-                              </a>
+                              </button>
                             ) : (
                               <span
                                 className="p-1 text-slate-300 inline-flex items-center justify-center cursor-default"
@@ -991,11 +1026,14 @@ export default function DocumentControlPage() {
                               </span>
                             )}
                           </td>
-                          <td className="py-4 max-w-[160px] truncate text-slate-400 font-normal whitespace-nowrap" title={doc.file_name}>
+                          <td className="py-4 max-w-[160px] pr-2 truncate text-slate-400 font-normal whitespace-nowrap" title={doc.file_name}>
                             {doc.scan_file_url ? (
-                              <a href={doc.scan_file_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-semibold">
+                              <button 
+                                onClick={() => handleOpenPreview(doc.scan_file_url!, doc.file_name || "Bản scan")}
+                                className="text-blue-600 hover:underline font-semibold text-left truncate max-w-full block cursor-pointer bg-transparent border-none p-0"
+                              >
                                 {doc.file_name || "Xem đính kèm"}
-                              </a>
+                              </button>
                             ) : (
                               doc.file_name || "–"
                             )}
@@ -1011,16 +1049,13 @@ export default function DocumentControlPage() {
                                   <Edit size={14} />
                                 </button>
                                 {(doc.scan_file_url || doc.original_file_url) ? (
-                                  <a
-                                    href={doc.scan_file_url || doc.original_file_url}
-                                    download
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="p-1 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-all inline-flex items-center justify-center"
+                                  <button
+                                    onClick={() => downloadFile(doc.scan_file_url || doc.original_file_url!, doc.file_name || "cong_van")}
+                                    className="p-1 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-all inline-flex items-center justify-center cursor-pointer bg-transparent border-none"
                                     title="Tải tệp đính kèm"
                                   >
                                     <Download size={14} />
-                                  </a>
+                                  </button>
                                 ) : (
                                   <span
                                     className="p-1 text-slate-300 inline-flex items-center justify-center cursor-default"
@@ -1809,6 +1844,88 @@ export default function DocumentControlPage() {
                 </div>
               </form>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Document Preview Modal */}
+      {showPreviewModal && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-all duration-300">
+          <div className="bg-white rounded-2xl w-full max-w-5xl h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 bg-blue-50 text-[#005BAC] rounded-lg">
+                  <FileText size={18} />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="font-heading font-bold text-slate-800 text-xs truncate max-w-md" title={previewTitle}>
+                    {previewTitle}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-semibold truncate">Xem tài liệu trực tuyến</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <a
+                  href={previewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer"
+                >
+                  Mở tab mới
+                </a>
+                <button
+                  onClick={() => downloadFile(previewUrl, previewTitle)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer border-none"
+                >
+                  <Download size={12} /> Tải về
+                </button>
+                <button
+                  onClick={() => {
+                    setShowPreviewModal(false);
+                    setPreviewUrl("");
+                    setPreviewTitle("");
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-all cursor-pointer bg-transparent border-none"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            {/* Body */}
+            <div className="flex-1 bg-slate-100 p-4 flex items-center justify-center relative">
+              {previewUrl ? (
+                (() => {
+                  const isImage = /\.(jpeg|jpg|gif|png|webp|svg)/i.test(previewUrl.split(/[?#]/)[0]);
+                  if (isImage) {
+                    return (
+                      <div className="w-full h-full overflow-auto flex items-center justify-center bg-white rounded-xl shadow-inner p-4">
+                        <img 
+                          src={previewUrl} 
+                          alt={previewTitle} 
+                          className="max-w-full max-h-full object-contain rounded-lg shadow-md"
+                        />
+                      </div>
+                    );
+                  }
+                  
+                  let iframeSrc = previewUrl;
+                  if (previewUrl.toLowerCase().includes("drive.google.com")) {
+                    iframeSrc = previewUrl.replace("/view", "/preview").replace("usp=sharing", "");
+                  }
+                  
+                  return (
+                    <iframe 
+                      src={iframeSrc} 
+                      className="w-full h-full border-none bg-white rounded-xl shadow-inner" 
+                      title="Document Preview"
+                    />
+                  );
+                })()
+              ) : (
+                <div className="text-slate-400 text-xs font-semibold">Không tìm thấy tài liệu</div>
+              )}
             </div>
           </div>
         </div>

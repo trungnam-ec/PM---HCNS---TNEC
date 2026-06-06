@@ -320,27 +320,62 @@ export default function TaskManagementPage() {
 
     if (!currentUser) return false;
 
+    const userEmail = currentUser.email.toLowerCase().trim();
+    const userName = currentUser.name;
+
+    // 1. Hoa Đào thấy toàn bộ nhân viên (cùng với Admin / Trưởng phòng)
     const isUserAdmin = currentUser.isAdmin || 
                         currentUser.role.toLowerCase() === "admin" ||
                         currentUser.role.toLowerCase().includes("trưởng phòng") || 
-                        currentUser.role.toLowerCase().includes("truong phong");
-
-    const isUserDeputy = currentUser.role.toLowerCase().includes("phó phòng") || 
-                         currentUser.role.toLowerCase().includes("pho phong") ||
-                         currentUser.role.toLowerCase().includes("phó trưởng phòng") || 
-                         currentUser.role.toLowerCase().includes("pho truong phong");
+                        currentUser.role.toLowerCase().includes("truong phong") ||
+                        userEmail === "lehoadao2706@gmail.com" ||
+                        userName.includes("Hoa Đào");
 
     if (isUserAdmin) return true;
 
-    if (isUserDeputy) {
-      return userDeptEmployees.includes(t.assignee) || 
-             t.assignee === currentUser.name ||
-             t.assignee.toLowerCase() === currentUser.email.toLowerCase();
+    // 2. Như Quỳnh thấy task Thanh Hằng và của chính mình
+    if (userEmail === "nhuquynh.nguyenbich@gmail.com" || userName.includes("Như Quỳnh")) {
+      const targetAssignee = t.assignee.toLowerCase();
+      return targetAssignee.includes("như quỳnh") || 
+             targetAssignee.includes("quỳnh") ||
+             targetAssignee.includes("thanh hằng") ||
+             targetAssignee.includes("hằng") ||
+             targetAssignee === userEmail ||
+             targetAssignee === "thanhhangg25697@gmail.com";
     }
 
-    return t.assignee === currentUser.name || 
-           t.assignee.toLowerCase() === currentUser.email.toLowerCase();
+    // 3. Hoành Anh thấy task của Thùy Quyên và chính mình
+    if (userEmail === "duongnhathoanhanh@gmail.com" || userName.includes("Hoành Anh")) {
+      const targetAssignee = t.assignee.toLowerCase();
+      return targetAssignee.includes("hoành anh") || 
+             targetAssignee.includes("thùy quyên") ||
+             targetAssignee.includes("quyên") ||
+             targetAssignee === userEmail ||
+             targetAssignee === "quyen.0408@gmail.com";
+    }
+
+    // 4. Các nhân viên, chuyên viên khác thì tự thấy task của chính họ
+    const targetAssignee = t.assignee.toLowerCase();
+    const cleanUserName = userName.toLowerCase();
+    return targetAssignee === cleanUserName || 
+           targetAssignee.includes(cleanUserName) ||
+           cleanUserName.includes(targetAssignee) ||
+           targetAssignee === userEmail;
   });
+
+  const canManageTasks = !!(currentUser && (
+    currentUser.isAdmin || 
+    currentUser.role.toLowerCase() === "admin" ||
+    currentUser.role.toLowerCase().includes("trưởng phòng") || 
+    currentUser.role.toLowerCase().includes("truong phong") ||
+    currentUser.role.toLowerCase().includes("phó phòng") || 
+    currentUser.role.toLowerCase().includes("pho phong") ||
+    currentUser.role.toLowerCase().includes("phó trưởng phòng") || 
+    currentUser.role.toLowerCase().includes("pho truong phong") ||
+    currentUser.role.toLowerCase().includes("tổ trưởng") || 
+    currentUser.role.toLowerCase().includes("to truong") || 
+    currentUser.role.toLowerCase().includes("leader")
+  ));
 
   return (
     <div className="flex min-h-screen bg-[#F7F9FC]">
@@ -371,14 +406,7 @@ export default function TaskManagementPage() {
               </button>
             </div>
 
-            {currentUser && (currentUser.isAdmin || 
-                             currentUser.role.toLowerCase() === "admin" ||
-                             currentUser.role.toLowerCase().includes("trưởng phòng") || 
-                             currentUser.role.toLowerCase().includes("truong phong") ||
-                             currentUser.role.toLowerCase().includes("phó phòng") || 
-                             currentUser.role.toLowerCase().includes("pho phong") ||
-                             currentUser.role.toLowerCase().includes("phó trưởng phòng") || 
-                             currentUser.role.toLowerCase().includes("pho truong phong")) && (
+            {canManageTasks && (
               <button 
                 onClick={() => setIsModalOpen(true)}
                 className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 shadow-md shadow-blue-600/10 cursor-pointer"
@@ -438,14 +466,7 @@ export default function TaskManagementPage() {
                               }`}>
                                 {task.priority}
                               </span>
-                              {currentUser && (currentUser.isAdmin || 
-                                               currentUser.role.toLowerCase() === "admin" ||
-                                               currentUser.role.toLowerCase().includes("trưởng phòng") || 
-                                               currentUser.role.toLowerCase().includes("truong phong") ||
-                                               currentUser.role.toLowerCase().includes("phó phòng") || 
-                                               currentUser.role.toLowerCase().includes("pho phong") ||
-                                               currentUser.role.toLowerCase().includes("phó trưởng phòng") || 
-                                               currentUser.role.toLowerCase().includes("pho truong phong")) && (
+                              {canManageTasks && (
                                 <button 
                                   onClick={() => handleDeleteTask(task.id)}
                                   className="text-slate-350 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"

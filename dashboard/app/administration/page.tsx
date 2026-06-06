@@ -115,10 +115,7 @@ export default function AdministrationPage() {
   const [supplies, setSupplies] = useState<SupplyItem[]>(INITIAL_SUPPLIES);
   const [deptRequests, setDeptRequests] = useState<DeptRequest[]>(INITIAL_DEPT_REQUESTS);
   const [checklist, setChecklist] = useState<ChecklistItem[]>(INITIAL_CHECKLIST);
-  const [invoices, setInvoices] = useState<Invoice[]>([
-    { id: "INV-01", number: "HD-00231", date: "2026-06-01", desc: "Mua thêm mực in văn phòng", amount: 2500000 },
-    { id: "INV-02", number: "HD-00245", date: "2026-06-03", desc: "Nước uống Lavie tháng 5", amount: 1800000 }
-  ]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>(INITIAL_RECURRING);
 
   // Checklist Kanban States
@@ -1000,32 +997,7 @@ export default function AdministrationPage() {
                         </button>
                       </div>
 
-                      {/* Mock Invoice trigger */}
-                      {invoiceQueue.length === 0 && (
-                        <button
-                          onClick={() => {
-                            const mockFiles = [
-                              new File([""], "katinat_cafe_tiepkhach_0206.png", { type: "image/png" }),
-                              new File([""], "lavie_nuoc_vanphong_0306.pdf", { type: "application/pdf" }),
-                              new File([""], "vpp_giay_a4_0406.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })
-                            ];
-                            const mockQueue = mockFiles.map(file => ({
-                              id: `QUEUE-${Math.random().toString(36).substr(2, 9)}`,
-                              file,
-                              status: "pending" as const,
-                              number: "",
-                              date: new Date().toISOString().slice(0, 10),
-                              desc: "",
-                              amount: 0,
-                              isMock: true
-                            }));
-                            setInvoiceQueue(mockQueue);
-                          }}
-                          className="w-full text-center py-2 border border-slate-200 hover:bg-slate-50 text-slate-500 text-[10px] font-bold rounded-xl transition-all active:scale-95"
-                        >
-                          Tải lên 3 hóa đơn mẫu (Test Mock hàng loạt)
-                        </button>
-                      )}
+
                     </div>
 
                     {/* Right Column: preview table + form + export buttons */}
@@ -1033,7 +1005,6 @@ export default function AdministrationPage() {
                       <div className="space-y-4">
                         <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                           <span className="text-[10px] font-extrabold text-[#005BAC] uppercase">Bản xem trước & chỉnh sửa kết quả</span>
-                          <span className="text-[9px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded border">Draft Preview</span>
                         </div>
 
                         {invoiceQueue.length === 0 ? (

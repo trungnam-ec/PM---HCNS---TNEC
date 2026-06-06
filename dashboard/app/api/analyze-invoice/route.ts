@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
-// ── Polyfill browser APIs required by pdfjs-dist in Node.js server environment ──
-// @napi-rs/canvas is a transitive dependency of pdf-parse and provides these classes
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const _napiCanvas = require("@napi-rs/canvas");
-if (typeof (global as any).DOMMatrix === "undefined") (global as any).DOMMatrix = _napiCanvas.DOMMatrix;
-if (typeof (global as any).DOMPoint === "undefined") (global as any).DOMPoint = _napiCanvas.DOMPoint;
-if (typeof (global as any).DOMRect === "undefined") (global as any).DOMRect = _napiCanvas.DOMRect;
-
 const SYSTEM_PROMPT = `
 Bạn là một AI phân tích hóa đơn chuyên nghiệp cho phòng Hành chính của công ty Trung Nam E&C.
 Nhiệm vụ của bạn là đọc nội dung hóa đơn (hoặc phân tích hình ảnh hóa đơn) và trích xuất chính xác các thông tin cần thiết dưới định dạng JSON theo đúng hướng dẫn nghiệp vụ sau:
@@ -80,10 +72,13 @@ export async function POST(req: NextRequest) {
     const fileBuffer = Buffer.from(await file.arrayBuffer());
     const fileType = file.name.toLowerCase();
 
-    let messages: OpenAI.Chat.ChatCompletionMessageParam[];
     const promptText = `Hãy phân tích hóa đơn này và trích xuất chính xác các thông tin: số hóa đơn (number), ngày hóa đơn (date), nội dung trích yếu (desc), số tiền sau thuế (amount), tên đơn vị thụ hưởng (beneficiaryName), số tài khoản ngân hàng (bankAccount), và tên ngân hàng kèm chi nhánh (bankNameBranch) dưới dạng JSON.`;
 
+    let messages: OpenAI.Chat.ChatCompletionMessageParam[];
+    const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o";
+
     if (fileType.endsWith(".pdf")) {
+      // ── Bước 1: Thử trích xuất text trực tiếp từ PDF ──
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { PDFParse } = require("pdf-parse");
       const u8 = new Uint8Array(fileBuffer.buffer, fileBuffer.byteOffset, fileBuffer.byteLength);
@@ -91,46 +86,51 @@ export async function POST(req: NextRequest) {
       const parsed = await parser.getText();
       const text = (parsed.text || "").trim();
 
-      if (text.length < 20) {
-        // PDF scan (ảnh chụp) – tự động fallback sang Vision API bằng cách render ảnh từ PDF
-        // DOMMatrix polyfill đã được inject ở module level (đầu file)
-        try {
-          const screenshotResult = await parser.getScreenshot({ imageDataUrl: true, scale: 2 });
-          if (!screenshotResult || !screenshotResult.pages || screenshotResult.pages.length === 0) {
-            return NextResponse.json(
-              { error: "Không thể đọc nội dung PDF này. File có thể bị hỏng hoặc được bảo vệ bằng mật khẩu." },
-              { status: 400 }
-            );
-          }
-          // Build Vision message with all pages (max 4 pages to avoid token limits)
-          const imageContents: OpenAI.Chat.ChatCompletionContentPart[] = [
-            { type: "text", text: `${promptText}\n\n(File PDF scan - phân tích hình ảnh tất cả các trang bên dưới)` },
-          ];
-          const maxPages = Math.min(screenshotResult.pages.length, 4);
-          for (let i = 0; i < maxPages; i++) {
-            const page = screenshotResult.pages[i];
-            if (page.dataUrl) {
-              imageContents.push({
-                type: "image_url",
-                image_url: { url: page.dataUrl, detail: "high" },
-              });
-            }
-          }
-          messages = [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: imageContents },
-          ];
-        } catch (screenshotErr: any) {
-          return NextResponse.json(
-            { error: `PDF scan không thể đọc: ${screenshotErr.message || "Lỗi render ảnh từ PDF"}. Hãy thử chụp màn hình hóa đơn thành file ảnh PNG/JPG rồi tải lên lại.` },
-            { status: 400 }
-          );
-        }
-      } else {
+      if (text.length >= 20) {
+        // PDF có text thuần – dùng text extraction (nhanh & rẻ)
         messages = [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: `${promptText}\n\n--- NỘI DUNG VĂN BẢN ---\n${text}` },
         ];
+      } else {
+        // ── Bước 2: PDF scan → dùng OpenAI Responses API với PDF input ──
+        // Không cần canvas hay native module – upload PDF base64 trực tiếp
+        const base64Pdf = fileBuffer.toString("base64");
+
+        // Dùng OpenAI Responses API (hỗ trợ PDF file input natively)
+        try {
+          const response = await (openai as any).responses.create({
+            model: model === "gpt-4o-mini" ? "gpt-4o" : model, // responses API cần gpt-4o+
+            input: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "input_text",
+                    text: `${SYSTEM_PROMPT}\n\n${promptText}`
+                  },
+                  {
+                    type: "input_file",
+                    filename: file.name,
+                    file_data: `data:application/pdf;base64,${base64Pdf}`
+                  }
+                ]
+              }
+            ],
+            text: { format: { type: "json_object" } }
+          });
+
+          const rawOutput = response.output_text || response.output?.[0]?.content?.[0]?.text || "{}";
+          const extractedData = JSON.parse(rawOutput);
+          return NextResponse.json(extractedData);
+        } catch (responsesErr: any) {
+          // Fallback nếu Responses API không khả dụng: trả về lỗi hướng dẫn dùng ảnh
+          console.error("Responses API error:", responsesErr?.message);
+          return NextResponse.json(
+            { error: `Hóa đơn dạng scan/ảnh chụp không thể đọc qua text. Vui lòng chụp màn hình hóa đơn thành file ảnh (PNG/JPG) rồi tải lên để AI đọc bằng Vision. Chi tiết: ${responsesErr?.message || "Lỗi không xác định"}` },
+            { status: 400 }
+          );
+        }
       }
     } else if (fileType.endsWith(".docx") || fileType.endsWith(".doc")) {
       const mammoth = await import("mammoth");
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
           role: "user",
           content: [
             { type: "text", text: promptText },
-            { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } },
+            { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}`, detail: "high" } },
           ],
         },
       ];
@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Định dạng file không hỗ trợ. Sử dụng PDF, DOCX, PNG, JPG hoặc TXT." }, { status: 400 });
     }
 
-    const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o-mini";
+    // Standard chat completions cho text/image
     const completion = await openai.chat.completions.create({
       model,
       messages,

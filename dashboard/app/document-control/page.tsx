@@ -108,6 +108,12 @@ export default function DocumentControlPage() {
   // Helper upload function
   const uploadFileToSupabase = async (file: File): Promise<string | null> => {
     try {
+      // Giới hạn 5MB
+      if (file.size > 5 * 1024 * 1024) {
+        alert("File lớn hơn 5MB. Hãy dán link OneDrive/Drive gốc vào ô nhập.");
+        return null;
+      }
+
       const cleanFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
       const filePath = `${Date.now()}_${cleanFileName}`;
 

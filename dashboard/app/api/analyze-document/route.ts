@@ -73,16 +73,28 @@ Hãy chú ý so sánh nội dung văn bản với tên file để trích xuất 
 Hãy trích xuất thông tin dạng JSON gồm: type, doc_number, doc_date, receive_send_date, sender_receiver, summary, signer_recipient.`;
 
     if (fileType.endsWith(".pdf")) {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { PDFParse } = require("pdf-parse");
-      const u8 = new Uint8Array(fileBuffer.buffer, fileBuffer.byteOffset, fileBuffer.byteLength);
-      const parser = new PDFParse(u8);
-      const parsed = await parser.getText();
-      const text = parsed.text || "";
-      messages = [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `${promptText}\n\n--- NỘI DUNG VĂN BẢN ---\n${text}` },
-      ];
+      // Gửi PDF trực tiếp lên OpenAI Responses API (không cần pdf-parse, tương thích Vercel)
+      const base64Pdf = fileBuffer.toString("base64");
+      const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o";
+      try {
+        const response = await openai.responses.create({
+          model: model === "gpt-4o-mini" ? "gpt-4o-mini" : model,
+          input: [{
+            role: "user",
+            content: [
+              { type: "input_text", text: `${SYSTEM_PROMPT}\n\n${promptText}` },
+              { type: "input_file", filename: originalFilename || file.name, file_data: `data:application/pdf;base64,${base64Pdf}` },
+            ],
+          }],
+          text: { format: { type: "json_object" } },
+        });
+        const rawOutput = response.output_text || "{}";
+        const extractedData = JSON.parse(rawOutput);
+        return NextResponse.json(extractedData);
+      } catch (pdfErr: any) {
+        console.error("PDF analyze error:", pdfErr);
+        return NextResponse.json({ error: pdfErr.message || "Lỗi khi phân tích file PDF" }, { status: 500 });
+      }
     } else if (fileType.endsWith(".docx") || fileType.endsWith(".doc")) {
       const mammoth = await import("mammoth");
       const result = await mammoth.extractRawText({ buffer: fileBuffer });

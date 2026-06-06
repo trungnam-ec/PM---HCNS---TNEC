@@ -289,15 +289,44 @@ export async function POST(req: NextRequest) {
     let messages: OpenAI.Chat.ChatCompletionMessageParam[];
 
     if (fileType.endsWith(".pdf")) {
-      const { PDFParse } = require("pdf-parse");
-      const u8 = new Uint8Array(fileBuffer.buffer, fileBuffer.byteOffset, fileBuffer.byteLength);
-      const parser = new PDFParse(u8);
-      const parsed = await parser.getText();
-      const cvText = parsed.text || "";
-      messages = [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `--- MÔ TẢ CÔNG VIỆC (JD) ---\n${jdText}\n\n--- NỘI DUNG CV ---\n${cvText}\n\nTRÍCH XUẤT ĐẦY ĐỦ 16 TRƯỜNG VÀ CHẤM ĐIỂM. TRẢ VỀ JSON.` },
-      ];
+      // Gửi PDF trực tiếp lên OpenAI Responses API (không cần pdf-parse, tương thích Vercel)
+      const base64Pdf = fileBuffer.toString("base64");
+      const cvPrompt = `--- MÔ TẢ CÔNG VIỆC (JD) ---\n${jdText}\n\nTRÍCH XUẤT ĐẦY ĐỦ 16 TRƯỜNG VÀ CHẤM ĐIỂM. TRẢ VỀ JSON.`;
+      const cvModel = process.env.OPENAI_MODEL || "gpt-4o";
+      try {
+        const response = await openai.responses.create({
+          model: cvModel,
+          input: [{
+            role: "user",
+            content: [
+              { type: "input_text", text: `${SYSTEM_PROMPT}\n\n${cvPrompt}` },
+              { type: "input_file", filename: file.name, file_data: `data:application/pdf;base64,${base64Pdf}` },
+            ],
+          }],
+          text: { format: { type: "json_object" } },
+        });
+        const rawJson = response.output_text || "{}";
+        const data = JSON.parse(rawJson);
+
+        // ── Override phong_ban + nguoi_danh_gia ───────────────────────────────
+        const viTri = data.extracted_info?.vi_tri || "";
+        const { phong_ban, nguoi_danh_gia } = classifyDept(jdText, viTri);
+        if (data.extracted_info) {
+          data.extracted_info.phong_ban = phong_ban;
+          data.extracted_info.nguoi_danh_gia = nguoi_danh_gia;
+          data.extracted_info.nguon = nguon;
+          data.extracted_info.ngay = today;
+          if (!viTri || viTri.toUpperCase() === "N/A") {
+            const cd = data.extracted_info.chuc_danh_gan_nhat || "";
+            data.extracted_info.vi_tri = cd && cd.toUpperCase() !== "N/A" ? cd : "N/A";
+          }
+        }
+        data.file_name = file.name;
+        return NextResponse.json(data);
+      } catch (pdfErr: unknown) {
+        const msg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
+        return NextResponse.json({ error: msg }, { status: 500 });
+      }
     } else if (fileType.endsWith(".docx") || fileType.endsWith(".doc")) {
       const mammoth = await import("mammoth");
       const result = await mammoth.extractRawText({ buffer: fileBuffer });

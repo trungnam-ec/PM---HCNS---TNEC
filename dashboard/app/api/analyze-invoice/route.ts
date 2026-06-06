@@ -49,10 +49,61 @@ Trả về kết quả CHỈ dạng JSON, không kèm bất kỳ giải thích n
 }
 `.trim();
 
+const FULL_PROMPT = `Hãy phân tích hóa đơn này và trích xuất chính xác các thông tin: số hóa đơn (number), ngày hóa đơn (date), nội dung trích yếu (desc), số tiền sau thuế (amount), tên đơn vị thụ hưởng (beneficiaryName), số tài khoản ngân hàng (bankAccount), và tên ngân hàng kèm chi nhánh (bankNameBranch) dưới dạng JSON.`;
+
+// ── Helper: Gọi OpenAI Responses API (hỗ trợ PDF file input) ──
+async function analyzeWithResponsesAPI(
+  openai: OpenAI,
+  model: string,
+  fileBuffer: Buffer,
+  fileName: string,
+  mimeType: string
+): Promise<Record<string, unknown>> {
+  const base64Data = fileBuffer.toString("base64");
+  const fileDataUrl = `data:${mimeType};base64,${base64Data}`;
+
+  const response = await openai.responses.create({
+    model: model === "gpt-4o-mini" ? "gpt-4o-mini" : model,
+    input: [
+      {
+        role: "user",
+        content: [
+          { type: "input_text", text: `${SYSTEM_PROMPT}\n\n${FULL_PROMPT}` },
+          { type: "input_file", filename: fileName, file_data: fileDataUrl },
+        ],
+      },
+    ],
+    text: { format: { type: "json_object" } },
+  });
+
+  const rawOutput = response.output_text || "{}";
+  return JSON.parse(rawOutput);
+}
+
+// ── Helper: Gọi OpenAI Chat Completions (text hoặc image) ──
+async function analyzeWithChatCompletions(
+  openai: OpenAI,
+  model: string,
+  messages: OpenAI.Chat.ChatCompletionMessageParam[]
+): Promise<Record<string, unknown>> {
+  const completion = await openai.chat.completions.create({
+    model,
+    messages,
+    temperature: 0,
+    response_format: { type: "json_object" },
+  });
+
+  const reply = completion.choices[0]?.message?.content || "{}";
+  return JSON.parse(reply);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get("Authorization");
-    const apiKey = (authHeader && authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null) || process.env.OPENAI_API_KEY;
+    const apiKey =
+      (authHeader && authHeader.startsWith("Bearer ")
+        ? authHeader.slice(7).trim()
+        : null) || process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json(
@@ -65,74 +116,40 @@ export async function POST(req: NextRequest) {
     const file = form.get("document_file") as File | null;
 
     if (!file) {
-      return NextResponse.json({ error: "Thiếu file hóa đơn cần phân tích." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Thiếu file hóa đơn cần phân tích." },
+        { status: 400 }
+      );
     }
 
     const openai = new OpenAI({ apiKey });
     const fileBuffer = Buffer.from(await file.arrayBuffer());
     const fileType = file.name.toLowerCase();
+    const model =
+      req.headers.get("x-openai-model") ||
+      process.env.OPENAI_MODEL ||
+      "gpt-4o";
 
-    const promptText = `Hãy phân tích hóa đơn này và trích xuất chính xác các thông tin: số hóa đơn (number), ngày hóa đơn (date), nội dung trích yếu (desc), số tiền sau thuế (amount), tên đơn vị thụ hưởng (beneficiaryName), số tài khoản ngân hàng (bankAccount), và tên ngân hàng kèm chi nhánh (bankNameBranch) dưới dạng JSON.`;
+    let extractedData: Record<string, unknown>;
 
-    let messages: OpenAI.Chat.ChatCompletionMessageParam[];
-    const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o";
-
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // PDF: Gửi trực tiếp lên OpenAI Responses API (không cần pdf-parse)
+    //   → Tương thích 100% Vercel serverless (không native module)
+    //   → Hỗ trợ cả PDF text lẫn PDF scan/ảnh chụp
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (fileType.endsWith(".pdf")) {
-      // ── Bước 1: Thử trích xuất text trực tiếp từ PDF ──
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { PDFParse } = require("pdf-parse");
-      const u8 = new Uint8Array(fileBuffer.buffer, fileBuffer.byteOffset, fileBuffer.byteLength);
-      const parser = new PDFParse(u8);
-      const parsed = await parser.getText();
-      const text = (parsed.text || "").trim();
-
-      if (text.length >= 20) {
-        // PDF có text thuần – dùng text extraction (nhanh & rẻ)
-        messages = [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `${promptText}\n\n--- NỘI DUNG VĂN BẢN ---\n${text}` },
-        ];
-      } else {
-        // ── Bước 2: PDF scan → dùng OpenAI Responses API với PDF input ──
-        // Không cần canvas hay native module – upload PDF base64 trực tiếp
-        const base64Pdf = fileBuffer.toString("base64");
-
-        // Dùng OpenAI Responses API (hỗ trợ PDF file input natively)
-        try {
-          const response = await (openai as any).responses.create({
-            model: model === "gpt-4o-mini" ? "gpt-4o" : model, // responses API cần gpt-4o+
-            input: [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "input_text",
-                    text: `${SYSTEM_PROMPT}\n\n${promptText}`
-                  },
-                  {
-                    type: "input_file",
-                    filename: file.name,
-                    file_data: `data:application/pdf;base64,${base64Pdf}`
-                  }
-                ]
-              }
-            ],
-            text: { format: { type: "json_object" } }
-          });
-
-          const rawOutput = response.output_text || response.output?.[0]?.content?.[0]?.text || "{}";
-          const extractedData = JSON.parse(rawOutput);
-          return NextResponse.json(extractedData);
-        } catch (responsesErr: any) {
-          // Fallback nếu Responses API không khả dụng: trả về lỗi hướng dẫn dùng ảnh
-          console.error("Responses API error:", responsesErr?.message);
-          return NextResponse.json(
-            { error: `Hóa đơn dạng scan/ảnh chụp không thể đọc qua text. Vui lòng chụp màn hình hóa đơn thành file ảnh (PNG/JPG) rồi tải lên để AI đọc bằng Vision. Chi tiết: ${responsesErr?.message || "Lỗi không xác định"}` },
-            { status: 400 }
-          );
-        }
-      }
-    } else if (fileType.endsWith(".docx") || fileType.endsWith(".doc")) {
+      extractedData = await analyzeWithResponsesAPI(
+        openai,
+        model,
+        fileBuffer,
+        file.name,
+        "application/pdf"
+      );
+    }
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // DOCX/DOC: Trích xuất text bằng mammoth rồi gửi lên OpenAI
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    else if (fileType.endsWith(".docx") || fileType.endsWith(".doc")) {
       const mammoth = await import("mammoth");
       const result = await mammoth.extractRawText({ buffer: fileBuffer });
       const text = (result.value || "").trim();
@@ -144,47 +161,64 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      messages = [
+      extractedData = await analyzeWithChatCompletions(openai, model, [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `${promptText}\n\n--- NỘI DUNG VĂN BẢN ---\n${text}` },
-      ];
-    } else if (fileType.endsWith(".png") || fileType.endsWith(".jpg") || fileType.endsWith(".jpeg")) {
+        { role: "user", content: `${FULL_PROMPT}\n\n--- NỘI DUNG VĂN BẢN ---\n${text}` },
+      ]);
+    }
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Ảnh PNG/JPG: Gửi base64 image lên Vision API
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    else if (
+      fileType.endsWith(".png") ||
+      fileType.endsWith(".jpg") ||
+      fileType.endsWith(".jpeg")
+    ) {
       const base64 = fileBuffer.toString("base64");
       const mimeType = fileType.endsWith(".png") ? "image/png" : "image/jpeg";
-      messages = [
+
+      extractedData = await analyzeWithChatCompletions(openai, model, [
         { role: "system", content: SYSTEM_PROMPT },
         {
           role: "user",
           content: [
-            { type: "text", text: promptText },
-            { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}`, detail: "high" } },
+            { type: "text", text: FULL_PROMPT },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:${mimeType};base64,${base64}`,
+                detail: "high",
+              },
+            },
           ],
         },
-      ];
-    } else if (fileType.endsWith(".txt")) {
-      const text = fileBuffer.toString("utf-8");
-      messages = [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `${promptText}\n\n--- NỘI DUNG VĂN BẢN ---\n${text}` },
-      ];
-    } else {
-      return NextResponse.json({ error: "Định dạng file không hỗ trợ. Sử dụng PDF, DOCX, PNG, JPG hoặc TXT." }, { status: 400 });
+      ]);
     }
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // TXT: Đọc text trực tiếp
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    else if (fileType.endsWith(".txt")) {
+      const text = fileBuffer.toString("utf-8");
 
-    // Standard chat completions cho text/image
-    const completion = await openai.chat.completions.create({
-      model,
-      messages,
-      temperature: 0,
-      response_format: { type: "json_object" },
-    });
-
-    const reply = completion.choices[0]?.message?.content || "{}";
-    const extractedData = JSON.parse(reply);
+      extractedData = await analyzeWithChatCompletions(openai, model, [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: `${FULL_PROMPT}\n\n--- NỘI DUNG VĂN BẢN ---\n${text}` },
+      ]);
+    }
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    else {
+      return NextResponse.json(
+        { error: "Định dạng file không hỗ trợ. Sử dụng PDF, DOCX, PNG, JPG hoặc TXT." },
+        { status: 400 }
+      );
+    }
 
     return NextResponse.json(extractedData);
   } catch (err: any) {
     console.error("Analyze invoice error:", err);
-    return NextResponse.json({ error: err.message || "Lỗi khi gọi OpenAI API" }, { status: 500 });
+    return NextResponse.json(
+      { error: err.message || "Lỗi khi gọi OpenAI API" },
+      { status: 500 }
+    );
   }
 }

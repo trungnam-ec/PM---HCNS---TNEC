@@ -370,7 +370,9 @@ export default function DocumentControlPage() {
           signer_recipient: data.signer_recipient || "",
           summary: data.summary || "",
           scan_file_url: uploadedUrl || "",
-          has_scan: uploadedUrl ? true : p.has_scan
+          original_file_url: uploadedUrl || "", // Điền cả vào link bản gốc để xem trực tiếp bằng con mắt
+          has_scan: uploadedUrl ? true : p.has_scan,
+          has_original: uploadedUrl ? true : p.has_original // Điền cả vào trạng thái có bản gốc
         } : p));
 
       } catch (err: any) {
@@ -579,7 +581,9 @@ export default function DocumentControlPage() {
         const publicUrl = await uploadFileToSupabase(file);
         if (publicUrl) {
           setScanFileUrl(publicUrl);
+          setOriginalFileUrl(publicUrl); // Điền cả vào link bản gốc để xem trực tiếp bằng con mắt
           setHasScan(true);
+          setHasOriginal(true); // Điền cả vào trạng thái có bản gốc
         }
         setUploadingScan(false);
       }
@@ -746,7 +750,9 @@ export default function DocumentControlPage() {
         const publicUrl = await uploadFileToSupabase(aiFile);
         if (publicUrl) {
           setScanFileUrl(publicUrl);
+          setOriginalFileUrl(publicUrl); // Điền cả vào link bản gốc để xem trực tiếp bằng con mắt
           setHasScan(true);
+          setHasOriginal(true); // Điền cả vào trạng thái có bản gốc
         }
         setUploadingScan(false);
       }

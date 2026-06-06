@@ -24,9 +24,12 @@ import {
   Brain,
   Save,
   Loader2,
-  Download
+  Download,
+  Eye,
+  X
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { docSoVietNam } from "@/lib/wordExporter";
 
 // ─── TYPES & INTERFACES ──────────────────────────────────────────────────────
 interface SupplyItem {
@@ -182,6 +185,7 @@ export default function AdministrationPage() {
   }>>([]);
   const [isExtractingBatch, setIsExtractingBatch] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
 
   // Form metadata for document generation
   const [employeeName, setEmployeeName] = useState("Nguyễn Bích Như Quỳnh");
@@ -415,6 +419,12 @@ export default function AdministrationPage() {
     setInvoices(prev => [...newInvs, ...prev]);
     setInvoiceQueue([]);
     alert("Đã đồng bộ lưu tất cả hóa đơn thành công vào danh sách lịch sử!");
+  };
+
+  const handleDeleteInvoice = (id: string) => {
+    if (confirm("Bạn có chắc chắn muốn xóa hóa đơn này khỏi lịch sử không?")) {
+      setInvoices(prev => prev.filter(inv => inv.id !== id));
+    }
   };
 
   return (
@@ -1119,6 +1129,14 @@ export default function AdministrationPage() {
                           >
                             Lưu vào danh sách
                           </button>
+
+                          <button
+                            onClick={() => setShowPreviewModal(true)}
+                            className="px-3.5 py-2 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-[#005BAC] text-[10px] font-bold rounded-lg flex items-center gap-1.5 active:scale-95 transition-all shadow-sm cursor-pointer"
+                          >
+                            <Eye size={12} />
+                            Xem trước
+                          </button>
                           
                           <button
                             onClick={exportInvoicePaymentRequest}
@@ -1154,6 +1172,7 @@ export default function AdministrationPage() {
                             <th className="p-3">Nội dung hóa đơn</th>
                             <th className="p-3 text-right">Số tiền sau thuế</th>
                             <th className="p-3 text-center">Trạng thái</th>
+                            <th className="p-3 text-center">Thao tác</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
@@ -1169,6 +1188,15 @@ export default function AdministrationPage() {
                                 <span className="inline-flex items-center justify-center bg-emerald-50 text-emerald-600 text-[9px] font-bold px-2 py-0.5 rounded-lg border border-emerald-100">
                                   Đã trích xuất
                                 </span>
+                              </td>
+                              <td className="p-3 text-center">
+                                <button
+                                  onClick={() => handleDeleteInvoice(inv.id)}
+                                  className="text-slate-400 hover:text-rose-500 transition-colors p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+                                  title="Xóa hóa đơn"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
                               </td>
                             </tr>
                           ))}
@@ -1305,6 +1333,166 @@ export default function AdministrationPage() {
           </div>
         </main>
       </div>
+
+      {/* Preview Modal */}
+      {showPreviewModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-slate-100 flex flex-col space-y-5 animate-in fade-in-50 zoom-in-95 duration-150 relative">
+            
+            {/* Close Button */}
+            <button
+              onClick={() => setShowPreviewModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors p-1.5 hover:bg-slate-100 rounded-full cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+
+            {/* Modal Header */}
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-[#005BAC]">
+                  <Eye size={15} />
+                </div>
+                <div>
+                  <h3 className="font-heading font-extrabold text-slate-800 text-sm">Xem trước Phiếu đề nghị thanh toán</h3>
+                  <p className="text-slate-400 text-[10px] font-semibold mt-0.5">Biểu mẫu TCKT/BM/003 (Xem trước nội dung điền tự động)</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Paper Container */}
+            <div className="bg-white border border-slate-200 shadow p-8 rounded-xl font-serif text-[#1e293b] leading-relaxed max-w-2xl mx-auto w-full select-none" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
+              
+              {/* Header block */}
+              <div className="flex justify-between items-start border-b border-slate-300 pb-4 mb-4">
+                <div className="text-left">
+                  <div className="text-base font-black text-[#005BAC] font-sans">TRUNG <span className="text-red-500">N</span>AM <span className="text-sky-400 text-xs font-normal italic">E&C</span></div>
+                  <div className="text-[7.5px] font-bold text-slate-800 font-sans mt-0.5">CÔNG TY CP XÂY DỰNG VÀ LẮP MÁY TRUNG NAM</div>
+                  <div className="text-[6.5px] text-slate-500 font-sans mt-1 leading-tight">
+                    A: Tầng trệt tòa nhà Safomec, 7/1 Thành Thái, Phường 14, Quận 10, TPHCM<br/>
+                    T: (+84) 834 70 75 79 &nbsp; E: info.tnec@trungnamgroup.com.vn
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm font-bold tracking-wide">PHIẾU ĐỀ NGHỊ THANH TOÁN</div>
+                  <div className="text-[10px] font-bold underline mt-0.5">TCKT/BM/003</div>
+                </div>
+              </div>
+
+              {/* Destination */}
+              <div className="mb-4 text-xs font-bold leading-normal">
+                Kính gửi: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; - Ban lãnh đạo Công ty CP XD và LM Trung Nam;<br/>
+                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; - Phòng HCSN công ty,
+              </div>
+
+              {/* Form Details */}
+              <div className="space-y-1.5 text-xs mb-4">
+                <div>
+                  <span className="underline">Họ và tên người đề nghị thanh toán</span>: <span className="font-bold">{employeeName}</span>
+                </div>
+                <div>
+                  <span className="underline">Bộ phận</span>: <span>{employeeDept}</span>
+                </div>
+                <div>
+                  <span className="underline">Nội dung thanh toán</span>: <span>{paymentMission}</span>
+                </div>
+              </div>
+
+              {/* Invoice list table */}
+              <table className="w-full border-collapse border border-slate-900 text-[10px] mb-4 text-left">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-900 font-bold border-b border-slate-900 text-center">
+                    <th className="border border-slate-900 p-1 text-center" rowSpan={2}>TT</th>
+                    <th className="border border-slate-900 p-1 text-center" colSpan={2}>HÓA ĐƠN</th>
+                    <th className="border border-slate-900 p-1 text-center" rowSpan={2}>NỘI DUNG THANH TOÁN</th>
+                    <th className="border border-slate-900 p-1 text-center" rowSpan={2}>SỐ TIỀN (VNĐ)</th>
+                    <th className="border border-slate-900 p-1 text-center" rowSpan={2}>GHI CHÚ</th>
+                  </tr>
+                  <tr className="bg-slate-50 text-slate-900 font-bold border-b border-slate-900 text-center">
+                    <th className="border border-slate-900 p-1 text-center">SỐ</th>
+                    <th className="border border-slate-900 p-1 text-center">NGÀY</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoiceQueue
+                    .filter(item => item.status === "success")
+                    .map((item, idx) => (
+                      <tr key={item.id} className="border-b border-slate-900">
+                        <td className="border border-slate-900 p-1 text-center">{idx + 1}</td>
+                        <td className="border border-slate-900 p-1 font-mono font-bold text-center">{item.number}</td>
+                        <td className="border border-slate-900 p-1 text-center">{item.date ? new Date(item.date).toLocaleDateString("vi-VN") : ""}</td>
+                        <td className="border border-slate-900 p-1">{item.desc}</td>
+                        <td className="border border-slate-900 p-1 text-right font-mono font-bold">
+                          {item.amount.toLocaleString("vi-VN")}
+                        </td>
+                        <td className="border border-slate-900 p-1"></td>
+                      </tr>
+                    ))}
+                  <tr className="font-bold border-b border-slate-900">
+                    <td className="border border-slate-900 p-1 text-center" colSpan={4}>Tổng cộng</td>
+                    <td className="border border-slate-900 p-1 text-right font-mono font-bold">
+                      {invoiceQueue
+                        .filter(item => item.status === "success")
+                        .reduce((sum, item) => sum + item.amount, 0)
+                        .toLocaleString("vi-VN")}
+                    </td>
+                    <td className="border border-slate-900 p-1"></td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* Undertakings */}
+              <div className="text-xs space-y-1.5 mb-6 leading-relaxed">
+                <div className="italic">
+                  <span className="font-bold">Bằng chữ: </span>
+                  {docSoVietNam(
+                    invoiceQueue
+                      .filter(item => item.status === "success")
+                      .reduce((sum, item) => sum + item.amount, 0)
+                  )}
+                </div>
+                <div>Tôi xin chịu trách nhiệm về nội dung thanh toán và các hóa đơn chứng từ kèm theo.</div>
+                <div className="italic">(Kèm theo .................................................... chứng từ gốc).</div>
+              </div>
+
+              {/* Signatures */}
+              <div className="text-[10px]">
+                <div className="text-right italic mb-3">
+                  Tp.hcm, ngày {new Date().getDate().toString().padStart(2, '0')} tháng {(new Date().getMonth() + 1).toString().padStart(2, '0')} năm {new Date().getFullYear()}
+                </div>
+                <div className="grid grid-cols-4 font-bold text-center gap-1.5">
+                  <div>GIÁM ĐỐC</div>
+                  <div>KẾ TOÁN TRƯỞNG</div>
+                  <div>TRƯỞNG BỘ PHẬN</div>
+                  <div>NGƯỜI ĐỀ NGHỊ</div>
+                </div>
+                <div className="h-16"></div>
+              </div>
+
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="px-4 py-2 border border-slate-200 text-slate-500 font-bold rounded-xl text-xs hover:bg-slate-50 transition-all cursor-pointer"
+              >
+                Đóng lại
+              </button>
+              <button
+                onClick={() => {
+                  setShowPreviewModal(false);
+                  exportInvoicePaymentRequest();
+                }}
+                className="flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs active:scale-95 transition-all shadow cursor-pointer"
+              >
+                <Download size={13} /> Tải xuống file Word
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* AI Settings Modal */}
       {showAiSettingsModal && (

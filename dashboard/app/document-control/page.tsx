@@ -20,7 +20,9 @@ import {
   Edit,
   FileText,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Eye,
+  Download
 } from "lucide-react";
 
 interface ClericalDoc {
@@ -876,8 +878,16 @@ export default function DocumentControlPage() {
                             )}
                           </td>
                           <td className="py-4 text-center">
-                            {doc.has_original ? (
-                              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-50 text-emerald-600">✓</span>
+                            {doc.original_file_url ? (
+                              <a 
+                                href={doc.original_file_url} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded transition-all inline-flex items-center justify-center"
+                                title="Xem bản gốc"
+                              >
+                                <Eye size={15} />
+                              </a>
                             ) : (
                               <span className="text-slate-300 font-normal">–</span>
                             )}
@@ -894,6 +904,18 @@ export default function DocumentControlPage() {
                           {canManage && (
                             <td className="py-4 text-right">
                               <div className="flex justify-end gap-2">
+                                {(doc.scan_file_url || doc.original_file_url) && (
+                                  <a
+                                    href={doc.scan_file_url || doc.original_file_url}
+                                    download
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded transition-all inline-flex items-center justify-center"
+                                    title="Tải tệp đính kèm"
+                                  >
+                                    <Download size={14} />
+                                  </a>
+                                )}
                                 <button
                                   onClick={() => openEditDocModal(doc)}
                                   className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded transition-all"

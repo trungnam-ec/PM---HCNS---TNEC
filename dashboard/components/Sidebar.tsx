@@ -23,7 +23,7 @@ const NAV_ITEMS = [
   { label: "Quản lý Nhân sự", href: "/employees", icon: Users },
   { label: "Lương & Phúc lợi (C&B)", href: "/cb", icon: Calculator },
   { label: "Hành chính & Tài sản", href: "/administration", icon: Building2 },
-  { label: "Quản lý Văn thư", href: "/document-control", icon: FileText },
+  { label: "Văn Thư", href: "/document-control", icon: FileText },
   { label: "Báo cáo & Phân tích", href: "/reports", icon: TrendingUp },
   { label: "Cài đặt hệ thống", href: "/settings", icon: Settings },
 ];

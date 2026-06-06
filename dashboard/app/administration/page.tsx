@@ -196,6 +196,8 @@ export default function AdministrationPage() {
   // States for viewing original files in popups
   const [previewFileUrl, setPreviewFileUrl] = useState<string>("");
   const [previewFileName, setPreviewFileName] = useState<string>("");
+  const [showSqlGuideModal, setShowSqlGuideModal] = useState(false);
+  const [isTableMissing, setIsTableMissing] = useState(false);
 
   // Form metadata for document generation
   const [employeeName, setEmployeeName] = useState("Nguyễn Bích Như Quỳnh");
@@ -502,9 +504,13 @@ export default function AdministrationPage() {
           bank_name_branch: row.bank_name_branch || ""
         }));
         setInvoices(loadedInvs);
+        setIsTableMissing(false);
       }
     } catch (err: any) {
       console.error("Failed to fetch invoices from Supabase:", err);
+      if (err.message && (err.message.includes("Could not find the table") || err.message.includes("does not exist"))) {
+        setIsTableMissing(true);
+      }
     }
   }, []);
 
@@ -541,6 +547,9 @@ export default function AdministrationPage() {
       alert("Đã đồng bộ lưu tất cả hóa đơn thành công vào danh sách lịch sử trên Supabase!");
     } catch (dbErr: any) {
       console.error("Failed to save invoices to Supabase:", dbErr);
+      if (dbErr.message && (dbErr.message.includes("Could not find the table") || dbErr.message.includes("does not exist"))) {
+        setIsTableMissing(true);
+      }
       
       // Local state fallback if Supabase table is not configured
       const newInvs: Invoice[] = successItems.map(item => ({
@@ -1014,6 +1023,24 @@ export default function AdministrationPage() {
                     </button>
                   </div>
 
+                  {isTableMissing && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 text-amber-800 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={16} />
+                      <div className="text-xs space-y-1">
+                        <p className="font-bold">Bảng lưu trữ 'invoices' chưa được khởi tạo trên Supabase!</p>
+                        <p className="font-medium text-slate-600 leading-relaxed font-sans">
+                          Hiện tại dữ liệu hóa đơn của bạn chỉ đang được lưu tạm thời trên bộ nhớ trình duyệt, điều này dẫn đến việc <strong>bị mất hết dữ liệu khi bạn F5 hoặc tải lại trang</strong>.
+                        </p>
+                        <button
+                          onClick={() => setShowSqlGuideModal(true)}
+                          className="mt-2 text-[10px] font-extrabold text-[#005BAC] hover:underline flex items-center gap-1 bg-transparent border-none cursor-pointer p-0"
+                        >
+                          Xem hướng dẫn khởi tạo bảng (chỉ mất 1 phút) <ArrowRight size={10} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                     {/* Left Column: upload queue and buttons */}
                     <div className="lg:col-span-2 space-y-4">
@@ -1482,6 +1509,9 @@ export default function AdministrationPage() {
                                   }
                                 } catch (dbErr: any) {
                                   console.error("Save manual invoice to Supabase failed:", dbErr);
+                                  if (dbErr.message && (dbErr.message.includes("Could not find the table") || dbErr.message.includes("does not exist"))) {
+                                    setIsTableMissing(true);
+                                  }
                                   const newInv: Invoice = {
                                     id: `INV-${Date.now().toString().slice(-2)}`,
                                     number: `HD-DK-${Date.now().toString().slice(-2)}`,
@@ -1829,6 +1859,90 @@ export default function AdministrationPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* SQL Guide Modal */}
+      {showSqlGuideModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden p-6 space-y-5 border border-slate-100 animate-in fade-in-50 zoom-in-95 duration-150 relative">
+            <button
+              onClick={() => setShowSqlGuideModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors p-1.5 hover:bg-slate-100 rounded-full cursor-pointer bg-transparent border-none outline-none"
+            >
+              <X size={16} />
+            </button>
+
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500">
+                <AlertTriangle size={18} />
+              </div>
+              <div>
+                <h3 className="font-heading font-extrabold text-slate-800 text-sm">Hướng dẫn khởi tạo bảng Supabase</h3>
+                <p className="text-slate-400 text-[10px] font-semibold mt-0.5">Khắc phục lỗi mất dữ liệu khi nhấn F5</p>
+              </div>
+            </div>
+
+            <div className="space-y-3.5 text-xs text-slate-600 leading-relaxed font-semibold">
+              <p>Để lưu trữ vĩnh viễn hóa đơn trên hệ thống, bạn cần tạo bảng <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-[11px] text-rose-600">invoices</code> trong Supabase SQL Editor:</p>
+              <ol className="list-decimal pl-5 space-y-2 font-medium">
+                <li>Sao chép đoạn mã SQL dưới đây.</li>
+                <li>Truy cập vào trang quản trị <strong>Supabase Dashboard</strong> của dự án.</li>
+                <li>Chọn menu <strong>SQL Editor</strong> ở cột bên trái và bấm <strong>New query</strong>.</li>
+                <li>Dán đoạn mã SQL vào và nhấn <strong>Run</strong>.</li>
+              </ol>
+
+              <div className="relative mt-2">
+                <pre className="bg-slate-900 text-slate-200 p-4 rounded-xl font-mono text-[10px] overflow-x-auto max-h-40 select-all">
+{`CREATE TABLE IF NOT EXISTS invoices (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  number TEXT NOT NULL,
+  date DATE,
+  description TEXT,
+  amount NUMERIC,
+  file_url TEXT,
+  beneficiary_name TEXT,
+  bank_account TEXT,
+  bank_name_branch TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(number);
+ALTER TABLE invoices DISABLE ROW LEVEL SECURITY;`}
+                </pre>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(`CREATE TABLE IF NOT EXISTS invoices (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  number TEXT NOT NULL,
+  date DATE,
+  description TEXT,
+  amount NUMERIC,
+  file_url TEXT,
+  beneficiary_name TEXT,
+  bank_account TEXT,
+  bank_name_branch TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(number);
+ALTER TABLE invoices DISABLE ROW LEVEL SECURITY;`);
+                    alert('Đã sao chép mã SQL vào Clipboard!');
+                  }}
+                  className="absolute top-2 right-2 px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[9px] font-bold transition-all cursor-pointer border-none"
+                >
+                  Sao chép SQL
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-slate-100">
+              <button
+                onClick={() => setShowSqlGuideModal(false)}
+                className="px-5 py-2 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl text-xs active:scale-95 transition-all shadow cursor-pointer border-none"
+              >
+                Đồng ý
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -878,24 +878,23 @@ export default function DocumentControlPage() {
                             )}
                           </td>
                           <td className="py-4 text-center">
-                            {(doc.has_original || doc.original_file_url) ? (
-                              doc.original_file_url ? (
-                                <a 
-                                  href={doc.original_file_url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer" 
-                                  className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-all inline-flex items-center justify-center"
-                                  title="Xem bản gốc"
-                                >
-                                  <Eye size={15} />
-                                </a>
-                              ) : (
-                                <span className="inline-flex items-center justify-center p-1 text-slate-400" title="Có bản gốc (chưa có link)">
-                                  <Eye size={15} />
-                                </span>
-                              )
+                            {doc.original_file_url ? (
+                              <a 
+                                href={doc.original_file_url} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-all inline-flex items-center justify-center"
+                                title="Xem bản gốc"
+                              >
+                                <Eye size={15} />
+                              </a>
                             ) : (
-                              <span className="text-slate-300 font-normal">–</span>
+                              <span
+                                className="p-1 text-slate-300 inline-flex items-center justify-center cursor-default"
+                                title="Chưa có link bản gốc – mở sửa để thêm link"
+                              >
+                                <Eye size={15} />
+                              </span>
                             )}
                           </td>
                           <td className="py-4 max-w-[160px] truncate text-slate-400 font-normal whitespace-nowrap" title={doc.file_name}>
@@ -917,17 +916,24 @@ export default function DocumentControlPage() {
                                 >
                                   <Edit size={14} />
                                 </button>
-                                {(doc.scan_file_url || doc.original_file_url) && (
+                                {(doc.scan_file_url || doc.original_file_url) ? (
                                   <a
                                     href={doc.scan_file_url || doc.original_file_url}
                                     download
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded transition-all inline-flex items-center justify-center"
+                                    className="p-1 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-all inline-flex items-center justify-center"
                                     title="Tải tệp đính kèm"
                                   >
                                     <Download size={14} />
                                   </a>
+                                ) : (
+                                  <span
+                                    className="p-1 text-slate-300 inline-flex items-center justify-center cursor-default"
+                                    title="Chưa có file đính kèm – mở sửa để thêm link"
+                                  >
+                                    <Download size={14} />
+                                  </span>
                                 )}
                                 <button
                                   onClick={() => doc.id && handleDeleteDoc(doc.id)}

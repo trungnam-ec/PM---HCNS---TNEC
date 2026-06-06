@@ -178,6 +178,7 @@ export default function AdministrationPage() {
     desc: string;
     amount: number;
     error?: string;
+    isMock?: boolean;
   }>>([]);
   const [isExtractingBatch, setIsExtractingBatch] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
@@ -262,7 +263,7 @@ export default function AdministrationPage() {
     // Mark pending items as extracting
     setInvoiceQueue(prev => prev.map(item => 
       item.status === "pending" || item.status === "error"
-        ? { ...item, status: "extracting" }
+        ? { ...item, status: "extracting", error: undefined }
         : item
     ));
 
@@ -287,8 +288,8 @@ export default function AdministrationPage() {
         });
 
         if (!res.ok) {
-          const errorData = await res.json();
-          throw new Error(errorData.error || "Lỗi trích xuất.");
+          const errorData = await res.json().catch(() => ({ error: "Không phản hồi từ server" }));
+          throw new Error(errorData.error || `HTTP ${res.status}: Lỗi máy chủ khi trích xuất.`);
         }
 
         const data = await res.json();
@@ -306,48 +307,47 @@ export default function AdministrationPage() {
             : q
         ));
       } catch (err: any) {
-        console.warn("Batch extraction item failed, falling back to simulation:", err);
+        console.error("Batch extraction item failed:", err);
         
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        let simulatedDesc = "Thanh toán hóa đơn dịch vụ văn phòng";
-        let simulatedAmount = 1500000;
-        let simulatedNumber = `HD-${Math.floor(100000 + Math.random() * 900000)}`;
-        const fname = item.file.name.toLowerCase();
-        
-        if (fname.includes("katinat") || fname.includes("cafe") || fname.includes("ca phe")) {
-          simulatedDesc = "Thanh toán chi phí đồ uống tiếp khách - Katinat Coffee";
-          simulatedAmount = 1440000;
-        } else if (fname.includes("lavie") || fname.includes("nuoc")) {
-          simulatedDesc = "Thanh toán chi phí nước uống Lavie văn phòng";
-          simulatedAmount = 1800000;
-        } else if (fname.includes("giay") || fname.includes("vpp") || fname.includes("but")) {
-          simulatedDesc = "Thanh toán chi phí mua văn phòng phẩm phòng Hành chính";
-          simulatedAmount = 2500000;
-        } else if (fname.includes("an uong") || fname.includes("an ") || fname.includes("nha hang")) {
-          simulatedDesc = "Thanh toán chi phí ăn uống tiếp khách - Nhà hàng";
-          simulatedAmount = 3200000;
-        } else if (fname.includes("xpander") || fname.includes("o to") || fname.includes(" xe ")) {
-          simulatedDesc = "Thanh toán chi phí thuê xe / vận hành xe Xpander 51H-481.20";
-          simulatedAmount = 4500000;
-          simulatedNumber = "HĐT6-182";
-        } else if (fname.includes("hpk")) {
-          simulatedDesc = "Thanh toán hóa đơn mua hàng / dịch vụ - Nhà cung cấp HPK";
-          simulatedAmount = 2850000;
-          simulatedNumber = "HPK-992";
-        }
+        // Only use simulated fallback if it's a test mock file AND no key is set
+        if (item.isMock && !customKey) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          let simulatedDesc = "Thanh toán hóa đơn dịch vụ văn phòng";
+          let simulatedAmount = 1500000;
+          let simulatedNumber = `HD-${Math.floor(100000 + Math.random() * 900000)}`;
+          const fname = item.file.name.toLowerCase();
+          
+          if (fname.includes("katinat") || fname.includes("cafe") || fname.includes("ca phe")) {
+            simulatedDesc = "Thanh toán chi phí đồ uống tiếp khách - Katinat Coffee";
+            simulatedAmount = 1440000;
+          } else if (fname.includes("lavie") || fname.includes("nuoc")) {
+            simulatedDesc = "Thanh toán chi phí nước uống Lavie văn phòng";
+            simulatedAmount = 1800000;
+          } else if (fname.includes("giay") || fname.includes("vpp") || fname.includes("but")) {
+            simulatedDesc = "Thanh toán chi phí mua văn phòng phẩm phòng Hành chính";
+            simulatedAmount = 2500000;
+          }
 
-        setInvoiceQueue(prev => prev.map(q => 
-          q.id === item.id 
-            ? {
-                ...q,
-                status: "success",
-                number: simulatedNumber,
-                date: new Date().toISOString().slice(0, 10),
-                desc: simulatedDesc,
-                amount: simulatedAmount
-              }
-            : q
-        ));
+          setInvoiceQueue(prev => prev.map(q => 
+            q.id === item.id 
+              ? {
+                  ...q,
+                  status: "success",
+                  number: simulatedNumber,
+                  date: new Date().toISOString().slice(0, 10),
+                  desc: simulatedDesc,
+                  amount: simulatedAmount
+                }
+              : q
+          ));
+        } else {
+          // Real error logic: show error details
+          setInvoiceQueue(prev => prev.map(q => 
+            q.id === item.id 
+              ? { ...q, status: "error", error: err.message || "Lỗi kết nối API" }
+              : q
+          ));
+        }
       }
     }
 
@@ -897,29 +897,36 @@ export default function AdministrationPage() {
                           
                           <div className="space-y-2">
                             {invoiceQueue.map((item) => (
-                              <div key={item.id} className="flex items-center justify-between bg-slate-50 p-2.5 rounded-lg border border-slate-100 text-xs">
-                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                  <FileText size={14} className={
-                                    item.status === "success" ? "text-emerald-500" :
-                                    item.status === "error" ? "text-rose-500" :
-                                    item.status === "extracting" ? "text-blue-500 animate-spin" :
-                                    "text-slate-400"
-                                  } />
-                                  <span className="font-semibold text-slate-700 truncate block text-[10px]">{item.file.name}</span>
+                              <div key={item.id} className="flex flex-col bg-slate-50 p-2.5 rounded-lg border border-slate-100 text-xs">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <FileText size={14} className={
+                                      item.status === "success" ? "text-emerald-500" :
+                                      item.status === "error" ? "text-rose-500" :
+                                      item.status === "extracting" ? "text-blue-500 animate-spin" :
+                                      "text-slate-400"
+                                    } />
+                                    <span className="font-semibold text-slate-700 truncate block text-[10px]">{item.file.name}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {item.status === "pending" && <span className="text-[9px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold border">Chờ xử lý</span>}
+                                    {item.status === "extracting" && <span className="text-[9px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold border border-blue-100 flex items-center gap-1"><Loader2 size={8} className="animate-spin" /> Đang đọc...</span>}
+                                    {item.status === "success" && <span className="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold border border-emerald-100">Đã đọc xong</span>}
+                                    {item.status === "error" && <span className="text-[9px] bg-rose-50 text-rose-600 px-2 py-0.5 rounded font-bold border border-rose-100">Lỗi API</span>}
+                                    
+                                    <button 
+                                      onClick={() => setInvoiceQueue(prev => prev.filter(q => q.id !== item.id))} 
+                                      className="text-slate-400 hover:text-rose-500 transition-colors p-0.5 rounded"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  {item.status === "pending" && <span className="text-[9px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold border">Chờ xử lý</span>}
-                                  {item.status === "extracting" && <span className="text-[9px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold border border-blue-100 flex items-center gap-1"><Loader2 size={8} className="animate-spin" /> Đang đọc...</span>}
-                                  {item.status === "success" && <span className="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold border border-emerald-100">Đã đọc xong</span>}
-                                  {item.status === "error" && <span className="text-[9px] bg-rose-50 text-rose-600 px-2 py-0.5 rounded font-bold border border-rose-100" title={item.error}>Lỗi</span>}
-                                  
-                                  <button 
-                                    onClick={() => setInvoiceQueue(prev => prev.filter(q => q.id !== item.id))} 
-                                    className="text-slate-400 hover:text-rose-500 transition-colors p-0.5 rounded"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
+                                {item.status === "error" && (
+                                  <div className="text-[9px] text-rose-500 font-bold mt-1.5 bg-rose-50/50 p-1.5 rounded border border-rose-100/50 break-words">
+                                    {item.error || "Không thể gọi OpenAI API. Hãy kiểm tra lại API Key."}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -966,7 +973,8 @@ export default function AdministrationPage() {
                               number: "",
                               date: new Date().toISOString().slice(0, 10),
                               desc: "",
-                              amount: 0
+                              amount: 0,
+                              isMock: true
                             }));
                             setInvoiceQueue(mockQueue);
                           }}

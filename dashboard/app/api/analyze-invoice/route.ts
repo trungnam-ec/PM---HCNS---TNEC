@@ -64,7 +64,15 @@ export async function POST(req: NextRequest) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const pdfParse = require("pdf-parse");
       const parsed = await pdfParse(fileBuffer);
-      const text = parsed.text || "";
+      const text = (parsed.text || "").trim();
+
+      if (text.length < 20) {
+        return NextResponse.json(
+          { error: "Không thể trích xuất văn bản trực tiếp từ file PDF này (có thể đây là file scan hoặc ảnh chụp lưu dưới dạng PDF). Vui lòng chuyển đổi/chụp màn hình hóa đơn thành file ảnh (PNG, JPG, JPEG) và tải lên lại để AI có thể đọc bằng mắt (Vision) với độ chính xác cao nhất." },
+          { status: 400 }
+        );
+      }
+
       messages = [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: `${promptText}\n\n--- NỘI DUNG VĂN BẢN ---\n${text}` },
@@ -72,7 +80,15 @@ export async function POST(req: NextRequest) {
     } else if (fileType.endsWith(".docx") || fileType.endsWith(".doc")) {
       const mammoth = await import("mammoth");
       const result = await mammoth.extractRawText({ buffer: fileBuffer });
-      const text = result.value || "";
+      const text = (result.value || "").trim();
+
+      if (text.length < 10) {
+        return NextResponse.json(
+          { error: "Văn bản trong file Word này quá ngắn hoặc trống, không thể phân tích." },
+          { status: 400 }
+        );
+      }
+
       messages = [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: `${promptText}\n\n--- NỘI DUNG VĂN BẢN ---\n${text}` },

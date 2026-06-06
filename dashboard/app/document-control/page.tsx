@@ -100,6 +100,38 @@ export default function DocumentControlPage() {
   const [aiFile, setAiFile] = useState<File | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
+  // Upload States
+  const [uploadingScan, setUploadingScan] = useState(false);
+  const [uploadingOriginal, setUploadingOriginal] = useState(false);
+  const [autoUploadOnAnalyze, setAutoUploadOnAnalyze] = useState(true);
+
+  // Helper upload function
+  const uploadFileToSupabase = async (file: File): Promise<string | null> => {
+    try {
+      const cleanFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+      const filePath = `${Date.now()}_${cleanFileName}`;
+
+      const { data, error } = await supabase.storage
+        .from("clerical-documents")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("clerical-documents")
+        .getPublicUrl(filePath);
+
+      return publicUrl;
+    } catch (e) {
+      console.error("Upload error:", e);
+      alert("Lỗi khi tải file lên Supabase: " + (e as Error).message);
+      return null;
+    }
+  };
+
   // Batch AI Processing State
   const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
   const [processingBatch, setProcessingBatch] = useState(false);
@@ -506,6 +538,17 @@ export default function DocumentControlPage() {
       if (data.sender_receiver) setSenderReceiver(data.sender_receiver);
       if (data.summary) setSummary(data.summary);
       if (data.signer_recipient) setSignerRecipient(data.signer_recipient);
+
+      // Auto-upload file to Supabase Storage in parallel if selected
+      if (autoUploadOnAnalyze) {
+        setUploadingScan(true);
+        const publicUrl = await uploadFileToSupabase(file);
+        if (publicUrl) {
+          setScanFileUrl(publicUrl);
+          setHasScan(true);
+        }
+        setUploadingScan(false);
+      }
       
     } catch (e) {
       console.error(e);
@@ -662,6 +705,17 @@ export default function DocumentControlPage() {
       if (data.sender_receiver) setSenderReceiver(data.sender_receiver);
       if (data.summary) setSummary(data.summary);
       if (data.signer_recipient) setSignerRecipient(data.signer_recipient);
+
+      // Auto-upload file to Supabase Storage in parallel if selected
+      if (autoUploadOnAnalyze) {
+        setUploadingScan(true);
+        const publicUrl = await uploadFileToSupabase(aiFile);
+        if (publicUrl) {
+          setScanFileUrl(publicUrl);
+          setHasScan(true);
+        }
+        setUploadingScan(false);
+      }
       
     } catch (e) {
       console.error(e);
@@ -1410,6 +1464,20 @@ export default function DocumentControlPage() {
                   )}
                 </button>
 
+                {/* Auto-upload Checkbox */}
+                <div className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-150">
+                  <input
+                    type="checkbox"
+                    id="autoUploadOnAnalyzeCheckbox"
+                    checked={autoUploadOnAnalyze}
+                    onChange={(e) => setAutoUploadOnAnalyze(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <label htmlFor="autoUploadOnAnalyzeCheckbox" className="text-[11px] font-bold text-slate-600 cursor-pointer select-none">
+                    Tự động tải lên Supabase làm Bản quét (scan)
+                  </label>
+                </div>
+
                 <div className="text-[10px] text-slate-400 bg-blue-50/40 p-3.5 rounded-xl border border-blue-100/50 leading-relaxed font-medium space-y-1">
                   <div className="flex items-center gap-1.5 text-blue-600 font-bold">
                     <AlertCircle size={12} />
@@ -1578,27 +1646,76 @@ export default function DocumentControlPage() {
 
                   {/* Scan File URL */}
                   <div className="space-y-1 col-span-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">Link bản quét (scan) – Google Drive, OneDrive...</label>
-                    <input
-                      type="text"
-                      value={scanFileUrl}
-                      onChange={(e) => setScanFileUrl(e.target.value)}
-                      placeholder="https://drive.google.com/..."
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 placeholder-slate-300"
-                    />
+                    <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center justify-between">
+                      <span>Link bản quét (scan) – Google Drive, OneDrive...</span>
+                      {uploadingScan && <span className="text-[9px] text-[#005BAC] animate-pulse normal-case font-bold">Đang tải lên...</span>}
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={scanFileUrl}
+                        onChange={(e) => setScanFileUrl(e.target.value)}
+                        placeholder="https://drive.google.com/..."
+                        className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 placeholder-slate-300"
+                      />
+                      <label className={`flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 bg-white hover:bg-slate-50 cursor-pointer active:scale-95 transition-all shadow-sm ${uploadingScan ? "opacity-50 pointer-events-none" : ""}`}>
+                        <Upload size={13} className={uploadingScan ? "animate-bounce" : ""} />
+                        <span>Tải file</span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={async (e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setUploadingScan(true);
+                              const publicUrl = await uploadFileToSupabase(e.target.files[0]);
+                              if (publicUrl) {
+                                setScanFileUrl(publicUrl);
+                                setHasScan(true);
+                                if (!fileName) setFileName(e.target.files[0].name);
+                              }
+                              setUploadingScan(false);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
 
                 {/* Original File URL */}
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase">Link bản gốc (xem trực tiếp khi click icon 👁) – Google Drive, OneDrive...</label>
-                  <input
-                    type="text"
-                    value={originalFileUrl}
-                    onChange={(e) => setOriginalFileUrl(e.target.value)}
-                    placeholder="https://drive.google.com/file/d/.../view"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 placeholder-slate-300"
-                  />
+                  <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center justify-between">
+                    <span>Link bản gốc (xem trực tiếp khi click icon 👁) – Google Drive, OneDrive...</span>
+                    {uploadingOriginal && <span className="text-[9px] text-[#005BAC] animate-pulse normal-case font-bold">Đang tải lên...</span>}
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={originalFileUrl}
+                      onChange={(e) => setOriginalFileUrl(e.target.value)}
+                      placeholder="https://drive.google.com/file/d/.../view"
+                      className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 placeholder-slate-300"
+                    />
+                    <label className={`flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 bg-white hover:bg-slate-50 cursor-pointer active:scale-95 transition-all shadow-sm ${uploadingOriginal ? "opacity-50 pointer-events-none" : ""}`}>
+                      <Upload size={13} className={uploadingOriginal ? "animate-bounce" : ""} />
+                      <span>Tải file</span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        onChange={async (e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            setUploadingOriginal(true);
+                            const publicUrl = await uploadFileToSupabase(e.target.files[0]);
+                            if (publicUrl) {
+                              setOriginalFileUrl(publicUrl);
+                              setHasOriginal(true);
+                            }
+                            setUploadingOriginal(false);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
                 </div>
 
                 {/* Footer buttons */}

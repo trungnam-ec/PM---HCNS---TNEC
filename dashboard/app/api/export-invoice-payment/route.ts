@@ -8,13 +8,23 @@ import { docSoVietNam } from "@/lib/wordExporter";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { employeeName, employeeDept, mission, items } = body;
+    const { 
+      employeeName, 
+      employeeDept, 
+      mission, 
+      projectName, 
+      supplierName, 
+      bankAccount, 
+      bankNameBranch, 
+      templateType, 
+      items 
+    } = body;
 
     if (!employeeName || !items || !Array.isArray(items)) {
       return new NextResponse("Missing required fields: employeeName or items", { status: 400 });
     }
 
-    const templateFileName = "de_nghi_thanh_toan.docx";
+    const templateFileName = templateType === "payment" ? "de_nghi_thanh_toan.docx" : "phieu_de_nghi_chuyen_tien_templated.docx";
     const templatePath = path.join(process.cwd(), "public", "templates", templateFileName);
 
     if (!fs.existsSync(templatePath)) {
@@ -73,6 +83,10 @@ export async function POST(request: NextRequest) {
       employeeNameUpper: (employeeName || "").toUpperCase(),
       employeeDept: employeeDept || "Hành chính nhân sự",
       mission: mission || "Thanh toán chi phí hành chính",
+      projectName: projectName || "Văn phòng HCM",
+      supplierName: supplierName || "",
+      bankAccount: bankAccount || "",
+      bankNameBranch: bankNameBranch || "",
       totalAmount: formatNumber(totalAmountVal),
       textAmount: textAmount,
       dateDayString: dateDayString,
@@ -86,7 +100,8 @@ export async function POST(request: NextRequest) {
     // Generate buffer
     const buf = doc.getZip().generate({ type: "nodebuffer" });
 
-    const outputFilename = `Phieu_De_Nghi_Thanh_Toan_${(employeeName || "User").replace(/\s+/g, "_")}.docx`;
+    const docPrefix = templateType === "payment" ? "Phieu_De_Nghi_Thanh_Toan" : "Giay_De_Nghi_Chuyen_Tien";
+    const outputFilename = `${docPrefix}_${(employeeName || "User").replace(/\s+/g, "_")}.docx`;
 
     return new NextResponse(new Uint8Array(buf), {
       status: 200,

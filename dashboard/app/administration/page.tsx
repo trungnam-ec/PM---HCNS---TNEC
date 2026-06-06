@@ -191,6 +191,11 @@ export default function AdministrationPage() {
   const [employeeName, setEmployeeName] = useState("Nguyễn Bích Như Quỳnh");
   const [employeeDept, setEmployeeDept] = useState("Phòng Hành chính nhân sự");
   const [paymentMission, setPaymentMission] = useState("Thanh toán chi phí hành chính tháng 06");
+  const [documentType, setDocumentType] = useState<"payment" | "transfer">("transfer");
+  const [projectName, setProjectName] = useState("Văn phòng HCM");
+  const [supplierName, setSupplierName] = useState("");
+  const [bankAccount, setBankAccount] = useState("");
+  const [bankNameBranch, setBankNameBranch] = useState("");
 
   // AI Settings States for Invoice Reader
   const [apiKey, setApiKey] = useState("");
@@ -310,6 +315,11 @@ export default function AdministrationPage() {
               }
             : q
         ));
+
+        // Auto-fill beneficiary details if extracted
+        if (data.beneficiaryName) setSupplierName(data.beneficiaryName);
+        if (data.bankAccount) setBankAccount(data.bankAccount);
+        if (data.bankNameBranch) setBankNameBranch(data.bankNameBranch);
       } catch (err: any) {
         console.error("Batch extraction item failed:", err);
         
@@ -319,17 +329,29 @@ export default function AdministrationPage() {
           let simulatedDesc = "Thanh toán hóa đơn dịch vụ văn phòng";
           let simulatedAmount = 1500000;
           let simulatedNumber = `HD-${Math.floor(100000 + Math.random() * 900000)}`;
+          let simulatedBeneficiary = "Công ty Dịch vụ Văn phòng Việt Nam";
+          let simulatedAccount = "1903456789012";
+          let simulatedBank = "Techcombank CN Sài Gòn";
           const fname = item.file.name.toLowerCase();
           
           if (fname.includes("katinat") || fname.includes("cafe") || fname.includes("ca phe")) {
             simulatedDesc = "Thanh toán chi phí đồ uống tiếp khách - Katinat Coffee";
             simulatedAmount = 1440000;
+            simulatedBeneficiary = "Công ty Cổ phần Katinat Sài Gòn";
+            simulatedAccount = "0071001234567";
+            simulatedBank = "Vietcombank CN Bến Thành";
           } else if (fname.includes("lavie") || fname.includes("nuoc")) {
             simulatedDesc = "Thanh toán chi phí nước uống Lavie văn phòng";
             simulatedAmount = 1800000;
+            simulatedBeneficiary = "Công ty TNHH La Vie";
+            simulatedAccount = "110000012345";
+            simulatedBank = "Vietinbank CN Long An";
           } else if (fname.includes("giay") || fname.includes("vpp") || fname.includes("but")) {
             simulatedDesc = "Thanh toán chi phí mua văn phòng phẩm phòng Hành chính";
             simulatedAmount = 2500000;
+            simulatedBeneficiary = "Công ty TNHH Quảng Cáo Đức An";
+            simulatedAccount = "0602 2024 1532";
+            simulatedBank = "Sacombank CN Tân Phú";
           }
 
           setInvoiceQueue(prev => prev.map(q => 
@@ -344,6 +366,11 @@ export default function AdministrationPage() {
                 }
               : q
           ));
+
+          // Set form state for mock file
+          setSupplierName(simulatedBeneficiary);
+          setBankAccount(simulatedAccount);
+          setBankNameBranch(simulatedBank);
         } else {
           // Real error logic: show error details
           setInvoiceQueue(prev => prev.map(q => 
@@ -374,6 +401,11 @@ export default function AdministrationPage() {
           employeeName,
           employeeDept,
           mission: paymentMission,
+          projectName,
+          supplierName,
+          bankAccount,
+          bankNameBranch,
+          templateType: documentType,
           items: successItems.map(item => ({
             number: item.number,
             date: item.date,
@@ -384,14 +416,15 @@ export default function AdministrationPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Không thể xuất phiếu thanh toán");
+        throw new Error("Không thể xuất phiếu thanh toán/chuyển tiền");
       }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Phieu_De_Nghi_Thanh_Toan_${employeeName.replace(/\s+/g, "_")}.docx`;
+      const docPrefix = documentType === "payment" ? "Phieu_De_Nghi_Thanh_Toan" : "Giay_De_Nghi_Chuyen_Tien";
+      a.download = `${docPrefix}_${employeeName.replace(/\s+/g, "_")}.docx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1082,8 +1115,26 @@ export default function AdministrationPage() {
                             {/* Payment document metadata form */}
                             {invoiceQueue.some(item => item.status === "success") && (
                               <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-3 shadow-sm text-xs">
-                                <div className="text-[10px] font-extrabold text-slate-500 uppercase border-b border-slate-100 pb-1.5">
-                                  Thông tin làm Phiếu Đề Nghị Thanh Toán
+                                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                                  <div className="text-[10px] font-extrabold text-slate-500 uppercase">
+                                    Thông tin làm hồ sơ chứng từ
+                                  </div>
+                                  <div className="flex gap-1.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[9px] font-bold">
+                                    <button
+                                      type="button"
+                                      onClick={() => setDocumentType("transfer")}
+                                      className={`px-2 py-0.5 rounded transition-all cursor-pointer ${documentType === "transfer" ? "bg-white text-[#005BAC] shadow-sm" : "text-slate-400"}`}
+                                    >
+                                      Đề nghị Chuyển tiền
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDocumentType("payment")}
+                                      className={`px-2 py-0.5 rounded transition-all cursor-pointer ${documentType === "payment" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400"}`}
+                                    >
+                                      Đề nghị Thanh toán
+                                    </button>
+                                  </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                   <div className="space-y-1">
@@ -1106,7 +1157,7 @@ export default function AdministrationPage() {
                                   </div>
                                 </div>
                                 <div className="space-y-1">
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase">Nội dung thanh toán chung</label>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase">Lý do xin thanh toán/chuyển tiền chung</label>
                                   <input
                                     type="text"
                                     value={paymentMission}
@@ -1115,6 +1166,55 @@ export default function AdministrationPage() {
                                     className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white outline-none focus:ring-1 focus:ring-blue-500/30"
                                   />
                                 </div>
+
+                                {documentType === "transfer" && (
+                                  <>
+                                    <div className="space-y-1">
+                                      <label className="text-[9px] font-bold text-slate-400 uppercase">Tên dự án</label>
+                                      <input
+                                        type="text"
+                                        value={projectName}
+                                        onChange={(e) => setProjectName(e.target.value)}
+                                        placeholder="Ví dụ: Văn phòng HCM"
+                                        className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white outline-none focus:ring-1 focus:ring-blue-500/30"
+                                      />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                      <label className="text-[9px] font-bold text-slate-400 uppercase">Tên đơn vị thụ hưởng (Nhà cung cấp)</label>
+                                      <input
+                                        type="text"
+                                        value={supplierName}
+                                        onChange={(e) => setSupplierName(e.target.value)}
+                                        placeholder="Tên công ty bán hàng..."
+                                        className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 bg-white outline-none focus:ring-1 focus:ring-blue-500/30"
+                                      />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                      <div className="space-y-1">
+                                        <label className="text-[9px] font-bold text-slate-400 uppercase">Số tài khoản chuyển tiền</label>
+                                        <input
+                                          type="text"
+                                          value={bankAccount}
+                                          onChange={(e) => setBankAccount(e.target.value)}
+                                          placeholder="Số tài khoản..."
+                                          className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 bg-white outline-none focus:ring-1 focus:ring-blue-500/30"
+                                        />
+                                      </div>
+                                      <div className="space-y-1">
+                                        <label className="text-[9px] font-bold text-slate-400 uppercase">Tại Ngân hàng & Chi nhánh</label>
+                                        <input
+                                          type="text"
+                                          value={bankNameBranch}
+                                          onChange={(e) => setBankNameBranch(e.target.value)}
+                                          placeholder="Sacombank CN Tân Phú..."
+                                          className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white outline-none focus:ring-1 focus:ring-blue-500/30"
+                                        />
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1354,8 +1454,12 @@ export default function AdministrationPage() {
                   <Eye size={15} />
                 </div>
                 <div>
-                  <h3 className="font-heading font-extrabold text-slate-800 text-sm">Xem trước Phiếu đề nghị thanh toán</h3>
-                  <p className="text-slate-400 text-[10px] font-semibold mt-0.5">Biểu mẫu TCKT/BM/003 (Xem trước nội dung điền tự động)</p>
+                  <h3 className="font-heading font-extrabold text-slate-800 text-sm">
+                    {documentType === "payment" ? "Xem trước Phiếu đề nghị thanh toán" : "Xem trước Giấy đề nghị chuyển tiền"}
+                  </h3>
+                  <p className="text-slate-400 text-[10px] font-semibold mt-0.5">
+                    {documentType === "payment" ? "Biểu mẫu TCKT/BM/003" : "Biểu mẫu HC-BM021/ĐNCT"} (Xem trước nội dung điền tự động)
+                  </p>
                 </div>
               </div>
             </div>
@@ -1374,28 +1478,44 @@ export default function AdministrationPage() {
                   </div>
                 </div>
                 <div className="text-center">
-                  <div className="text-sm font-bold tracking-wide">PHIẾU ĐỀ NGHỊ THANH TOÁN</div>
-                  <div className="text-[10px] font-bold underline mt-0.5">TCKT/BM/003</div>
+                  <div className="text-[13px] font-bold tracking-wide">
+                    {documentType === "payment" ? "PHIẾU ĐỀ NGHỊ THANH TOÁN" : "GIẤY ĐỀ NGHỊ CHUYỂN TIỀN"}
+                  </div>
+                  <div className="text-[9.5px] font-bold underline mt-0.5">
+                    {documentType === "payment" ? "TCKT/BM/003" : "HC-BM021/ĐNCT"}
+                  </div>
                 </div>
               </div>
 
               {/* Destination */}
               <div className="mb-4 text-xs font-bold leading-normal">
                 Kính gửi: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; - Ban lãnh đạo Công ty CP XD và LM Trung Nam;<br/>
-                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; - Phòng HCSN công ty,
+                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; - {documentType === "payment" ? "Phòng HCSN công ty," : "Phòng Kế toán công ty,"}
               </div>
 
               {/* Form Details */}
               <div className="space-y-1.5 text-xs mb-4">
                 <div>
-                  <span className="underline">Họ và tên người đề nghị thanh toán</span>: <span className="font-bold">{employeeName}</span>
+                  <span className="underline">Họ và tên người đề nghị {documentType === "payment" ? "thanh toán" : "" }</span>: <span className="font-bold">{employeeName}</span>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                  <span className="underline">Bộ phận</span>: <span className="font-bold">{employeeDept}</span>
                 </div>
                 <div>
-                  <span className="underline">Bộ phận</span>: <span>{employeeDept}</span>
+                  <span className="underline">{documentType === "payment" ? "Nội dung thanh toán" : "Lý do xin đề nghị chuyển tiền"}</span>: <span>{paymentMission}</span>
                 </div>
-                <div>
-                  <span className="underline">Nội dung thanh toán</span>: <span>{paymentMission}</span>
-                </div>
+                {documentType === "transfer" && (
+                  <>
+                    <div>
+                      <span className="underline">Tên dự án</span>: <span className="font-bold">{projectName}</span>
+                    </div>
+                    <div>
+                      <span className="underline">Tên đơn vị thụ hưởng</span>: <span className="font-bold">{supplierName}</span>
+                    </div>
+                    <div>
+                      <span className="underline">Số tài khoản</span>: <span className="font-bold">{bankAccount}</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; tại Ngân hàng <span className="font-bold">{bankNameBranch}</span>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Invoice list table */}
@@ -1404,7 +1524,9 @@ export default function AdministrationPage() {
                   <tr className="bg-slate-50 text-slate-900 font-bold border-b border-slate-900 text-center">
                     <th className="border border-slate-900 p-1 text-center" rowSpan={2}>TT</th>
                     <th className="border border-slate-900 p-1 text-center" colSpan={2}>HÓA ĐƠN</th>
-                    <th className="border border-slate-900 p-1 text-center" rowSpan={2}>NỘI DUNG THANH TOÁN</th>
+                    <th className="border border-slate-900 p-1 text-center" rowSpan={2}>
+                      {documentType === "payment" ? "NỘI DUNG THANH TOÁN" : "NỘI DUNG THANH TOÁN"}
+                    </th>
                     <th className="border border-slate-900 p-1 text-center" rowSpan={2}>SỐ TIỀN (VNĐ)</th>
                     <th className="border border-slate-900 p-1 text-center" rowSpan={2}>GHI CHÚ</th>
                   </tr>
@@ -1451,17 +1573,21 @@ export default function AdministrationPage() {
                       .reduce((sum, item) => sum + item.amount, 0)
                   )}
                 </div>
-                <div>Tôi xin chịu trách nhiệm về nội dung thanh toán và các hóa đơn chứng từ kèm theo.</div>
+                <div>
+                  {documentType === "payment" 
+                    ? "Tôi xin chịu trách nhiệm về nội dung thanh toán và các hóa đơn chứng từ kèm theo."
+                    : "Tôi xin chịu trách nhiệm về nội dung đề nghị và các hóa đơn chứng từ kèm theo."}
+                </div>
                 <div className="italic">(Kèm theo .................................................... chứng từ gốc).</div>
               </div>
 
               {/* Signatures */}
               <div className="text-[10px]">
                 <div className="text-right italic mb-3">
-                  Tp.hcm, ngày {new Date().getDate().toString().padStart(2, '0')} tháng {(new Date().getMonth() + 1).toString().padStart(2, '0')} năm {new Date().getFullYear()}
+                  Tp.hcm, ngày ...... tháng ...... năm ........
                 </div>
                 <div className="grid grid-cols-4 font-bold text-center gap-1.5">
-                  <div>GIÁM ĐỐC</div>
+                  <div>{documentType === "payment" ? "GIÁM ĐỐC" : "BAN LÃNH ĐẠO"}</div>
                   <div>KẾ TOÁN TRƯỞNG</div>
                   <div>TRƯỞNG BỘ PHẬN</div>
                   <div>NGƯỜI ĐỀ NGHỊ</div>

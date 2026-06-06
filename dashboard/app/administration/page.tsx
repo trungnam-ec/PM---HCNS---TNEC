@@ -1894,8 +1894,8 @@ export default function AdministrationPage() {
               </ol>
 
               <div className="relative mt-2">
-                <pre className="bg-slate-900 text-slate-200 p-4 rounded-xl font-mono text-[10px] overflow-x-auto max-h-40 select-all">
-{`CREATE TABLE IF NOT EXISTS invoices (
+                <pre className="bg-slate-900 text-slate-200 p-4 rounded-xl font-mono text-[10px] overflow-x-auto max-h-40 select-all font-semibold">
+{`CREATE TABLE IF NOT EXISTS public.invoices (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   number TEXT NOT NULL,
@@ -1907,12 +1907,20 @@ export default function AdministrationPage() {
   bank_account TEXT,
   bank_name_branch TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(number);
-ALTER TABLE invoices DISABLE ROW LEVEL SECURITY;`}
+CREATE INDEX IF NOT EXISTS idx_invoices_number ON public.invoices(number);
+ALTER TABLE public.invoices DISABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public select for invoices" ON public.invoices;
+CREATE POLICY "Allow public select for invoices" ON public.invoices FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public insert for invoices" ON public.invoices;
+CREATE POLICY "Allow public insert for invoices" ON public.invoices FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public update for invoices" ON public.invoices;
+CREATE POLICY "Allow public update for invoices" ON public.invoices FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Allow public delete for invoices" ON public.invoices;
+CREATE POLICY "Allow public delete for invoices" ON public.invoices FOR DELETE USING (true);`}
                 </pre>
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(`CREATE TABLE IF NOT EXISTS invoices (
+                    navigator.clipboard.writeText(`CREATE TABLE IF NOT EXISTS public.invoices (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   number TEXT NOT NULL,
@@ -1924,8 +1932,16 @@ ALTER TABLE invoices DISABLE ROW LEVEL SECURITY;`}
   bank_account TEXT,
   bank_name_branch TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(number);
-ALTER TABLE invoices DISABLE ROW LEVEL SECURITY;`);
+CREATE INDEX IF NOT EXISTS idx_invoices_number ON public.invoices(number);
+ALTER TABLE public.invoices DISABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public select for invoices" ON public.invoices;
+CREATE POLICY "Allow public select for invoices" ON public.invoices FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public insert for invoices" ON public.invoices;
+CREATE POLICY "Allow public insert for invoices" ON public.invoices FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public update for invoices" ON public.invoices;
+CREATE POLICY "Allow public update for invoices" ON public.invoices FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Allow public delete for invoices" ON public.invoices;
+CREATE POLICY "Allow public delete for invoices" ON public.invoices FOR DELETE USING (true);`);
                     alert('Đã sao chép mã SQL vào Clipboard!');
                   }}
                   className="absolute top-2 right-2 px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[9px] font-bold transition-all cursor-pointer border-none"

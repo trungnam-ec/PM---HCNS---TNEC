@@ -74,8 +74,10 @@ Hãy trích xuất thông tin dạng JSON gồm: type, doc_number, doc_date, rec
 
     if (fileType.endsWith(".pdf")) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require("pdf-parse");
-      const parsed = await pdfParse(fileBuffer);
+      const { PDFParse } = require("pdf-parse");
+      const u8 = new Uint8Array(fileBuffer.buffer, fileBuffer.byteOffset, fileBuffer.byteLength);
+      const parser = new PDFParse(u8);
+      const parsed = await parser.getText();
       const text = parsed.text || "";
       messages = [
         { role: "system", content: SYSTEM_PROMPT },

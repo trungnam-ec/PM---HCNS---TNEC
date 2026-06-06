@@ -339,7 +339,7 @@ export default function DocumentControlPage() {
           stt: nextStt,
           doc_number: data.doc_number || "",
           doc_date: data.doc_date || new Date().toISOString().slice(0, 10),
-          receive_send_date: data.receive_send_date || new Date().toISOString().slice(0, 10),
+          receive_send_date: p.receive_send_date, // Giữ nguyên ngày upload của file
           sender_receiver: data.sender_receiver || "",
           signer_recipient: data.signer_recipient || "",
           summary: data.summary || "",
@@ -540,7 +540,7 @@ export default function DocumentControlPage() {
 
       if (data.doc_number) setDocNumber(data.doc_number);
       if (data.doc_date) setDocDate(data.doc_date);
-      if (data.receive_send_date) setReceiveSendDate(data.receive_send_date);
+      // Ngày/Tháng là ngày upload lên, không ghi đè bằng kết quả AI phân tích
       if (data.sender_receiver) setSenderReceiver(data.sender_receiver);
       if (data.summary) setSummary(data.summary);
       if (data.signer_recipient) setSignerRecipient(data.signer_recipient);
@@ -707,7 +707,7 @@ export default function DocumentControlPage() {
       // Auto fill form fields
       if (data.doc_number) setDocNumber(data.doc_number);
       if (data.doc_date) setDocDate(data.doc_date);
-      if (data.receive_send_date) setReceiveSendDate(data.receive_send_date);
+      // Ngày/Tháng là ngày upload lên, không ghi đè bằng kết quả AI phân tích
       if (data.sender_receiver) setSenderReceiver(data.sender_receiver);
       if (data.summary) setSummary(data.summary);
       if (data.signer_recipient) setSignerRecipient(data.signer_recipient);

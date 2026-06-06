@@ -19,9 +19,12 @@ import {
   FileText,
   User,
   ArrowRight,
-  Check
+  Check,
+  Settings,
+  Brain,
+  Save
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // ─── TYPES & INTERFACES ──────────────────────────────────────────────────────
 interface SupplyItem {
@@ -178,6 +181,30 @@ export default function AdministrationPage() {
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractedInvoice, setExtractedInvoice] = useState<Partial<Invoice> | null>(null);
 
+  // AI Settings States for Invoice Reader
+  const [apiKey, setApiKey] = useState("");
+  const [model, setModel] = useState("gpt-4o-mini");
+  const [showAiSettingsModal, setShowAiSettingsModal] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+
+  // Load API Settings on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setApiKey(localStorage.getItem("openai_api_key_hanh_chinh") || "");
+      setModel(localStorage.getItem("openai_model_hanh_chinh") || "gpt-4o-mini");
+    }
+  }, []);
+
+  const saveSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (typeof window !== "undefined") {
+      localStorage.setItem("openai_api_key_hanh_chinh", apiKey.trim());
+      localStorage.setItem("openai_model_hanh_chinh", model);
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 2000);
+    }
+  };
+
   // Department Allocation handler
   const handleApproveRequest = (reqId: string) => {
     const request = deptRequests.find(r => r.id === reqId);
@@ -216,18 +243,58 @@ export default function AdministrationPage() {
     }));
   };
 
-  // Simulate Invoice AI Extraction
-  const simulateInvoiceExtraction = () => {
+  // Simulate Invoice AI Extraction (calls OpenAI if API Key configured, fallback to simulation otherwise)
+  const simulateInvoiceExtraction = async () => {
+    if (!invoiceFile) return;
     setIsExtracting(true);
-    setTimeout(() => {
-      setExtractedInvoice({
-        number: "HD-00982",
-        date: new Date().toISOString().slice(0, 10),
-        desc: "Chi phí mua đồ ăn tiếp khách họp HĐQT ngày 04/06",
-        amount: 3200000
+
+    try {
+      const customKey = localStorage.getItem("openai_api_key_hanh_chinh") || localStorage.getItem("openai_api_key") || "";
+      const customModel = localStorage.getItem("openai_model_hanh_chinh") || "gpt-4o-mini";
+
+      const formData = new FormData();
+      formData.append("document_file", invoiceFile);
+
+      const headers: Record<string, string> = {};
+      if (customKey) {
+        headers["Authorization"] = `Bearer ${customKey}`;
+      }
+      headers["x-openai-model"] = customModel;
+
+      const res = await fetch("/api/analyze-invoice", {
+        method: "POST",
+        headers,
+        body: formData
       });
-      setIsExtracting(false);
-    }, 1500);
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Lỗi trích xuất hóa đơn.");
+      }
+
+      const data = await res.json();
+      setExtractedInvoice({
+        number: data.number || "",
+        date: data.date || new Date().toISOString().slice(0, 10),
+        desc: data.desc || "",
+        amount: data.amount || 0
+      });
+    } catch (err: any) {
+      console.warn("API extraction failed, using mock data:", err);
+      // Fallback to simulation if AI call fails
+      setTimeout(() => {
+        setExtractedInvoice({
+          number: "HD-00982",
+          date: new Date().toISOString().slice(0, 10),
+          desc: `Chi phí mua đồ ăn tiếp khách họp HĐQT ngày 04/06 (Simulation fallback)`,
+          amount: 3200000
+        });
+        setIsExtracting(false);
+      }, 1500);
+      return;
+    }
+
+    setIsExtracting(false);
   };
 
   const saveExtractedInvoice = () => {
@@ -666,9 +733,17 @@ export default function AdministrationPage() {
               {/* ─── TAB 3: Đọc hóa đơn thanh toán ─── */}
               {activeTab === "invoice" && (
                 <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-6">
-                  <div className="border-b border-slate-100 pb-4">
-                    <h3 className="font-heading font-bold text-slate-800 text-sm">Đọc hóa đơn & Làm nhanh hồ sơ thanh toán</h3>
-                    <p className="text-slate-400 text-[10px] font-semibold mt-1">Trích xuất tự động thông tin số hóa đơn, ngày hóa đơn, nội dung, số tiền</p>
+                  <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-heading font-bold text-slate-800 text-sm">Đọc hóa đơn & Làm nhanh hồ sơ thanh toán</h3>
+                      <p className="text-slate-400 text-[10px] font-semibold mt-1">Trích xuất tự động thông tin số hóa đơn, ngày hóa đơn, nội dung, số tiền</p>
+                    </div>
+                    <button 
+                      onClick={() => setShowAiSettingsModal(true)}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 border border-slate-200 hover:bg-slate-50 text-[11px] font-bold text-slate-600 rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
+                    >
+                      <Settings size={13} /> Cấu hình AI
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
@@ -957,6 +1032,73 @@ export default function AdministrationPage() {
           </div>
         </main>
       </div>
+
+      {/* AI Settings Modal */}
+      {showAiSettingsModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="glass bg-white rounded-2xl w-full max-w-md overflow-hidden p-6 space-y-5 border border-white animate-in fade-in-50 zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-[#005BAC]">
+                <Settings size={18} />
+              </div>
+              <div>
+                <h3 className="font-heading font-extrabold text-slate-800 text-sm">Cấu hình AI Hành chính</h3>
+                <p className="text-slate-400 text-[10px] font-semibold mt-0.5">Thiết lập kết nối OpenAI để đọc hóa đơn</p>
+              </div>
+            </div>
+
+            <form onSubmit={saveSettings} className="space-y-4 text-xs font-semibold text-slate-600">
+              <div className="space-y-1">
+                <label className="text-slate-500">OpenAI API Key</label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="sk-proj-..."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs"
+                />
+                <p className="text-[9px] text-slate-400 font-semibold leading-normal mt-1">
+                  Khóa API này được lưu trữ cục bộ trên trình duyệt của bạn. Nếu để trống, hệ thống sẽ tự động dùng khóa chung được thiết lập trên server.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-500">Mô hình AI sử dụng</label>
+                <select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 bg-white cursor-pointer text-xs"
+                >
+                  <option value="gpt-4o-mini">gpt-4o-mini (Nhanh chóng & Rất tiết kiệm)</option>
+                  <option value="gpt-4o">gpt-4o (Độ chính xác cao & Đọc ảnh hóa đơn tốt nhất)</option>
+                </select>
+              </div>
+
+              {settingsSaved && (
+                <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100 text-[10px] font-bold">
+                  <CheckCircle size={12} /> Đã lưu cấu hình thành công!
+                </div>
+              )}
+
+              <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAiSettingsModal(false)}
+                  className="px-4 py-2 border border-slate-200 text-slate-500 font-bold rounded-xl text-xs hover:bg-slate-50 transition-all cursor-pointer"
+                >
+                  Đóng lại
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 px-5 py-2 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl text-xs active:scale-95 transition-all shadow"
+                >
+                  <Save size={13} /> Lưu cấu hình
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

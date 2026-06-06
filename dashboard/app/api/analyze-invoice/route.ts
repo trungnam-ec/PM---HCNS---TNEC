@@ -1,0 +1,107 @@
+import { NextRequest, NextResponse } from "next/server";
+import OpenAI from "openai";
+
+const SYSTEM_PROMPT = `
+Bạn là một AI phân tích hóa đơn chuyên nghiệp cho phòng Hành chính của công ty Trung Nam E&C.
+Nhiệm vụ của bạn là đọc nội dung hóa đơn (hoặc phân tích hình ảnh hóa đơn) và trích xuất chính xác các thông tin cần thiết dưới định dạng JSON.
+
+━━━ CÁC TRƯỜNG THÔNG TIN CẦN TRÍCH XUẤT ━━━
+1. "number": Số hóa đơn (ví dụ: "HD-00982", "0001234"). Nếu không tìm thấy, hãy cố gắng dự đoán hoặc điền rỗng "".
+2. "date": Ngày hóa đơn (định dạng YYYY-MM-DD). Nếu không tìm thấy, điền rỗng "".
+3. "desc": Tóm tắt nội dung mua hàng / nội dung thanh toán trên hóa đơn (ví dụ: "Chi phí mua đồ ăn tiếp khách họp HĐQT", "Mua văn phòng phẩm").
+4. "amount": Số tiền sau thuế (hoặc tổng cộng số tiền phải thanh toán) của hóa đơn dưới dạng số nguyên (ví dụ: 3200000).
+
+Trả về kết quả CHỈ dạng JSON, không kèm bất kỳ giải thích nào bên ngoài.
+
+━━━ OUTPUT FORMAT (JSON ONLY) ━━━
+{
+  "number": "...",
+  "date": "YYYY-MM-DD",
+  "desc": "...",
+  "amount": 123456
+}
+`.trim();
+
+export async function POST(req: NextRequest) {
+  try {
+    const authHeader = req.headers.get("Authorization");
+    const apiKey = (authHeader && authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null) || process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "Mã khoá OpenAI API Key chưa được cấu hình. Vui lòng nhập trong Cài đặt AI của Hành chính." },
+        { status: 400 }
+      );
+    }
+
+    const form = await req.formData();
+    const file = form.get("document_file") as File | null;
+
+    if (!file) {
+      return NextResponse.json({ error: "Thiếu file hóa đơn cần phân tích." }, { status: 400 });
+    }
+
+    const openai = new OpenAI({ apiKey });
+    const fileBuffer = Buffer.from(await file.arrayBuffer());
+    const fileType = file.name.toLowerCase();
+
+    let messages: OpenAI.Chat.ChatCompletionMessageParam[];
+    const promptText = `Hãy phân tích hóa đơn này và trích xuất các thông tin: số hóa đơn (number), ngày hóa đơn (date), nội dung (desc), số tiền sau thuế (amount) dưới dạng JSON.`;
+
+    if (fileType.endsWith(".pdf")) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const pdfParse = require("pdf-parse");
+      const parsed = await pdfParse(fileBuffer);
+      const text = parsed.text || "";
+      messages = [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: `${promptText}\n\n--- NỘI DUNG VĂN BẢN ---\n${text}` },
+      ];
+    } else if (fileType.endsWith(".docx") || fileType.endsWith(".doc")) {
+      const mammoth = await import("mammoth");
+      const result = await mammoth.extractRawText({ buffer: fileBuffer });
+      const text = result.value || "";
+      messages = [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: `${promptText}\n\n--- NỘI DUNG VĂN BẢN ---\n${text}` },
+      ];
+    } else if (fileType.endsWith(".png") || fileType.endsWith(".jpg") || fileType.endsWith(".jpeg")) {
+      const base64 = fileBuffer.toString("base64");
+      const mimeType = fileType.endsWith(".png") ? "image/png" : "image/jpeg";
+      messages = [
+        { role: "system", content: SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: promptText },
+            { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } },
+          ],
+        },
+      ];
+    } else if (fileType.endsWith(".txt")) {
+      const text = fileBuffer.toString("utf-8");
+      messages = [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: `${promptText}\n\n--- NỘI DUNG VĂN BẢN ---\n${text}` },
+      ];
+    } else {
+      return NextResponse.json({ error: "Định dạng file không hỗ trợ. Sử dụng PDF, DOCX, PNG, JPG hoặc TXT." }, { status: 400 });
+    }
+
+    const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o-mini";
+    const completion = await openai.chat.completions.create({
+      model,
+      messages,
+      temperature: 0,
+      response_format: { type: "json_object" },
+    });
+
+    const reply = completion.choices[0]?.message?.content || "{}";
+    const extractedData = JSON.parse(reply);
+
+    return NextResponse.json(extractedData);
+  } catch (err: any) {
+    console.error("Analyze invoice error:", err);
+    return NextResponse.json({ error: err.message || "Lỗi khi gọi OpenAI API" }, { status: 500 });
+  }
+}

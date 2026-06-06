@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
+// ── Polyfill browser APIs required by pdfjs-dist in Node.js server environment ──
+// @napi-rs/canvas is a transitive dependency of pdf-parse and provides these classes
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const _napiCanvas = require("@napi-rs/canvas");
+if (typeof (global as any).DOMMatrix === "undefined") (global as any).DOMMatrix = _napiCanvas.DOMMatrix;
+if (typeof (global as any).DOMPoint === "undefined") (global as any).DOMPoint = _napiCanvas.DOMPoint;
+if (typeof (global as any).DOMRect === "undefined") (global as any).DOMRect = _napiCanvas.DOMRect;
+
 const SYSTEM_PROMPT = `
 Bạn là một AI phân tích hóa đơn chuyên nghiệp cho phòng Hành chính của công ty Trung Nam E&C.
 Nhiệm vụ của bạn là đọc nội dung hóa đơn (hoặc phân tích hình ảnh hóa đơn) và trích xuất chính xác các thông tin cần thiết dưới định dạng JSON theo đúng hướng dẫn nghiệp vụ sau:
@@ -85,6 +93,7 @@ export async function POST(req: NextRequest) {
 
       if (text.length < 20) {
         // PDF scan (ảnh chụp) – tự động fallback sang Vision API bằng cách render ảnh từ PDF
+        // DOMMatrix polyfill đã được inject ở module level (đầu file)
         try {
           const screenshotResult = await parser.getScreenshot({ imageDataUrl: true, scale: 2 });
           if (!screenshotResult || !screenshotResult.pages || screenshotResult.pages.length === 0) {

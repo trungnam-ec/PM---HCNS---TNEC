@@ -735,7 +735,7 @@ export default function DocumentControlPage() {
     <div className="flex min-h-screen bg-[#F7F9FC]">
       <Sidebar />
       <div className="ml-60 flex-1 flex flex-col min-w-0">
-        <Header title="Quản lý Văn thư (AI Assistant)" subtitle="Quản lý và số hóa công văn đi/đến, tự động phân tích trích xuất dữ liệu bằng AI" />
+        <Header title="Văn Thư" subtitle="Quản lý và số hóa công văn đi/đến, tự động phân tích trích xuất dữ liệu bằng AI" />
 
         <main className="flex-1 p-8 space-y-6 overflow-y-auto">
           {/* Sub Navigator */}
@@ -878,16 +878,22 @@ export default function DocumentControlPage() {
                             )}
                           </td>
                           <td className="py-4 text-center">
-                            {doc.original_file_url ? (
-                              <a 
-                                href={doc.original_file_url} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded transition-all inline-flex items-center justify-center"
-                                title="Xem bản gốc"
-                              >
-                                <Eye size={15} />
-                              </a>
+                            {(doc.has_original || doc.original_file_url) ? (
+                              doc.original_file_url ? (
+                                <a 
+                                  href={doc.original_file_url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-all inline-flex items-center justify-center"
+                                  title="Xem bản gốc"
+                                >
+                                  <Eye size={15} />
+                                </a>
+                              ) : (
+                                <span className="inline-flex items-center justify-center p-1 text-slate-400" title="Có bản gốc (chưa có link)">
+                                  <Eye size={15} />
+                                </span>
+                              )
                             ) : (
                               <span className="text-slate-300 font-normal">–</span>
                             )}
@@ -904,6 +910,13 @@ export default function DocumentControlPage() {
                           {canManage && (
                             <td className="py-4 text-right">
                               <div className="flex justify-end gap-2">
+                                <button
+                                  onClick={() => openEditDocModal(doc)}
+                                  className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded transition-all"
+                                  title="Sửa đổi"
+                                >
+                                  <Edit size={14} />
+                                </button>
                                 {(doc.scan_file_url || doc.original_file_url) && (
                                   <a
                                     href={doc.scan_file_url || doc.original_file_url}
@@ -916,13 +929,6 @@ export default function DocumentControlPage() {
                                     <Download size={14} />
                                   </a>
                                 )}
-                                <button
-                                  onClick={() => openEditDocModal(doc)}
-                                  className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded transition-all"
-                                  title="Sửa đổi"
-                                >
-                                  <Edit size={14} />
-                                </button>
                                 <button
                                   onClick={() => doc.id && handleDeleteDoc(doc.id)}
                                   className="p-1 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded transition-all"
@@ -1554,7 +1560,7 @@ export default function DocumentControlPage() {
                 <div className="grid grid-cols-3 gap-3">
                   {/* File Name */}
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">Tên file CV</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">Tên file công văn</label>
                     <input
                       type="text"
                       value={fileName}
@@ -1566,7 +1572,7 @@ export default function DocumentControlPage() {
 
                   {/* Scan File URL */}
                   <div className="space-y-1 col-span-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">Link liên kết bản quét (Google Drive...)</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">Link bản quét (scan) – Google Drive, OneDrive...</label>
                     <input
                       type="text"
                       value={scanFileUrl}
@@ -1575,6 +1581,18 @@ export default function DocumentControlPage() {
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 placeholder-slate-300"
                     />
                   </div>
+                </div>
+
+                {/* Original File URL */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase">Link bản gốc (xem trực tiếp khi click icon 👁) – Google Drive, OneDrive...</label>
+                  <input
+                    type="text"
+                    value={originalFileUrl}
+                    onChange={(e) => setOriginalFileUrl(e.target.value)}
+                    placeholder="https://drive.google.com/file/d/.../view"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 placeholder-slate-300"
+                  />
                 </div>
 
                 {/* Footer buttons */}

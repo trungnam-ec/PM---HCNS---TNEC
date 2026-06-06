@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     const fileType = file.name.toLowerCase();
 
     let messages: OpenAI.Chat.ChatCompletionMessageParam[];
-    const promptText = `Hãy phân tích hóa đơn này và trích xuất các thông tin: số hóa đơn (number), ngày hóa đơn (date), nội dung (desc), số tiền sau thuế (amount) dưới dạng JSON.`;
+    const promptText = `Hãy phân tích hóa đơn này và trích xuất chính xác các thông tin: số hóa đơn (number), ngày hóa đơn (date), nội dung trích yếu (desc), số tiền sau thuế (amount), tên đơn vị thụ hưởng (beneficiaryName), số tài khoản ngân hàng (bankAccount), và tên ngân hàng kèm chi nhánh (bankNameBranch) dưới dạng JSON.`;
 
     if (fileType.endsWith(".pdf")) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports

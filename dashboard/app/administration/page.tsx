@@ -347,9 +347,9 @@ export default function AdministrationPage() {
             simulatedAccount = "110000012345";
             simulatedBank = "Vietinbank CN Long An";
           } else if (fname.includes("giay") || fname.includes("vpp") || fname.includes("but")) {
-            simulatedDesc = "Thanh toán chi phí mua văn phòng phẩm phòng Hành chính";
-            simulatedAmount = 2500000;
-            simulatedBeneficiary = "Công ty TNHH Quảng Cáo Đức An";
+            simulatedDesc = "Thanh toán 50% giá trị hợp đồng in ấn, ấn phẩm logo mới HĐ số: 176283594";
+            simulatedAmount = 7114500;
+            simulatedBeneficiary = "CÔNG TY TNHH QUẢNG CÁO ĐỨC AN";
             simulatedAccount = "0602 2024 1532";
             simulatedBank = "Sacombank CN Tân Phú";
           }
@@ -1251,7 +1251,7 @@ export default function AdministrationPage() {
                             ) : (
                               <>
                                 <Download size={12} />
-                                Xuất phiếu thanh toán (Word)
+                                {documentType === "payment" ? "Xuất phiếu thanh toán (Word)" : "Xuất giấy chuyển tiền (Word)"}
                               </>
                             )}
                           </button>

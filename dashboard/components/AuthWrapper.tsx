@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { Loader2, ShieldAlert } from "lucide-react";
 
@@ -11,6 +11,8 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
   const [checkingAdmin, setCheckingAdmin] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  
+  const lastCheckedEmail = useRef<string | null>(null);
 
   useEffect(() => {
     // 1. Get initial session
@@ -34,6 +36,13 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
     if (!session || !userEmail) {
       setIsAdmin(false);
       setAuthError(null);
+      lastCheckedEmail.current = null;
+      return;
+    }
+
+    // Nếu email này đã được kiểm tra thành công và đã được xác nhận quyền Admin,
+    // không cần gọi database kiểm tra lại mỗi lần session thay đổi tham chiếu (do tab focus/token refresh).
+    if (userEmail === lastCheckedEmail.current && isAdmin) {
       return;
     }
 
@@ -57,6 +66,7 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
         if (allowedData && allowedData.role === "Admin") {
           setIsAdmin(true);
           setAuthError(null);
+          lastCheckedEmail.current = userEmail;
           return;
         }
 
@@ -78,6 +88,7 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
           // Found in employees table -> allow login
           setIsAdmin(true);
           setAuthError(null);
+          lastCheckedEmail.current = userEmail;
         } else {
           setAuthError("Email này chưa được đăng ký trong danh sách nhân sự (Bảng employees) hoặc Whitelist.");
           setIsAdmin(false);
@@ -92,7 +103,7 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
     };
 
     checkAdminStatus();
-  }, [session, userEmail]);
+  }, [session, userEmail, isAdmin]);
 
   const handleLogin = async () => {
     try {

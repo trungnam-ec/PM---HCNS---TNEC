@@ -28,8 +28,9 @@ import {
   Eye,
   X
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { docSoVietNam } from "@/lib/wordExporter";
+import { supabase } from "@/lib/supabase";
 
 // ─── TYPES & INTERFACES ──────────────────────────────────────────────────────
 interface SupplyItem {
@@ -66,6 +67,10 @@ interface Invoice {
   date: string;
   desc: string;
   amount: number;
+  file_url?: string;
+  beneficiary_name?: string;
+  bank_account?: string;
+  bank_name_branch?: string;
 }
 
 interface RecurringPayment {
@@ -179,10 +184,18 @@ export default function AdministrationPage() {
     amount: number;
     error?: string;
     isMock?: boolean;
+    fileUrl?: string;
+    beneficiaryName?: string;
+    bankAccount?: string;
+    bankNameBranch?: string;
   }>>([]);
   const [isExtractingBatch, setIsExtractingBatch] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+
+  // States for viewing original files in popups
+  const [previewFileUrl, setPreviewFileUrl] = useState<string>("");
+  const [previewFileName, setPreviewFileName] = useState<string>("");
 
   // Form metadata for document generation
   const [employeeName, setEmployeeName] = useState("Nguyễn Bích Như Quỳnh");
@@ -277,7 +290,32 @@ export default function AdministrationPage() {
     const customModel = localStorage.getItem("openai_model_hanh_chinh") || "gpt-4o-mini";
 
     for (const item of pendingItems) {
+      let uploadedUrl = "";
       try {
+        // 1. Tải file gốc lên Supabase Storage (bucket clerical-documents, thư mục invoices/)
+        try {
+          const cleanFileName = item.file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+          const filePath = `${Date.now()}_${cleanFileName}`;
+
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from("clerical-documents")
+            .upload(`invoices/${filePath}`, item.file, {
+              cacheControl: "3600",
+              upsert: true,
+            });
+
+          if (uploadError) throw uploadError;
+
+          const { data: { publicUrl } } = supabase.storage
+            .from("clerical-documents")
+            .getPublicUrl(`invoices/${filePath}`);
+          
+          uploadedUrl = publicUrl;
+        } catch (uploadErr) {
+          console.error("Batch upload storage failed for file:", item.file.name, uploadErr);
+        }
+
+        // 2. Gửi request trích xuất thông tin hóa đơn từ AI
         const formData = new FormData();
         formData.append("document_file", item.file);
 
@@ -308,7 +346,11 @@ export default function AdministrationPage() {
                 number: data.number || "",
                 date: data.date || new Date().toISOString().slice(0, 10),
                 desc: data.desc || "",
-                amount: data.amount || 0
+                amount: data.amount || 0,
+                fileUrl: uploadedUrl,
+                beneficiaryName: data.beneficiaryName || "",
+                bankAccount: data.bankAccount || "",
+                bankNameBranch: data.bankNameBranch || ""
               }
             : q
         ));
@@ -359,7 +401,11 @@ export default function AdministrationPage() {
                   number: simulatedNumber,
                   date: new Date().toISOString().slice(0, 10),
                   desc: simulatedDesc,
-                  amount: simulatedAmount
+                  amount: simulatedAmount,
+                  fileUrl: uploadedUrl,
+                  beneficiaryName: simulatedBeneficiary,
+                  bankAccount: simulatedAccount,
+                  bankNameBranch: simulatedBank
                 }
               : q
           ));
@@ -433,27 +479,104 @@ export default function AdministrationPage() {
     }
   };
 
+  // Fetch invoices from Supabase
+  const fetchInvoices = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select("*")
+        .order("created_at", { ascending: false });
+      
+      if (error) throw error;
+      
+      if (data) {
+        const loadedInvs: Invoice[] = data.map((row: any) => ({
+          id: row.id,
+          number: row.number,
+          date: row.date,
+          desc: row.description || "",
+          amount: Number(row.amount),
+          file_url: row.file_url || "",
+          beneficiary_name: row.beneficiary_name || "",
+          bank_account: row.bank_account || "",
+          bank_name_branch: row.bank_name_branch || ""
+        }));
+        setInvoices(loadedInvs);
+      }
+    } catch (err: any) {
+      console.error("Failed to fetch invoices from Supabase:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchInvoices();
+  }, [fetchInvoices]);
+
   // Save successful queue items to main processed table
-  const saveQueueToHistory = () => {
+  const saveQueueToHistory = async () => {
     const successItems = invoiceQueue.filter(item => item.status === "success" && item.number && item.amount);
     if (successItems.length === 0) return;
 
-    const newInvs: Invoice[] = successItems.map(item => ({
-      id: `INV-${Date.now().toString().slice(-2)}-${Math.random().toString(36).substr(2, 4)}`,
-      number: item.number,
-      date: item.date,
-      desc: item.desc || "Hóa đơn thanh toán",
-      amount: item.amount
-    }));
+    try {
+      const newInvsPayload = successItems.map(item => ({
+        number: item.number,
+        date: item.date,
+        description: item.desc || "Hóa đơn thanh toán",
+        amount: item.amount,
+        file_url: item.fileUrl || "",
+        beneficiary_name: item.beneficiaryName || "",
+        bank_account: item.bankAccount || "",
+        bank_name_branch: item.bankNameBranch || ""
+      }));
 
-    setInvoices(prev => [...newInvs, ...prev]);
-    setInvoiceQueue([]);
-    alert("Đã đồng bộ lưu tất cả hóa đơn thành công vào danh sách lịch sử!");
+      const { data, error } = await supabase
+        .from("invoices")
+        .insert(newInvsPayload)
+        .select();
+
+      if (error) throw error;
+
+      await fetchInvoices();
+      setInvoiceQueue([]);
+      alert("Đã đồng bộ lưu tất cả hóa đơn thành công vào danh sách lịch sử trên Supabase!");
+    } catch (dbErr: any) {
+      console.error("Failed to save invoices to Supabase:", dbErr);
+      
+      // Local state fallback if Supabase table is not configured
+      const newInvs: Invoice[] = successItems.map(item => ({
+        id: `INV-${Date.now().toString().slice(-2)}-${Math.random().toString(36).substr(2, 4)}`,
+        number: item.number,
+        date: item.date,
+        desc: item.desc || "Hóa đơn thanh toán",
+        amount: item.amount,
+        file_url: item.fileUrl || "",
+        beneficiary_name: item.beneficiaryName || "",
+        bank_account: item.bankAccount || "",
+        bank_name_branch: item.bankNameBranch || ""
+      }));
+
+      setInvoices(prev => [...newInvs, ...prev]);
+      setInvoiceQueue([]);
+      alert(`Đã lưu hóa đơn thành công vào danh sách tạm thời! Lỗi kết nối Supabase: ${dbErr.message}`);
+    }
   };
 
-  const handleDeleteInvoice = (id: string) => {
+  const handleDeleteInvoice = async (id: string) => {
     if (confirm("Bạn có chắc chắn muốn xóa hóa đơn này khỏi lịch sử không?")) {
-      setInvoices(prev => prev.filter(inv => inv.id !== id));
+      try {
+        // If it's a UUID from Supabase (not starting with INV- and not HD-DK-)
+        if (!id.startsWith("INV-") && !id.startsWith("HD-DK-")) {
+          const { error } = await supabase
+            .from("invoices")
+            .delete()
+            .eq("id", id);
+          if (error) throw error;
+        }
+        setInvoices(prev => prev.filter(inv => inv.id !== id));
+      } catch (err: any) {
+        console.error("Delete invoice error:", err);
+        alert("Lỗi khi xóa hóa đơn từ Supabase: " + err.message);
+      }
     }
   };
 
@@ -1243,6 +1366,7 @@ export default function AdministrationPage() {
                             <th className="p-3">Nội dung hóa đơn</th>
                             <th className="p-3 text-right">Số tiền sau thuế</th>
                             <th className="p-3 text-center">Trạng thái</th>
+                            <th className="p-3 text-center">File gốc</th>
                             <th className="p-3 text-center">Thao tác</th>
                           </tr>
                         </thead>
@@ -1259,6 +1383,22 @@ export default function AdministrationPage() {
                                 <span className="inline-flex items-center justify-center bg-emerald-50 text-emerald-600 text-[9px] font-bold px-2 py-0.5 rounded-lg border border-emerald-100">
                                   Đã trích xuất
                                 </span>
+                              </td>
+                              <td className="p-3 text-center">
+                                {inv.file_url ? (
+                                  <button
+                                    onClick={() => {
+                                      setPreviewFileUrl(inv.file_url || "");
+                                      setPreviewFileName(`Hóa đơn số ${inv.number}`);
+                                    }}
+                                    className="text-blue-600 hover:text-blue-800 transition-colors p-1.5 rounded-lg hover:bg-blue-50 cursor-pointer inline-flex items-center justify-center bg-transparent border-none"
+                                    title="Xem file gốc"
+                                  >
+                                    <Eye size={14} />
+                                  </button>
+                                ) : (
+                                  <span className="text-slate-300">-</span>
+                                )}
                               </td>
                               <td className="p-3 text-center">
                                 <button
@@ -1308,18 +1448,53 @@ export default function AdministrationPage() {
                             <p className="text-xs font-bold text-[#005BAC]">{payment.lastAmount.toLocaleString("vi-VN")} đ</p>
                           </div>
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               const newAmount = prompt(`Nhập số tiền hóa đơn tháng này cho [${payment.name}]:`, payment.lastAmount.toString());
                               if (newAmount && !isNaN(Number(newAmount))) {
-                                const newInv: Invoice = {
-                                  id: `INV-${Date.now().toString().slice(-2)}`,
-                                  number: `HD-DK-${Date.now().toString().slice(-2)}`,
-                                  date: new Date().toISOString().slice(0, 10),
-                                  desc: `Thanh toán ${payment.name.toLowerCase()} định kỳ tháng này`,
-                                  amount: Number(newAmount)
-                                };
-                                setInvoices(prev => [newInv, ...prev]);
-                                alert(`Đã tạo nhanh HS thanh toán cho ${payment.name} với số tiền ${Number(newAmount).toLocaleString("vi-VN")} đ!`);
+                                try {
+                                  const { data, error } = await supabase
+                                    .from("invoices")
+                                    .insert([{
+                                      number: `HD-DK-${Date.now().toString().slice(-2)}`,
+                                      date: new Date().toISOString().slice(0, 10),
+                                      description: `Thanh toán ${payment.name.toLowerCase()} định kỳ tháng này`,
+                                      amount: Number(newAmount),
+                                      beneficiary_name: payment.owner,
+                                      bank_account: payment.account,
+                                      bank_name_branch: payment.bank
+                                    }])
+                                    .select();
+                                  if (error) throw error;
+                                  if (data && data[0]) {
+                                    const savedInv: Invoice = {
+                                      id: data[0].id,
+                                      number: data[0].number,
+                                      date: data[0].date,
+                                      desc: data[0].description || "",
+                                      amount: Number(data[0].amount),
+                                      file_url: data[0].file_url || "",
+                                      beneficiary_name: data[0].beneficiary_name || "",
+                                      bank_account: data[0].bank_account || "",
+                                      bank_name_branch: data[0].bank_name_branch || ""
+                                    };
+                                    setInvoices(prev => [savedInv, ...prev]);
+                                    alert(`Đã tạo và đồng bộ HS thanh toán định kỳ cho ${payment.name}!`);
+                                  }
+                                } catch (dbErr: any) {
+                                  console.error("Save manual invoice to Supabase failed:", dbErr);
+                                  const newInv: Invoice = {
+                                    id: `INV-${Date.now().toString().slice(-2)}`,
+                                    number: `HD-DK-${Date.now().toString().slice(-2)}`,
+                                    date: new Date().toISOString().slice(0, 10),
+                                    desc: `Thanh toán ${payment.name.toLowerCase()} định kỳ tháng này`,
+                                    amount: Number(newAmount),
+                                    beneficiary_name: payment.owner,
+                                    bank_account: payment.account,
+                                    bank_name_branch: payment.bank
+                                  };
+                                  setInvoices(prev => [newInv, ...prev]);
+                                  alert(`Đã tạo nhanh HS thanh toán cho ${payment.name} (lưu tạm thời trên trình duyệt)!`);
+                                }
                               }
                             }}
                             className="bg-slate-900 hover:bg-slate-800 text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-sm active:scale-95 transition-all"
@@ -1654,6 +1829,72 @@ export default function AdministrationPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* File Preview Modal */}
+      {previewFileUrl && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-4xl h-[85vh] overflow-hidden shadow-2xl border border-slate-100 flex flex-col animate-in fade-in-50 zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 bg-blue-50 text-[#005BAC] rounded-xl flex-shrink-0">
+                  <FileText size={16} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-heading font-extrabold text-slate-800 text-xs truncate" title={previewFileName}>
+                    {previewFileName}
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-semibold">Tài liệu hóa đơn gốc</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <a
+                  href={previewFileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer border-none"
+                >
+                  Mở tab mới
+                </a>
+                <button
+                  onClick={() => {
+                    setPreviewFileUrl("");
+                    setPreviewFileName("");
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-all cursor-pointer bg-transparent border-none"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            {/* Body */}
+            <div className="flex-1 bg-slate-100 p-4 flex items-center justify-center relative">
+              {(() => {
+                const isImage = /\.(jpeg|jpg|gif|png|webp|svg)/i.test(previewFileUrl.split(/[?#]/)[0]);
+                if (isImage) {
+                  return (
+                    <div className="w-full h-full overflow-auto flex items-center justify-center bg-white rounded-xl shadow-inner p-4">
+                      <img 
+                        src={previewFileUrl} 
+                        alt={previewFileName} 
+                        className="max-w-full max-h-full object-contain rounded-lg shadow-md"
+                      />
+                    </div>
+                  );
+                }
+                
+                return (
+                  <iframe 
+                    src={previewFileUrl} 
+                    className="w-full h-full border-none bg-white rounded-xl shadow-inner" 
+                    title="Invoice File Preview"
+                  />
+                );
+              })()}
+            </div>
           </div>
         </div>
       )}

@@ -395,34 +395,10 @@ export default function AdministrationPage() {
         .select();
       if (error) throw error;
       if (data && data[0]) {
-        const savedInv: Invoice = {
-          id: data[0].id,
-          number: data[0].number,
-          date: data[0].date,
-          desc: data[0].description || "",
-          amount: Number(data[0].amount),
-          file_url: data[0].file_url || "",
-          beneficiary_name: data[0].beneficiary_name || "",
-          bank_account: data[0].bank_account || "",
-          bank_name_branch: data[0].bank_name_branch || ""
-        };
-        setInvoices(prev => [savedInv, ...prev]);
         alert("Đã thêm khoản thanh toán và đồng bộ thành công lên Supabase!");
       }
     } catch (err: any) {
       console.warn("Could not sync to Supabase (saving locally):", err.message || err);
-      // Create local fallback invoice
-      const newInv: Invoice = {
-        id: newPayment.id,
-        number: `HD-DK-${Date.now().toString().slice(-4)}`,
-        date: new Date().toISOString().slice(0, 10),
-        desc: newPayment.content,
-        amount: newPayment.amount,
-        beneficiary_name: newPayment.supplierName,
-        bank_account: newPayment.account,
-        bank_name_branch: newPayment.bank
-      };
-      setInvoices(prev => [newInv, ...prev]);
       alert("Đã lưu khoản thanh toán thành công (lưu tạm thời trên trình duyệt do lỗi kết nối Supabase)!");
     }
 
@@ -813,17 +789,19 @@ export default function AdministrationPage() {
       if (error) throw error;
       
       if (data) {
-        const loadedInvs: Invoice[] = data.map((row: any) => ({
-          id: row.id,
-          number: row.number,
-          date: row.date,
-          desc: row.description || "",
-          amount: Number(row.amount),
-          file_url: row.file_url || "",
-          beneficiary_name: row.beneficiary_name || "",
-          bank_account: row.bank_account || "",
-          bank_name_branch: row.bank_name_branch || ""
-        }));
+        const loadedInvs: Invoice[] = data
+          .filter((row: any) => !row.number?.startsWith("HD-DK-"))
+          .map((row: any) => ({
+            id: row.id,
+            number: row.number,
+            date: row.date,
+            desc: row.description || "",
+            amount: Number(row.amount),
+            file_url: row.file_url || "",
+            beneficiary_name: row.beneficiary_name || "",
+            bank_account: row.bank_account || "",
+            bank_name_branch: row.bank_name_branch || ""
+          }));
         setInvoices(loadedInvs);
         setIsTableMissing(false);
       }

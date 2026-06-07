@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { label: "Bảng điều khiển", href: "/", icon: LayoutDashboard },
+  { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Quản lý Công việc", href: "/tasks", icon: ClipboardList },
   { label: "Lịch công việc", href: "/calendar", icon: CalendarRange },
   { label: "Tuyển dụng", href: "/recruitment", icon: Briefcase },

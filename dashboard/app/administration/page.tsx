@@ -26,7 +26,8 @@ import {
   Loader2,
   Download,
   Eye,
-  X
+  X,
+  Pencil
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { docSoVietNam, exportDeNghiChuyenTien, downloadDocFile } from "@/lib/wordExporter";
@@ -100,6 +101,7 @@ interface SupplierPayment {
   amount: number;
   content: string;
   month: string;
+  fileUrl?: string;
 }
 
 // ─── INITIAL MOCK DATA ────────────────────────────────────────────────────────
@@ -249,6 +251,8 @@ export default function AdministrationPage() {
   const [previewFileName, setPreviewFileName] = useState<string>("");
   const [showSqlGuideModal, setShowSqlGuideModal] = useState(false);
   const [isTableMissing, setIsTableMissing] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<SupplierPayment | null>(null);
+  const [uploadingPaymentId, setUploadingPaymentId] = useState<string | null>(null);
 
   // Form metadata for document generation
   const [employeeName, setEmployeeName] = useState("Nguyễn Bích Như Quỳnh");
@@ -362,23 +366,8 @@ export default function AdministrationPage() {
       return;
     }
 
-    const newPayment: SupplierPayment = {
-      id: `PAY-${Date.now().toString().slice(-4)}`,
-      supplierId: supp.id,
-      supplierName: supp.name,
-      account: supp.account,
-      bank: supp.bank,
-      service: supp.service,
-      amount: Number(payAmount),
-      content: payContent || `Thanh toán định kỳ ${supp.name}`,
-      month: payMonth || "06/2026"
-    };
-
-    const updated = [...pendingPayments, newPayment];
-    setPendingPayments(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("tnec_pending_payments", JSON.stringify(updated));
-    }
+    const tempId = `PAY-${Date.now().toString().slice(-4)}`;
+    let finalId = tempId;
 
     // Try to sync with Supabase invoices table
     try {
@@ -387,15 +376,16 @@ export default function AdministrationPage() {
         .insert([{
           number: `HD-DK-${Date.now().toString().slice(-4)}`,
           date: new Date().toISOString().slice(0, 10),
-          description: newPayment.content,
-          amount: newPayment.amount,
-          beneficiary_name: newPayment.supplierName,
-          bank_account: newPayment.account,
-          bank_name_branch: newPayment.bank
+          description: payContent || `Thanh toán định kỳ ${supp.name}`,
+          amount: Number(payAmount),
+          beneficiary_name: supp.name,
+          bank_account: supp.account,
+          bank_name_branch: supp.bank
         }])
         .select();
       if (error) throw error;
       if (data && data[0]) {
+        finalId = data[0].id;
         const savedInv: Invoice = {
           id: data[0].id,
           number: data[0].number,
@@ -414,17 +404,35 @@ export default function AdministrationPage() {
       console.warn("Could not sync to Supabase (saving locally):", err.message || err);
       // Create local fallback invoice
       const newInv: Invoice = {
-        id: newPayment.id,
+        id: tempId,
         number: `HD-DK-${Date.now().toString().slice(-4)}`,
         date: new Date().toISOString().slice(0, 10),
-        desc: newPayment.content,
-        amount: newPayment.amount,
-        beneficiary_name: newPayment.supplierName,
-        bank_account: newPayment.account,
-        bank_name_branch: newPayment.bank
+        desc: payContent || `Thanh toán định kỳ ${supp.name}`,
+        amount: Number(payAmount),
+        beneficiary_name: supp.name,
+        bank_account: supp.account,
+        bank_name_branch: supp.bank
       };
       setInvoices(prev => [newInv, ...prev]);
       alert("Đã lưu khoản thanh toán thành công (lưu tạm thời trên trình duyệt do lỗi kết nối Supabase)!");
+    }
+
+    const newPayment: SupplierPayment = {
+      id: finalId,
+      supplierId: supp.id,
+      supplierName: supp.name,
+      account: supp.account,
+      bank: supp.bank,
+      service: supp.service,
+      amount: Number(payAmount),
+      content: payContent || `Thanh toán định kỳ ${supp.name}`,
+      month: payMonth || "06/2026"
+    };
+
+    const updated = [...pendingPayments, newPayment];
+    setPendingPayments(updated);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("tnec_pending_payments", JSON.stringify(updated));
     }
 
     // Reset payment inputs
@@ -433,13 +441,26 @@ export default function AdministrationPage() {
     setPayContent("");
   };
 
-  const handleDeletePendingPayment = (id: string) => {
+  const handleDeletePendingPayment = async (id: string) => {
     if (confirm("Bạn có chắc chắn muốn xóa khoản thanh toán này?")) {
+      try {
+        if (!id.startsWith("PAY-") && !id.startsWith("INV-")) {
+          const { error } = await supabase
+            .from("invoices")
+            .delete()
+            .eq("id", id);
+          if (error) throw error;
+        }
+      } catch (err: any) {
+        console.warn("Could not delete invoice row from Supabase:", err.message || err);
+      }
+
       const updated = pendingPayments.filter(p => p.id !== id);
       setPendingPayments(updated);
       if (typeof window !== "undefined") {
         localStorage.setItem("tnec_pending_payments", JSON.stringify(updated));
       }
+      setInvoices(prev => prev.filter(inv => inv.id !== id));
     }
   };
 
@@ -908,6 +929,89 @@ export default function AdministrationPage() {
         console.error("Delete invoice error:", err);
         alert("Lỗi khi xóa hóa đơn từ Supabase: " + err.message);
       }
+    }
+  };
+
+  const handleUploadFileForPayment = async (paymentId: string, file: File) => {
+    if (!file) return;
+    setUploadingPaymentId(paymentId);
+    try {
+      const cleanFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+      const filePath = `${Date.now()}_${cleanFileName}`;
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("clerical-documents")
+        .upload(`invoices/${filePath}`, file, {
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("clerical-documents")
+        .getPublicUrl(`invoices/${filePath}`);
+
+      // Update in Supabase invoices table (using the database UUID if it is one)
+      if (!paymentId.startsWith("PAY-") && !paymentId.startsWith("INV-")) {
+        const { error: updateError } = await supabase
+          .from("invoices")
+          .update({ file_url: publicUrl })
+          .eq("id", paymentId);
+        if (updateError) throw updateError;
+      }
+
+      // Update in local state
+      const updated = pendingPayments.map(p => 
+        p.id === paymentId ? { ...p, fileUrl: publicUrl } : p
+      );
+      setPendingPayments(updated);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("tnec_pending_payments", JSON.stringify(updated));
+      }
+      alert("Tải lên hóa đơn thành công!");
+    } catch (err: any) {
+      console.error("Upload payment file error:", err);
+      alert("Lỗi khi tải lên hóa đơn: " + (err.message || err));
+    } finally {
+      setUploadingPaymentId(null);
+    }
+  };
+
+  const handleUpdatePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPayment) return;
+    try {
+      const { id, supplierName, account, bank, content, amount, month } = editingPayment;
+
+      // Update in Supabase invoices table
+      if (!id.startsWith("PAY-") && !id.startsWith("INV-")) {
+        const { error: updateError } = await supabase
+          .from("invoices")
+          .update({
+            description: content,
+            amount: Number(amount),
+            beneficiary_name: supplierName,
+            bank_account: account,
+            bank_name_branch: bank
+          })
+          .eq("id", id);
+        if (updateError) throw updateError;
+      }
+
+      // Update in local state
+      const updated = pendingPayments.map(p => 
+        p.id === id ? editingPayment : p
+      );
+      setPendingPayments(updated);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("tnec_pending_payments", JSON.stringify(updated));
+      }
+      alert("Cập nhật thông tin thanh toán thành công!");
+      setEditingPayment(null);
+    } catch (err: any) {
+      console.error("Update payment error:", err);
+      alert("Lỗi khi cập nhật thanh toán: " + (err.message || err));
     }
   };
 
@@ -1925,7 +2029,8 @@ export default function AdministrationPage() {
 
                   {/* SUB-TAB 2: payments (Bảng lập thanh toán NCC) */}
                   {recurringSubTab === "payments" && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       {/* Left form */}
                       <div className="md:col-span-1 border border-slate-200/80 bg-slate-50/20 p-5 rounded-2xl space-y-4">
                         <h4 className="font-heading font-extrabold text-slate-800 text-xs flex items-center gap-1.5 border-b border-slate-105 pb-2">
@@ -2062,7 +2167,8 @@ export default function AdministrationPage() {
                                 <th className="py-2.5 px-3">Tài khoản & Ngân hàng</th>
                                 <th className="py-2.5 px-3">Nội dung</th>
                                 <th className="py-2.5 px-3 text-right">Số tiền (đ)</th>
-                                <th className="py-2.5 px-3 w-12 text-center">Xóa</th>
+                                <th className="py-2.5 px-3 text-center">File gốc</th>
+                                <th className="py-2.5 px-3 w-20 text-center">Thao tác</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -2082,23 +2188,75 @@ export default function AdministrationPage() {
                                     </td>
                                     <td className="py-3 px-3 text-slate-500 text-[11.5px] leading-snug font-medium">{p.content}</td>
                                     <td className="py-3 px-3 text-right font-black text-slate-800 group-hover:text-blue-700">{p.amount.toLocaleString("vi-VN")}</td>
-                                    <td className="py-3 px-3 text-center">
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDeletePendingPayment(p.id);
-                                        }}
-                                        className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                        title="Xóa thanh toán"
-                                      >
-                                        <Trash2 size={13} />
-                                      </button>
+                                    <td className="py-3 px-3 text-center animate-in fade-in" onClick={(e) => e.stopPropagation()}>
+                                      {uploadingPaymentId === p.id ? (
+                                        <Loader2 className="animate-spin text-blue-600 mx-auto" size={14} />
+                                      ) : p.fileUrl ? (
+                                        <div className="flex items-center justify-center gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setPreviewFileUrl(p.fileUrl || "");
+                                              setPreviewFileName(`Hóa đơn ${p.supplierName}`);
+                                            }}
+                                            className="text-blue-600 hover:text-blue-800 transition-colors p-1.5 rounded-lg hover:bg-blue-50 cursor-pointer inline-flex items-center justify-center bg-transparent border-none"
+                                            title="Xem file gốc"
+                                          >
+                                            <Eye size={14} />
+                                          </button>
+                                          <label className="text-slate-400 hover:text-blue-600 transition-colors p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer inline-flex items-center justify-center relative">
+                                            <Upload size={13} />
+                                            <input
+                                              type="file"
+                                              className="hidden"
+                                              onChange={(e) => {
+                                                if (e.target.files && e.target.files[0]) {
+                                                  handleUploadFileForPayment(p.id, e.target.files[0]);
+                                                }
+                                              }}
+                                            />
+                                          </label>
+                                        </div>
+                                      ) : (
+                                        <label className="text-slate-400 hover:text-blue-600 transition-colors p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer inline-flex items-center justify-center relative mx-auto">
+                                          <Upload size={14} />
+                                          <input
+                                            type="file"
+                                            className="hidden"
+                                            onChange={(e) => {
+                                              if (e.target.files && e.target.files[0]) {
+                                                handleUploadFileForPayment(p.id, e.target.files[0]);
+                                              }
+                                            }}
+                                          />
+                                        </label>
+                                      )}
+                                    </td>
+                                    <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                      <div className="flex items-center justify-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingPayment(p)}
+                                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer bg-transparent border-none"
+                                          title="Chỉnh sửa thanh toán"
+                                        >
+                                          <Pencil size={13} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeletePendingPayment(p.id)}
+                                          className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer bg-transparent border-none"
+                                          title="Xóa thanh toán"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
                                     </td>
                                   </tr>
                                 ))}
                               {pendingPayments.filter(p => p.month === payMonth).length === 0 && (
                                 <tr>
-                                  <td colSpan={5} className="py-10 text-center text-slate-400 italic">Không có khoản thanh toán nào cho tháng {payMonth}.</td>
+                                  <td colSpan={6} className="py-10 text-center text-slate-400 italic">Không có khoản thanh toán nào cho tháng {payMonth}.</td>
                                 </tr>
                               )}
                             </tbody>
@@ -2106,86 +2264,11 @@ export default function AdministrationPage() {
                         </div>
                       </div>
                     </div>
-                  )}
-
-                  {/* Processed list for recurring payments */}
-                  <div className="space-y-3.5 pt-4">
-                    <h4 className="font-heading font-extrabold text-slate-800 text-xs">Danh sách thanh toán định kỳ đã xử lý</h4>
-                    <div className="overflow-x-auto border border-slate-150 rounded-xl bg-slate-50/20">
-                      <table className="w-full text-xs text-left">
-                        <thead>
-                          <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[9px] p-3">
-                            <th className="p-3">Số chứng từ</th>
-                            <th className="p-3">Ngày lập</th>
-                            <th className="p-3">Nội dung thanh toán</th>
-                            <th className="p-3 text-right">Số tiền</th>
-                            <th className="p-3 text-center">Trạng thái</th>
-                            <th className="p-3 text-center">Xem trước</th>
-                            <th className="p-3 text-center">Thao tác</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
-                          {invoices.filter(inv => inv.number?.startsWith("HD-DK-")).map((inv) => (
-                            <tr key={inv.id} className="hover:bg-slate-50/50 bg-white">
-                              <td className="p-3 font-mono text-slate-800 font-bold">{inv.number}</td>
-                              <td className="p-3 text-slate-500">{inv.date}</td>
-                              <td className="p-3 text-slate-600 max-w-xs truncate">{inv.desc}</td>
-                              <td className="p-3 text-right text-[#005BAC] font-mono font-bold">
-                                {inv.amount.toLocaleString("vi-VN")} đ
-                              </td>
-                              <td className="p-3 text-center">
-                                <span className="inline-flex items-center justify-center bg-blue-50 text-blue-600 text-[9px] font-bold px-2 py-0.5 rounded-lg border border-blue-100">
-                                  Đã đồng bộ
-                                </span>
-                              </td>
-                              <td className="p-3 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const mockPayment: SupplierPayment = {
-                                      id: inv.id,
-                                      supplierId: "",
-                                      supplierName: inv.beneficiary_name || "",
-                                      account: inv.bank_account || "",
-                                      bank: inv.bank_name_branch || "",
-                                      service: "",
-                                      amount: inv.amount,
-                                      content: inv.desc,
-                                      month: payMonth
-                                    };
-                                    setActivePreviewPayment(mockPayment);
-                                    setShowRecurringPreviewModal(true);
-                                  }}
-                                  className="text-blue-600 hover:text-blue-800 transition-colors p-1.5 rounded-lg hover:bg-blue-50 cursor-pointer inline-flex items-center justify-center bg-transparent border-none"
-                                  title="Xem trước tài liệu"
-                                >
-                                  <Eye size={14} />
-                                </button>
-                              </td>
-                              <td className="p-3 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteInvoice(inv.id)}
-                                  className="text-slate-400 hover:text-rose-500 transition-colors p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
-                                  title="Xóa hóa đơn"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                          {invoices.filter(inv => inv.number?.startsWith("HD-DK-")).length === 0 && (
-                            <tr>
-                              <td colSpan={7} className="py-8 text-center text-slate-400 italic">Không có thanh toán định kỳ nào đã đồng bộ.</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
                   </div>
+                )}
 
-                </div>
-              )}
+            </div>
+          )}
 
               {/* ─── TAB 5: Báo cáo chi phí cuối tháng ─── */}
               {activeTab === "report" && (
@@ -2893,6 +2976,116 @@ CREATE POLICY "Allow public delete for invoices" ON public.invoices FOR DELETE U
           </div>
         );
       })()}
+
+      {/* Edit Payment Modal */}
+      {editingPayment && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden p-6 space-y-5 border border-slate-100 animate-in fade-in-50 zoom-in-95 duration-150 relative">
+            <button
+              onClick={() => setEditingPayment(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors p-1.5 hover:bg-slate-100 rounded-full cursor-pointer bg-transparent border-none outline-none"
+            >
+              <X size={16} />
+            </button>
+
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-[#005BAC]">
+                <Settings size={18} />
+              </div>
+              <div>
+                <h3 className="font-heading font-extrabold text-slate-800 text-sm">Chỉnh sửa thanh toán định kỳ</h3>
+                <p className="text-slate-400 text-[10px] font-semibold mt-0.5">Thay đổi thông tin chi tiết thanh toán của nhà cung cấp</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleUpdatePayment} className="space-y-4 text-xs font-semibold text-slate-600">
+              <div className="space-y-1">
+                <label className="text-slate-500">Tên Nhà Cung Cấp</label>
+                <input
+                  type="text"
+                  required
+                  value={editingPayment.supplierName || ""}
+                  onChange={(e) => setEditingPayment(prev => prev ? { ...prev, supplierName: e.target.value } : null)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs font-bold text-slate-800"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-slate-500">Số tài khoản ngân hàng</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPayment.account || ""}
+                    onChange={(e) => setEditingPayment(prev => prev ? { ...prev, account: e.target.value } : null)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs font-mono font-bold text-slate-800"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-slate-500">Ngân hàng & Chi nhánh</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPayment.bank || ""}
+                    onChange={(e) => setEditingPayment(prev => prev ? { ...prev, bank: e.target.value } : null)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs font-medium text-slate-700"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-500">Nội dung thanh toán</label>
+                <textarea
+                  required
+                  rows={2}
+                  value={editingPayment.content || ""}
+                  onChange={(e) => setEditingPayment(prev => prev ? { ...prev, content: e.target.value } : null)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs text-slate-800 resize-none font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-slate-500">Số tiền thanh toán (VNĐ)</label>
+                  <input
+                    type="number"
+                    required
+                    value={editingPayment.amount || 0}
+                    onChange={(e) => setEditingPayment(prev => prev ? { ...prev, amount: Number(e.target.value) } : null)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs font-bold text-[#005BAC]"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-slate-500">Tháng thanh toán</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPayment.month || ""}
+                    onChange={(e) => setEditingPayment(prev => prev ? { ...prev, month: e.target.value } : null)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingPayment(null)}
+                  className="px-5 py-2 border border-slate-200 text-slate-500 font-bold rounded-xl text-xs hover:bg-slate-50 transition-all cursor-pointer bg-transparent"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 px-5 py-2 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl text-xs active:scale-95 transition-all shadow cursor-pointer border-none"
+                >
+                  <Save size={13} /> Lưu thay đổi
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

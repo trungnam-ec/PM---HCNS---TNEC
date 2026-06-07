@@ -509,6 +509,54 @@ export default function AdministrationPage() {
     }
   };
 
+  const exportSingleRecurringPayment = async (p: SupplierPayment) => {
+    setExportLoading(true);
+    try {
+      const response = await fetch("/api/export-invoice-payment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          employeeName,
+          employeeDept,
+          mission: p.content,
+          projectName: "Văn phòng HCM",
+          supplierName: p.supplierName,
+          bankAccount: p.account,
+          bankNameBranch: p.bank,
+          templateType: "transfer",
+          items: [
+            {
+              number: "",
+              date: new Date().toISOString().slice(0, 10),
+              desc: p.content,
+              amount: p.amount
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Không thể xuất phiếu cho ${p.supplierName}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Giay_De_Nghi_Chuyen_Tien_${p.supplierName.replace(/\s+/g, "_")}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      alert("Lỗi khi xuất phiếu đề nghị chuyển tiền: " + error.message);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
   // Department Allocation handler
   const handleApproveRequest = (reqId: string) => {
     const request = deptRequests.find(r => r.id === reqId);
@@ -2737,56 +2785,22 @@ CREATE POLICY "Allow public delete for invoices" ON public.invoices FOR DELETE U
                 <button
                   onClick={async () => {
                     setShowRecurringPreviewModal(false);
-                    // Export this single one
-                    setExportLoading(true);
-                    try {
-                      const response = await fetch("/api/export-invoice-payment", {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({
-                          employeeName,
-                          employeeDept,
-                          mission: p.content,
-                          projectName: "Văn phòng HCM",
-                          supplierName: p.supplierName,
-                          bankAccount: p.account,
-                          bankNameBranch: p.bank,
-                          templateType: "transfer",
-                          items: [
-                            {
-                              number: "",
-                              date: new Date().toISOString().slice(0, 10),
-                              desc: p.content,
-                              amount: p.amount
-                            }
-                          ]
-                        })
-                      });
-
-                      if (!response.ok) {
-                        throw new Error(`Không thể xuất phiếu cho ${p.supplierName}`);
-                      }
-
-                      const blob = await response.blob();
-                      const url = window.URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `Giay_De_Nghi_Chuyen_Tien_${p.supplierName.replace(/\s+/g, "_")}.docx`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      window.URL.revokeObjectURL(url);
-                    } catch (error: any) {
-                      alert("Lỗi khi xuất phiếu đề nghị chuyển tiền: " + error.message);
-                    } finally {
-                      setExportLoading(false);
-                    }
+                    await exportSingleRecurringPayment(p);
                   }}
+                  disabled={exportLoading}
                   className="flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs active:scale-95 transition-all shadow cursor-pointer"
                 >
-                  <Download size={13} /> Tải xuống file Word
+                  {exportLoading ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" />
+                      Đang tải...
+                    </>
+                  ) : (
+                    <>
+                      <Download size={13} />
+                      Tải xuống file Word
+                    </>
+                  )}
                 </button>
               </div>
 

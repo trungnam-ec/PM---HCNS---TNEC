@@ -351,6 +351,13 @@ export default function CalendarPage() {
   // Filter Tasks
   const filteredTasks = useMemo(() => {
     return tasks.filter(t => {
+      // Role-based permission: non-managers/non-admins can only see their own tasks
+      if (currentUser && !isManager) {
+        if ((t.assignee || "").toLowerCase() !== currentUser.name.toLowerCase()) {
+          return false;
+        }
+      }
+
       // 1. Search Query
       const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                             t.assignee.toLowerCase().includes(searchQuery.toLowerCase());
@@ -368,7 +375,7 @@ export default function CalendarPage() {
 
       return true;
     });
-  }, [tasks, searchQuery, selectedPriorities, selectedMember]);
+  }, [tasks, searchQuery, selectedPriorities, selectedMember, currentUser, isManager]);
 
   // Tasks categorized
   const tasksWithDate = useMemo(() => {
@@ -968,7 +975,10 @@ ${tripRoutes.map((r, i) => `Chặng ${i + 1}:
               >
                 Tất cả
               </button>
-              {employees.slice(0, 8).map(emp => {
+              {employees
+                .filter(emp => !currentUser || isManager || emp.name.toLowerCase() === currentUser.name.toLowerCase())
+                .slice(0, 8)
+                .map(emp => {
                 const isActive = selectedMember === emp.name;
                 return (
                   <button
@@ -1103,12 +1113,15 @@ ${tripRoutes.map((r, i) => `Chặng ${i + 1}:
 
                           {/* Cell tasks lists */}
                           <div className="flex-1 space-y-1 overflow-y-auto max-h-[85px] scrollbar-thin">
-                            {dayTasks.map(t => {
+                             {dayTasks.map(t => {
                               const isLeave = t.title.toLowerCase().startsWith("nghỉ phép");
                               const isTrip = t.title.toLowerCase().startsWith("công tác");
+                              const taskOverdue = t.due_date && t.status !== "completed" && t.progress < 100 && t.due_date < new Date().toLocaleDateString("en-CA");
 
                               let styleClass = "bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100/50";
-                              if (isLeave) {
+                              if (taskOverdue) {
+                                styleClass = "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100/70 font-bold ring-1 ring-rose-500/20";
+                              } else if (isLeave) {
                                 styleClass = "bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100/50 font-semibold";
                               } else if (isTrip) {
                                 styleClass = "bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100/50 font-semibold";
@@ -1127,7 +1140,7 @@ ${tripRoutes.map((r, i) => `Chặng ${i + 1}:
                                   onClick={() => handleTaskClick(t)}
                                   className={`px-1.5 py-1 rounded text-[8px] border leading-tight truncate cursor-pointer transition-all ${styleClass}`}
                                 >
-                                  {isLeave ? "🌴" : isTrip ? "💼" : ""} {t.title.replace(/^Nghỉ phép:\s*|^Công tác:\s*/i, "")}
+                                  {taskOverdue && "⚠️ "}{isLeave ? "🌴" : isTrip ? "💼" : ""} {t.title.replace(/^Nghỉ phép:\s*|^Công tác:\s*/i, "")}
                                 </div>
                               );
                             })}
@@ -1906,6 +1919,15 @@ ${tripRoutes.map((r, i) => `Chặng ${i + 1}:
                   </div>
                 </div>
 
+                {selectedTask.due_date && selectedTask.status !== "completed" && selectedTask.progress < 100 && selectedTask.due_date < new Date().toLocaleDateString("en-CA") && (
+                  <div className="bg-rose-50 border border-rose-100 p-3 rounded-xl flex gap-2 items-center text-rose-700 animate-in fade-in duration-200">
+                    <AlertCircle className="text-rose-500 shrink-0" size={16} />
+                    <div className="text-[10.5px] font-bold leading-normal">
+                      Lịch trình đi công tác này đã quá hạn ngày về! Ngày về dự kiến là ngày {new Date(selectedTask.due_date).toLocaleDateString("vi-VN")}.
+                    </div>
+                  </div>
+                )}
+
                 {/* Basic Info grid */}
                 <div className="grid grid-cols-2 gap-x-8 gap-y-4 pb-4 border-b border-slate-100">
                   <div className="space-y-4">
@@ -2078,6 +2100,15 @@ ${tripRoutes.map((r, i) => `Chặng ${i + 1}:
                   <X size={16} />
                 </button>
               </div>
+
+              {selectedTask.due_date && selectedTask.status !== "completed" && selectedTask.progress < 100 && selectedTask.due_date < new Date().toLocaleDateString("en-CA") && (
+                <div className="bg-rose-50 border border-rose-100 p-3 rounded-xl flex gap-2 items-center text-rose-700 animate-in fade-in duration-200">
+                  <AlertCircle className="text-rose-500 shrink-0" size={16} />
+                  <div className="text-[10.5px] font-bold leading-normal">
+                    Lịch trình / công việc này đã quá hạn hoàn thành! Hạn chót là ngày {new Date(selectedTask.due_date).toLocaleDateString("vi-VN")}.
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-4">
                 <div className="space-y-1">

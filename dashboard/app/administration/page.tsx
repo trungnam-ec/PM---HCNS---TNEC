@@ -500,6 +500,15 @@ export default function AdministrationPage() {
     }
   };
 
+  const handlePreviewSpecificPayment = (paymentId: string) => {
+    const currentMonthPayments = pendingPayments.filter(p => p.month === payMonth);
+    const idx = currentMonthPayments.findIndex(p => p.id === paymentId);
+    if (idx !== -1) {
+      setSelectedRecurringPreviewIdx(idx);
+      setShowRecurringPreviewModal(true);
+    }
+  };
+
   // Department Allocation handler
   const handleApproveRequest = (reqId: string) => {
     const request = deptRequests.find(r => r.id === reqId);
@@ -1871,7 +1880,7 @@ export default function AdministrationPage() {
                       {/* Left form */}
                       <div className="md:col-span-1 border border-slate-200/80 bg-slate-50/20 p-5 rounded-2xl space-y-4">
                         <h4 className="font-heading font-extrabold text-slate-800 text-xs flex items-center gap-1.5 border-b border-slate-105 pb-2">
-                          <span>✍️</span> Lập phiếu thanh toán NCC
+                          <span>📁</span> Danh sách nhà cung cấp
                         </h4>
                         <form onSubmit={handleAddPendingPayment} className="space-y-3 text-[11px] font-semibold text-slate-600">
                           
@@ -1883,7 +1892,7 @@ export default function AdministrationPage() {
                               onChange={(e) => handleSupplierSelect(e.target.value)}
                               className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800 cursor-pointer"
                             >
-                              <option value="">-- Chọn Nhà cung cấp (Vlookup) --</option>
+                              <option value="">-- Chọn Nhà cung cấp --</option>
                               {suppliers.map(s => (
                                 <option key={s.id} value={s.id}>{s.name} ({s.id})</option>
                               ))}
@@ -2011,17 +2020,25 @@ export default function AdministrationPage() {
                               {pendingPayments
                                 .filter(p => p.month === payMonth)
                                 .map((p) => (
-                                  <tr key={p.id} className="hover:bg-slate-50/50 transition-all font-semibold">
-                                    <td className="py-3 px-3 text-slate-850 font-bold">{p.supplierName}</td>
+                                  <tr 
+                                    key={p.id} 
+                                    onClick={() => handlePreviewSpecificPayment(p.id)}
+                                    className="hover:bg-blue-50/50 transition-all font-semibold cursor-pointer group"
+                                    title="Click để xem trước chứng từ thanh toán"
+                                  >
+                                    <td className="py-3 px-3 text-slate-850 font-bold group-hover:text-blue-700">{p.supplierName}</td>
                                     <td className="py-3 px-3 leading-snug">
-                                      <div className="font-mono text-slate-800 font-bold text-[11px]">{p.account}</div>
+                                      <div className="font-mono text-slate-800 font-bold text-[11px] group-hover:text-blue-700">{p.account}</div>
                                       <div className="text-slate-450 text-[10px] font-semibold">{p.bank}</div>
                                     </td>
                                     <td className="py-3 px-3 text-slate-500 text-[11.5px] leading-snug font-medium">{p.content}</td>
-                                    <td className="py-3 px-3 text-right font-black text-slate-800">{p.amount.toLocaleString("vi-VN")}</td>
+                                    <td className="py-3 px-3 text-right font-black text-slate-800 group-hover:text-blue-700">{p.amount.toLocaleString("vi-VN")}</td>
                                     <td className="py-3 px-3 text-center">
                                       <button
-                                        onClick={() => handleDeletePendingPayment(p.id)}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeletePendingPayment(p.id);
+                                        }}
                                         className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                                         title="Xóa thanh toán"
                                       >

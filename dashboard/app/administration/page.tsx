@@ -29,7 +29,9 @@ import {
   X,
   Pencil,
   Calendar,
-  ChevronDown
+  ChevronDown,
+  Building2,
+  Briefcase
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { docSoVietNam, exportDeNghiChuyenTien, downloadDocFile } from "@/lib/wordExporter";
@@ -52,6 +54,8 @@ interface DeptRequest {
   qty: number;
   date: string;
   status: "Chờ duyệt" | "Đã cấp phát";
+  target?: "phongban" | "duan";
+  targetName?: string;
 }
 
 interface ChecklistItem {
@@ -114,9 +118,36 @@ const INITIAL_SUPPLIES: SupplyItem[] = [
 ];
 
 const INITIAL_DEPT_REQUESTS: DeptRequest[] = [
-  { id: "REQ-01", dept: "Phòng Nhân sự", item: "Giấy A4 Double A 70gsm", qty: 5, date: "2026-06-04", status: "Chờ duyệt" },
-  { id: "REQ-02", dept: "Phòng Kế toán", item: "Bút bi Thiên Long xanh", qty: 2, date: "2026-06-05", status: "Chờ duyệt" },
-  { id: "REQ-03", dept: "Phòng Dự án", item: "Giấy A4 Double A 70gsm", qty: 10, date: "2026-06-03", status: "Đã cấp phát" }
+  { id: "REQ-01", dept: "Phòng HCNS", item: "Giấy A4 Double A 70gsm", qty: 5, date: "2026-06-04", status: "Chờ duyệt", target: "phongban", targetName: "Phòng HCNS" },
+  { id: "REQ-02", dept: "Kế toán", item: "Bút bi Thiên Long xanh", qty: 2, date: "2026-06-05", status: "Chờ duyệt", target: "phongban", targetName: "Kế toán" },
+  { id: "REQ-03", dept: "Phòng Dự án", item: "Giấy A4 Double A 70gsm", qty: 10, date: "2026-06-03", status: "Đã cấp phát", target: "phongban", targetName: "Phòng Dự án" },
+  { id: "REQ-04", dept: "Ban điều hành Vàm Lẽo", item: "Bút bi Thiên Long xanh", qty: 5, date: "2026-06-06", status: "Chờ duyệt", target: "duan", targetName: "Vàm Lẽo" },
+  { id: "REQ-05", dept: "Ban điều hành Thường Phước", item: "Kẹp bướm 25mm", qty: 3, date: "2026-06-05", status: "Đã cấp phát", target: "duan", targetName: "Thường Phước" }
+];
+
+const DEPARTMENTS = [
+  "Phòng HCNS",
+  "Kế toán",
+  "Phòng Kế hoạch",
+  "Phòng Dự án",
+  "Phòng Vật tư",
+  "Phòng Đấu thầu",
+  "Phòng MKT",
+  "Phòng ATLĐ",
+  "Phòng Kỹ thuật",
+  "Giám đốc",
+  "Phó Giám đốc"
+];
+
+const PROJECTS = [
+  "Vàm Lẽo",
+  "Tỉnh Lộ 8",
+  "Cầu Mã Đà",
+  "Thường Phước",
+  "Xử lý nước thải Tây Ninh",
+  "KCN Cà Ná",
+  "Điện mặt trời Trà Vinh 2",
+  "Rạch Xuyên Tâm"
 ];
 
 const KANBAN_COLUMNS = [
@@ -221,9 +252,31 @@ export default function AdministrationPage() {
     setShowAddTask(false);
   };
 
-  // VPP Sub-tabs: "inventory" or "allocation"
-  const [vppSubTab, setVppSubTab] = useState<"inventory" | "allocation">("inventory");
+  // VPP states
+  const [vppSubTab, setVppSubTab] = useState<"inventory" | "phongban" | "duan">("inventory");
   const [searchTerm, setSearchTerm] = useState("");
+  
+  // State for inventory add item form
+  const [showAddSupply, setShowAddSupply] = useState(false);
+  const [newSupplyName, setNewSupplyName] = useState("");
+  const [newSupplyCat, setNewSupplyCat] = useState("Giấy in");
+  const [newSupplyUnit, setNewSupplyUnit] = useState("");
+  const [newSupplyStock, setNewSupplyStock] = useState(0);
+
+  // State for editing stock directly
+  const [editingSupplyName, setEditingSupplyName] = useState<string | null>(null);
+  const [editingStockVal, setEditingStockVal] = useState(0);
+
+  // States for PYC (phiếu yêu cầu)
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>("Tất cả");
+  const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>("Tất cả");
+
+  // State for creating new PYC
+  const [showNewPYCModal, setShowNewPYCModal] = useState(false);
+  const [newPYCTarget, setNewPYCTarget] = useState<"phongban" | "duan">("phongban");
+  const [newPYCTargetName, setNewPYCTargetName] = useState("");
+  const [newPYCItem, setNewPYCItem] = useState("");
+  const [newPYCQty, setNewPYCQty] = useState(1);
 
   // Invoice Reader Batch States
   const [invoiceQueue, setInvoiceQueue] = useState<Array<{
@@ -773,6 +826,15 @@ export default function AdministrationPage() {
     const request = deptRequests.find(r => r.id === reqId);
     if (!request || request.status === "Đã cấp phát") return;
 
+    // Check if stock is sufficient
+    const supply = supplies.find(s => s.name === request.item);
+    if (supply && supply.stock < request.qty) {
+      const confirmProceed = window.confirm(
+        `Cảnh báo: Số lượng tồn kho của "${request.item}" (${supply.stock} ${supply.unit}) ít hơn số lượng yêu cầu (${request.qty} ${supply.unit}).\nBạn vẫn muốn tiếp tục cấp phát và đưa tồn kho về 0?`
+      );
+      if (!confirmProceed) return;
+    }
+
     // Deduct stock if supply exists
     setSupplies(prev => prev.map(s => {
       if (s.name === request.item) {
@@ -790,6 +852,86 @@ export default function AdministrationPage() {
     // Update status
     setDeptRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: "Đã cấp phát" } : r));
     alert(`Đã duyệt cấp phát ${request.qty} ${request.item} cho ${request.dept}. Tồn kho đã tự động khấu trừ.`);
+  };
+
+  // VPP Inventory add supply handler
+  const handleAddSupply = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSupplyName.trim() || !newSupplyUnit.trim()) {
+      alert("Vui lòng điền đầy đủ thông tin vật tư.");
+      return;
+    }
+
+    // Check duplicate
+    if (supplies.some(s => s.name.toLowerCase() === newSupplyName.trim().toLowerCase())) {
+      alert("Vật tư này đã tồn tại trong kho.");
+      return;
+    }
+
+    const newSupply: SupplyItem = {
+      name: newSupplyName.trim(),
+      cat: newSupplyCat,
+      unit: newSupplyUnit.trim(),
+      stock: Number(newSupplyStock),
+      allocated: 0,
+      alert: Number(newSupplyStock) < 15 ? "Cảnh báo" : "Bình thường"
+    };
+
+    setSupplies(prev => [...prev, newSupply]);
+    setShowAddSupply(false);
+    setNewSupplyName("");
+    setNewSupplyUnit("");
+    setNewSupplyStock(0);
+    alert("Đã thêm vật tư mới vào kho thành công.");
+  };
+
+  // VPP Edit stock handlers
+  const handleStartEditStock = (item: SupplyItem) => {
+    setEditingSupplyName(item.name);
+    setEditingStockVal(item.stock);
+  };
+
+  const handleSaveStock = (name: string) => {
+    setSupplies(prev => prev.map(s => {
+      if (s.name === name) {
+        return {
+          ...s,
+          stock: editingStockVal,
+          alert: editingStockVal < 15 ? "Cảnh báo" : "Bình thường"
+        };
+      }
+      return s;
+    }));
+    setEditingSupplyName(null);
+  };
+
+  // VPP Create new PYC handler
+  const handleCreatePYC = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPYCTargetName || !newPYCItem || newPYCQty <= 0) {
+      alert("Vui lòng điền đầy đủ thông tin yêu cầu.");
+      return;
+    }
+
+    const deptName = newPYCTarget === "phongban" ? newPYCTargetName : `Ban điều hành ${newPYCTargetName}`;
+    const newReq: DeptRequest = {
+      id: `REQ-${Date.now().toString().slice(-4)}`,
+      dept: deptName,
+      item: newPYCItem,
+      qty: Number(newPYCQty),
+      date: new Date().toISOString().split("T")[0],
+      status: "Chờ duyệt",
+      target: newPYCTarget,
+      targetName: newPYCTargetName
+    };
+
+    setDeptRequests(prev => [newReq, ...prev]);
+    setShowNewPYCModal(false);
+    
+    // Reset fields
+    setNewPYCItem("");
+    setNewPYCQty(1);
+    alert(`Đã tạo thành công Phiếu yêu cầu ${newReq.id} cho ${deptName}.`);
   };
 
   // Toggle Checklist Status
@@ -1262,31 +1404,75 @@ export default function AdministrationPage() {
             {/* RIGHT COLUMN: Detail Pane based on selected Item */}
             <div className="lg:col-span-3 space-y-6">
               
-              {/* ─── TAB 1: VPP (Văn phòng phẩm) ─── */}
+              {/* ─── TAB 5: VPP (Văn phòng phẩm) ─── */}
               {activeTab === "vpp" && (
                 <div className="space-y-6">
-                  {/* KPI Cards */}
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="glass bg-white rounded-2xl p-4 border border-slate-200/40 shadow-sm">
-                      <p className="text-slate-400 text-[10px] font-bold uppercase">Tổng vật tư lưu kho</p>
-                      <p className="font-heading font-bold text-xl text-[#005BAC] mt-1">207 Ram/Hộp</p>
+                  {/* KPI Cards (4 Columns) */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="glass bg-white rounded-2xl p-4 border border-slate-200/40 shadow-sm flex items-center gap-4">
+                      <div className="p-3 bg-blue-50 text-[#005BAC] rounded-xl">
+                        <Package size={20} />
+                      </div>
+                      <div>
+                        <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Tồn kho Hành chính</p>
+                        <p className="font-heading font-extrabold text-lg text-slate-800 mt-0.5">
+                          {supplies.reduce((sum, item) => sum + item.stock, 0)} <span className="text-xs font-semibold text-slate-500">vật tư</span>
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-medium">{supplies.length} danh mục hàng hóa</p>
+                      </div>
                     </div>
-                    <div className="glass bg-white rounded-2xl p-4 border border-slate-200/40 shadow-sm">
-                      <p className="text-slate-400 text-[10px] font-bold uppercase">Đã cấp phát Q2</p>
-                      <p className="font-heading font-bold text-xl text-emerald-600 mt-1">380 Ram/Hộp</p>
+                    
+                    <div className="glass bg-white rounded-2xl p-4 border border-slate-200/40 shadow-sm flex items-center gap-4">
+                      <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                        <Building2 size={20} />
+                      </div>
+                      <div>
+                        <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Cấp Phòng Ban VP</p>
+                        <p className="font-heading font-extrabold text-lg text-emerald-700 mt-0.5">
+                          {deptRequests.filter(r => r.target === "phongban" && r.status === "Đã cấp phát").reduce((sum, r) => sum + r.qty, 0)} <span className="text-xs font-semibold text-slate-500">cái/ram</span>
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-medium">
+                          {deptRequests.filter(r => r.target === "phongban" && r.status === "Đã cấp phát").length} lượt bàn giao
+                        </p>
+                      </div>
                     </div>
-                    <div className="glass bg-white rounded-2xl p-4 border border-slate-200/40 shadow-sm">
-                      <p className="text-slate-400 text-[10px] font-bold uppercase">Yêu cầu chờ duyệt</p>
-                      <p className="font-heading font-bold text-xl text-amber-600 mt-1">
-                        {deptRequests.filter(r => r.status === "Chờ duyệt").length} Phiếu
-                      </p>
+
+                    <div className="glass bg-white rounded-2xl p-4 border border-slate-200/40 shadow-sm flex items-center gap-4">
+                      <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
+                        <Briefcase size={20} />
+                      </div>
+                      <div>
+                        <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Cấp Ban ĐH Dự Án</p>
+                        <p className="font-heading font-extrabold text-lg text-purple-700 mt-0.5">
+                          {deptRequests.filter(r => r.target === "duan" && r.status === "Đã cấp phát").reduce((sum, r) => sum + r.qty, 0)} <span className="text-xs font-semibold text-slate-500">cái/ram</span>
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-medium">
+                          {deptRequests.filter(r => r.target === "duan" && r.status === "Đã cấp phát").length} lượt bàn giao
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="glass bg-white rounded-2xl p-4 border border-slate-200/40 shadow-sm flex items-center gap-4">
+                      <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                        <AlertTriangle size={20} className={deptRequests.filter(r => r.status === "Chờ duyệt").length > 0 ? "animate-pulse" : ""} />
+                      </div>
+                      <div>
+                        <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Yêu cầu chờ duyệt</p>
+                        <p className="font-heading font-extrabold text-lg text-amber-700 mt-0.5">
+                          {deptRequests.filter(r => r.status === "Chờ duyệt").length} <span className="text-xs font-semibold text-slate-500">phiếu</span>
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-medium">Trừ kho khi phê duyệt</p>
+                      </div>
                     </div>
                   </div>
 
                   {/* VPP Sub-navigation */}
                   <div className="flex border-b border-slate-200 gap-4">
                     <button
-                      onClick={() => setVppSubTab("inventory")}
+                      onClick={() => {
+                        setVppSubTab("inventory");
+                        setSearchTerm("");
+                      }}
                       className={`pb-2.5 text-xs font-bold border-b-2 transition-all ${
                         vppSubTab === "inventory" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400"
                       }`}
@@ -1294,12 +1480,26 @@ export default function AdministrationPage() {
                       1. Mục tồn kho của Hành chính
                     </button>
                     <button
-                      onClick={() => setVppSubTab("allocation")}
+                      onClick={() => {
+                        setVppSubTab("phongban");
+                        setSearchTerm("");
+                      }}
                       className={`pb-2.5 text-xs font-bold border-b-2 transition-all ${
-                        vppSubTab === "allocation" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400"
+                        vppSubTab === "phongban" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400"
                       }`}
                     >
-                      2. Mục VPP cấp cho từng phòng
+                      2. VPP cấp cho từng phòng ban VP
+                    </button>
+                    <button
+                      onClick={() => {
+                        setVppSubTab("duan");
+                        setSearchTerm("");
+                      }}
+                      className={`pb-2.5 text-xs font-bold border-b-2 transition-all ${
+                        vppSubTab === "duan" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400"
+                      }`}
+                    >
+                      3. VPP cấp cho Ban điều hành dự án
                     </button>
                   </div>
 
@@ -1317,10 +1517,82 @@ export default function AdministrationPage() {
                             className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-slate-200 rounded-xl outline-none"
                           />
                         </div>
-                        <button className="flex items-center gap-1 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow">
-                          <Plus size={13} /> Nhập kho mới
+                        <button 
+                          onClick={() => setShowAddSupply(!showAddSupply)}
+                          className="flex items-center gap-1 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow transition-all"
+                        >
+                          <Plus size={13} /> {showAddSupply ? "Đóng lại" : "Nhập kho mới"}
                         </button>
                       </div>
+
+                      {/* Add Supply Form */}
+                      {showAddSupply && (
+                        <form onSubmit={handleAddSupply} className="bg-slate-50/60 border border-slate-200 rounded-2xl p-4 space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase">Tên vật tư</label>
+                              <input
+                                type="text"
+                                value={newSupplyName}
+                                onChange={(e) => setNewSupplyName(e.target.value)}
+                                placeholder="Ví dụ: Giấy A4 Double A..."
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold focus:border-blue-500 focus:outline-none"
+                                required
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase">Danh mục</label>
+                              <select
+                                value={newSupplyCat}
+                                onChange={(e) => setNewSupplyCat(e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold bg-white focus:border-blue-500 focus:outline-none"
+                              >
+                                <option value="Giấy in">Giấy in</option>
+                                <option value="Bút viết">Bút viết</option>
+                                <option value="Dụng cụ lưu trữ">Dụng cụ lưu trữ</option>
+                                <option value="Khác">Vật tư khác</option>
+                              </select>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase">Đơn vị tính</label>
+                              <input
+                                type="text"
+                                value={newSupplyUnit}
+                                onChange={(e) => setNewSupplyUnit(e.target.value)}
+                                placeholder="Ví dụ: Ram, Hộp, Cái..."
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold focus:border-blue-500 focus:outline-none"
+                                required
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase">Số lượng tồn ban đầu</label>
+                              <input
+                                type="number"
+                                value={newSupplyStock}
+                                onChange={(e) => setNewSupplyStock(Number(e.target.value))}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold focus:border-blue-500 focus:outline-none"
+                                min={0}
+                                required
+                              />
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowAddSupply(false)}
+                              className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-100 transition-all"
+                            >
+                              Hủy
+                            </button>
+                            <button
+                              type="submit"
+                              className="px-3 py-1.5 bg-[#005BAC] text-white rounded-lg text-xs font-bold hover:bg-blue-700 shadow-sm transition-all"
+                            >
+                              Thêm vật tư
+                            </button>
+                          </div>
+                        </form>
+                      )}
 
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs text-left">
@@ -1342,13 +1614,50 @@ export default function AdministrationPage() {
                                   <td className="py-3 font-bold text-slate-800">{item.name}</td>
                                   <td className="py-3 text-slate-500">{item.cat}</td>
                                   <td className="py-3 font-mono text-slate-500">{item.unit}</td>
-                                  <td className="py-3 text-slate-800 font-bold">{item.stock}</td>
+                                  <td className="py-3 text-slate-800 font-bold">
+                                    {editingSupplyName === item.name ? (
+                                      <div className="flex items-center gap-1.5">
+                                        <input
+                                          type="number"
+                                          value={editingStockVal}
+                                          onChange={(e) => setEditingStockVal(Number(e.target.value))}
+                                          className="w-16 px-1.5 py-0.5 border border-slate-300 rounded text-xs font-semibold focus:border-blue-500 focus:outline-none"
+                                          min={0}
+                                        />
+                                        <button
+                                          onClick={() => handleSaveStock(item.name)}
+                                          className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-all"
+                                          title="Lưu"
+                                        >
+                                          <Check size={12} />
+                                        </button>
+                                        <button
+                                          onClick={() => setEditingSupplyName(null)}
+                                          className="p-1 text-rose-600 hover:bg-rose-50 rounded transition-all"
+                                          title="Hủy"
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-2 group">
+                                        <span>{item.stock}</span>
+                                        <button
+                                          onClick={() => handleStartEditStock(item)}
+                                          className="text-slate-400 hover:text-blue-600 p-0.5 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all"
+                                          title="Sửa số lượng"
+                                        >
+                                          <Pencil size={11} />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </td>
                                   <td className="py-3 text-slate-400">{item.allocated}</td>
                                   <td className="py-3">
                                     <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${
-                                      item.alert === "Bình thường" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700 animate-pulse"
+                                      item.stock < 15 ? "bg-amber-100 text-amber-700 animate-pulse" : "bg-emerald-100 text-emerald-700"
                                     }`}>
-                                      {item.alert}
+                                      {item.stock < 15 ? "Cảnh báo" : "Bình thường"}
                                     </span>
                                   </td>
                                 </tr>
@@ -1359,12 +1668,43 @@ export default function AdministrationPage() {
                     </div>
                   )}
 
-                  {/* Sub-tab 2: Department Allocation Requests */}
-                  {vppSubTab === "allocation" && (
+                  {/* Sub-tab 2: Department VP Allocation */}
+                  {vppSubTab === "phongban" && (
                     <div className="glass bg-white rounded-2xl p-5 border border-slate-200/50 shadow-premium space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                        <h4 className="font-heading font-bold text-slate-800 text-xs">Cấp phát văn phòng phẩm theo yêu cầu (PYC)</h4>
-                        <span className="text-[10px] text-slate-400 font-semibold">Tự động trừ tồn kho Hành chính khi duyệt cấp</span>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-3">
+                        <div>
+                          <h4 className="font-heading font-bold text-slate-800 text-xs">VPP cấp phát cho từng Phòng Ban khối Văn Phòng</h4>
+                          <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Tự động cập nhật số lượng và khấu trừ kho của hành chính khi duyệt cấp</p>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Phòng ban:</span>
+                            <select
+                              value={selectedDeptFilter}
+                              onChange={(e) => setSelectedDeptFilter(e.target.value)}
+                              className="bg-transparent border-none outline-none font-semibold text-slate-700 cursor-pointer text-xs"
+                            >
+                              <option value="Tất cả">-- Tất cả --</option>
+                              {DEPARTMENTS.map((dept, i) => (
+                                <option key={i} value={dept}>{dept}</option>
+                              ))}
+                            </select>
+                          </div>
+                          
+                          <button
+                            onClick={() => {
+                              setNewPYCTarget("phongban");
+                              setNewPYCTargetName(DEPARTMENTS[0]);
+                              if (supplies.length > 0) setNewPYCItem(supplies[0].name);
+                              setNewPYCQty(1);
+                              setShowNewPYCModal(true);
+                            }}
+                            className="flex items-center gap-1 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm transition-all"
+                          >
+                            <Plus size={13} /> Tạo yêu cầu cấp
+                          </button>
+                        </div>
                       </div>
 
                       <div className="overflow-x-auto">
@@ -1381,36 +1721,269 @@ export default function AdministrationPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
-                            {deptRequests.map((req) => (
-                              <tr key={req.id} className="hover:bg-slate-50/50">
-                                <td className="py-3 font-mono text-slate-400">{req.id}</td>
-                                <td className="py-3 text-slate-800 font-bold">{req.dept}</td>
-                                <td className="py-3 text-slate-600">{req.item}</td>
-                                <td className="py-3 text-center text-slate-850 font-bold">{req.qty}</td>
-                                <td className="py-3 font-mono text-slate-500">{req.date}</td>
-                                <td className="py-3">
-                                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                                    req.status === "Đã cấp phát" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                                  }`}>
-                                    {req.status}
-                                  </span>
-                                </td>
-                                <td className="py-3 text-center">
-                                  {req.status === "Chờ duyệt" ? (
-                                    <button
-                                      onClick={() => handleApproveRequest(req.id)}
-                                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all active:scale-95 shadow-sm"
-                                    >
-                                      Duyệt & Cấp phát
-                                    </button>
-                                  ) : (
-                                    <span className="text-slate-350 text-[10px] font-normal italic">Đã bàn giao</span>
-                                  )}
+                            {deptRequests
+                              .filter(r => r.target === "phongban" && (selectedDeptFilter === "Tất cả" || r.targetName === selectedDeptFilter))
+                              .map((req) => (
+                                <tr key={req.id} className="hover:bg-slate-50/50">
+                                  <td className="py-3 font-mono text-slate-400">{req.id}</td>
+                                  <td className="py-3 text-slate-800 font-bold">{req.targetName}</td>
+                                  <td className="py-3 text-slate-600">{req.item}</td>
+                                  <td className="py-3 text-center text-slate-850 font-bold">{req.qty}</td>
+                                  <td className="py-3 font-mono text-slate-500">{req.date}</td>
+                                  <td className="py-3">
+                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                      req.status === "Đã cấp phát" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                                    }`}>
+                                      {req.status}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 text-center">
+                                    {req.status === "Chờ duyệt" ? (
+                                      <button
+                                        onClick={() => handleApproveRequest(req.id)}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all active:scale-95 shadow-sm"
+                                      >
+                                        Duyệt & Cấp phát
+                                      </button>
+                                    ) : (
+                                      <span className="text-slate-350 text-[10px] font-normal italic">Đã bàn giao</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            {deptRequests.filter(r => r.target === "phongban" && (selectedDeptFilter === "Tất cả" || r.targetName === selectedDeptFilter)).length === 0 && (
+                              <tr>
+                                <td colSpan={7} className="py-8 text-center text-slate-400 font-medium italic">
+                                  Không có yêu cầu cấp phát nào của phòng ban phù hợp với bộ lọc.
                                 </td>
                               </tr>
-                            ))}
+                            )}
                           </tbody>
                         </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-tab 3: Ban Điều Hành Project Allocation */}
+                  {vppSubTab === "duan" && (
+                    <div className="glass bg-white rounded-2xl p-5 border border-slate-200/50 shadow-premium space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-3">
+                        <div>
+                          <h4 className="font-heading font-bold text-slate-800 text-xs">VPP cấp phát cho Ban Điều Hành các Dự án</h4>
+                          <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Tự động cập nhật số lượng và khấu trừ kho của hành chính khi duyệt cấp</p>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Dự án:</span>
+                            <select
+                              value={selectedProjectFilter}
+                              onChange={(e) => setSelectedProjectFilter(e.target.value)}
+                              className="bg-transparent border-none outline-none font-semibold text-slate-700 cursor-pointer text-xs"
+                            >
+                              <option value="Tất cả">-- Tất cả --</option>
+                              {PROJECTS.map((proj, i) => (
+                                <option key={i} value={proj}>{proj}</option>
+                              ))}
+                            </select>
+                          </div>
+                          
+                          <button
+                            onClick={() => {
+                              setNewPYCTarget("duan");
+                              setNewPYCTargetName(PROJECTS[0]);
+                              if (supplies.length > 0) setNewPYCItem(supplies[0].name);
+                              setNewPYCQty(1);
+                              setShowNewPYCModal(true);
+                            }}
+                            className="flex items-center gap-1 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm transition-all"
+                          >
+                            <Plus size={13} /> Tạo yêu cầu cấp
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                          <thead>
+                            <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px] pb-2">
+                              <th className="pb-2">Mã PYC</th>
+                              <th className="pb-2">Dự án</th>
+                              <th className="pb-2">Vật tư yêu cầu</th>
+                              <th className="pb-2 text-center">Số lượng</th>
+                              <th className="pb-2">Ngày yêu cầu</th>
+                              <th className="pb-2">Trạng thái</th>
+                              <th className="pb-2 text-center">Thao tác</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
+                            {deptRequests
+                              .filter(r => r.target === "duan" && (selectedProjectFilter === "Tất cả" || r.targetName === selectedProjectFilter))
+                              .map((req) => (
+                                <tr key={req.id} className="hover:bg-slate-50/50">
+                                  <td className="py-3 font-mono text-slate-400">{req.id}</td>
+                                  <td className="py-3 text-slate-800 font-bold">{req.dept}</td>
+                                  <td className="py-3 text-slate-600">{req.item}</td>
+                                  <td className="py-3 text-center text-slate-850 font-bold">{req.qty}</td>
+                                  <td className="py-3 font-mono text-slate-500">{req.date}</td>
+                                  <td className="py-3">
+                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                      req.status === "Đã cấp phát" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                                    }`}>
+                                      {req.status}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 text-center">
+                                    {req.status === "Chờ duyệt" ? (
+                                      <button
+                                        onClick={() => handleApproveRequest(req.id)}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all active:scale-95 shadow-sm"
+                                      >
+                                        Duyệt & Cấp phát
+                                      </button>
+                                    ) : (
+                                      <span className="text-slate-350 text-[10px] font-normal italic">Đã bàn giao</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            {deptRequests.filter(r => r.target === "duan" && (selectedProjectFilter === "Tất cả" || r.targetName === selectedProjectFilter)).length === 0 && (
+                              <tr>
+                                <td colSpan={7} className="py-8 text-center text-slate-400 font-medium italic">
+                                  Không có yêu cầu cấp phát nào của dự án phù hợp với bộ lọc.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Create New PYC Modal */}
+                  {showNewPYCModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                      <div className="bg-white rounded-2xl max-w-md w-full p-6 border border-slate-100 shadow-2xl relative space-y-4">
+                        <button
+                          onClick={() => setShowNewPYCModal(false)}
+                          className="absolute right-4 top-4 p-1 text-slate-400 hover:bg-slate-50 rounded-lg transition-all"
+                        >
+                          <X size={16} />
+                        </button>
+                        
+                        <div className="border-b border-slate-100 pb-3">
+                          <h3 className="font-heading font-extrabold text-sm text-slate-800">Tạo Phiếu Yêu Cầu Văn Phòng Phẩm</h3>
+                          <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Khởi tạo phiếu yêu cầu cấp phát vật tư</p>
+                        </div>
+
+                        <form onSubmit={handleCreatePYC} className="space-y-4 text-xs font-semibold text-slate-700">
+                          {/* Target Type Selector */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đối tượng nhận cấp phát</label>
+                            <div className="grid grid-cols-2 gap-2 mt-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setNewPYCTarget("phongban");
+                                  setNewPYCTargetName(DEPARTMENTS[0]);
+                                }}
+                                className={`py-2 px-3 border rounded-xl font-bold transition-all text-center ${
+                                  newPYCTarget === "phongban"
+                                    ? "border-[#005BAC] bg-blue-50/40 text-[#005BAC] shadow-sm"
+                                    : "border-slate-200 text-slate-500 hover:bg-slate-50/50"
+                                }`}
+                              >
+                                Phòng Ban VP
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setNewPYCTarget("duan");
+                                  setNewPYCTargetName(PROJECTS[0]);
+                                }}
+                                className={`py-2 px-3 border rounded-xl font-bold transition-all text-center ${
+                                  newPYCTarget === "duan"
+                                    ? "border-[#005BAC] bg-blue-50/40 text-[#005BAC] shadow-sm"
+                                    : "border-slate-200 text-slate-500 hover:bg-slate-50/50"
+                                }`}
+                              >
+                                BĐH Dự Án
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Specific Department/Project Selection */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                              {newPYCTarget === "phongban" ? "Chọn Phòng Ban VP" : "Chọn Dự Án BĐH"}
+                            </label>
+                            <select
+                              value={newPYCTargetName}
+                              onChange={(e) => setNewPYCTargetName(e.target.value)}
+                              className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-700 focus:border-blue-500 focus:outline-none mt-1"
+                            >
+                              {newPYCTarget === "phongban"
+                                ? DEPARTMENTS.map((dept, i) => (
+                                    <option key={i} value={dept}>{dept}</option>
+                                  ))
+                                : PROJECTS.map((proj, i) => (
+                                    <option key={i} value={proj}>{proj}</option>
+                                  ))}
+                            </select>
+                          </div>
+
+                          {/* Supply Item Selector */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Chọn vật tư yêu cầu</label>
+                            <select
+                              value={newPYCItem}
+                              onChange={(e) => setNewPYCItem(e.target.value)}
+                              className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-700 focus:border-blue-500 focus:outline-none mt-1"
+                              required
+                            >
+                              {supplies.length === 0 ? (
+                                <option value="">-- Không có vật tư nào trong kho --</option>
+                              ) : (
+                                supplies.map((item, i) => (
+                                  <option key={i} value={item.name}>
+                                    {item.name} (Còn lại: {item.stock} {item.unit})
+                                  </option>
+                                ))
+                              )}
+                            </select>
+                          </div>
+
+                          {/* Quantity Input */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Số lượng yêu cầu</label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={newPYCQty}
+                              onChange={(e) => setNewPYCQty(Number(e.target.value))}
+                              className="w-full px-3 py-2 border border-slate-200 rounded-lg font-semibold text-slate-700 focus:border-blue-500 focus:outline-none mt-1"
+                              required
+                            />
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+                            <button
+                              type="button"
+                              onClick={() => setShowNewPYCModal(false)}
+                              className="px-4 py-2 border border-slate-200 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-all"
+                            >
+                              Hủy bộ
+                            </button>
+                            <button
+                              type="submit"
+                              disabled={supplies.length === 0}
+                              className="px-4 py-2 bg-[#005BAC] disabled:bg-slate-300 hover:bg-blue-700 text-white rounded-xl font-bold shadow-sm transition-all"
+                            >
+                              Tạo phiếu yêu cầu
+                            </button>
+                          </div>
+                        </form>
                       </div>
                     </div>
                   )}

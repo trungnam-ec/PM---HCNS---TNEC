@@ -29,7 +29,7 @@ import {
   X
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
-import { docSoVietNam } from "@/lib/wordExporter";
+import { docSoVietNam, exportDeNghiChuyenTien, downloadDocFile } from "@/lib/wordExporter";
 import { supabase } from "@/lib/supabase";
 
 // ─── TYPES & INTERFACES ──────────────────────────────────────────────────────
@@ -82,6 +82,26 @@ interface RecurringPayment {
   content: string;
 }
 
+interface Supplier {
+  id: string;
+  name: string;
+  account: string;
+  bank: string;
+  service: string;
+}
+
+interface SupplierPayment {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  account: string;
+  bank: string;
+  service: string;
+  amount: number;
+  content: string;
+  month: string;
+}
+
 // ─── INITIAL MOCK DATA ────────────────────────────────────────────────────────
 const INITIAL_SUPPLIES: SupplyItem[] = [
   { name: "Giấy A4 Double A 70gsm", cat: "Giấy in", unit: "Ram", stock: 150, allocated: 320, alert: "Bình thường" },
@@ -112,9 +132,20 @@ const INITIAL_RECURRING: RecurringPayment[] = [
   { name: "Cước Internet cáp quang", bank: "BIDV", account: "1199558877", owner: "VIETTEL TELECOM", lastAmount: 3500000, content: "Thanh toan cuoc internet TNEC thang" }
 ];
 
+const INITIAL_SUPPLIERS: Supplier[] = [
+  { id: "NCC-01", name: "CÔNG TY CỔ PHẦN AN CƯ ĐỨC PHÚ", account: "520052868", bank: "TP BANK - PGD Kỳ Hòa - CN Sài Gòn", service: "Thuê văn phòng HCM" },
+  { id: "NCC-02", name: "CÔNG TY CỔ PHẦN ĐẦU TƯ THỊNH VƯỢNG HVC", account: "334818", bank: "ACB - CN Tân Bình", service: "Lắp máy lạnh văn phòng" },
+  { id: "NCC-03", name: "CÔNG TY CỔ PHẦN HAI BỐN BẢY", account: "14020592925013", bank: "NH TMCP Kỹ Thương VN - CN Quang Trung", service: "Chuyển phát nhanh" },
+  { id: "NCC-04", name: "CÔNG TY CỔ PHẦN THƯƠNG MẠI XÂY DỰNG HPK", account: "3181551718", bank: "NH ACB - CN Gò Vấp", service: "Thi công sửa chữa văn phòng" },
+  { id: "NCC-05", name: "Nguyễn Bích Như Quỳnh", account: "11112857", bank: "Ngân hàng ACB", service: "" },
+  { id: "NCC-06", name: "Nguyễn Ngọc Thanh Hằng", account: "02597652501", bank: "Ngân hàng Tiên Phong (TP BANK)", service: "" },
+  { id: "NCC-07", name: "TRẦN NGHIỆP QUANG", account: "0942870512", bank: "Ngân hàng SHB", service: "Thuê nhà Vàm Lẽo" },
+];
+
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 export default function AdministrationPage() {
   const [activeTab, setActiveTab] = useState<"checklist" | "invoice" | "recurring" | "report" | "vpp">("checklist");
+  const [recurringSubTab, setRecurringSubTab] = useState<"suppliers" | "payments">("suppliers");
 
   // State Management
   const [supplies, setSupplies] = useState<SupplyItem[]>(INITIAL_SUPPLIES);
@@ -122,6 +153,23 @@ export default function AdministrationPage() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>(INITIAL_CHECKLIST);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>(INITIAL_RECURRING);
+
+  // New Supplier States
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [pendingPayments, setPendingPayments] = useState<SupplierPayment[]>([]);
+
+  // Form states for creating supplier
+  const [supplierIdState, setSupplierIdState] = useState("");
+  const [supplierNameState, setSupplierNameState] = useState("");
+  const [supplierAccountState, setSupplierAccountState] = useState("");
+  const [supplierBankState, setSupplierBankState] = useState("");
+  const [supplierServiceState, setSupplierServiceState] = useState("");
+
+  // Form states for creating pending payment
+  const [selectedSupplierId, setSelectedSupplierId] = useState("");
+  const [payAmount, setPayAmount] = useState("");
+  const [payContent, setPayContent] = useState("");
+  const [payMonth, setPayMonth] = useState("06/2026");
 
   // Checklist Kanban States
   const [draggedOverCol, setDraggedOverCol] = useState<string | null>(null);
@@ -223,6 +271,21 @@ export default function AdministrationPage() {
       
       const savedName = localStorage.getItem("employee_name") || localStorage.getItem("display_name");
       if (savedName) setEmployeeName(savedName);
+
+      // Load Suppliers
+      const savedSuppliers = localStorage.getItem("tnec_suppliers");
+      if (savedSuppliers) {
+        setSuppliers(JSON.parse(savedSuppliers));
+      } else {
+        setSuppliers(INITIAL_SUPPLIERS);
+        localStorage.setItem("tnec_suppliers", JSON.stringify(INITIAL_SUPPLIERS));
+      }
+
+      // Load Pending Payments
+      const savedPayments = localStorage.getItem("tnec_pending_payments");
+      if (savedPayments) {
+        setPendingPayments(JSON.parse(savedPayments));
+      }
     }
   }, []);
 
@@ -234,6 +297,156 @@ export default function AdministrationPage() {
       setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 2000);
     }
+  };
+
+  // --- NEW SUPPLIER & RECURRING PAYMENT HANDLERS ---
+  const handleAddSupplier = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supplierNameState.trim() || !supplierAccountState.trim() || !supplierBankState.trim()) {
+      alert("Vui lòng nhập đầy đủ thông tin nhà cung cấp!");
+      return;
+    }
+
+    const nextId = `NCC-${String(suppliers.length + 1).padStart(2, "0")}`;
+    const newSupplier: Supplier = {
+      id: supplierIdState.trim() || nextId,
+      name: supplierNameState.trim(),
+      account: supplierAccountState.trim(),
+      bank: supplierBankState.trim(),
+      service: supplierServiceState.trim()
+    };
+
+    const updated = [...suppliers, newSupplier];
+    setSuppliers(updated);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("tnec_suppliers", JSON.stringify(updated));
+    }
+
+    // Reset form
+    setSupplierIdState("");
+    setSupplierNameState("");
+    setSupplierAccountState("");
+    setSupplierBankState("");
+    setSupplierServiceState("");
+    alert("Đã thêm Nhà cung cấp thành công!");
+  };
+
+  const handleDeleteSupplier = (id: string) => {
+    if (confirm("Bạn có chắc chắn muốn xóa Nhà cung cấp này không?")) {
+      const updated = suppliers.filter(s => s.id !== id);
+      setSuppliers(updated);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("tnec_suppliers", JSON.stringify(updated));
+      }
+    }
+  };
+
+  const handleSupplierSelect = (id: string) => {
+    setSelectedSupplierId(id);
+    const supp = suppliers.find(s => s.id === id);
+    if (supp) {
+      setPayContent(`Thanh toan ${supp.service || "dich vu"} ${supp.name} thang`);
+    } else {
+      setPayContent("");
+    }
+  };
+
+  const handleAddPendingPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const supp = suppliers.find(s => s.id === selectedSupplierId);
+    if (!supp || !payAmount || isNaN(Number(payAmount))) {
+      alert("Vui lòng chọn Nhà cung cấp và nhập số tiền hợp lệ!");
+      return;
+    }
+
+    const newPayment: SupplierPayment = {
+      id: `PAY-${Date.now().toString().slice(-4)}`,
+      supplierId: supp.id,
+      supplierName: supp.name,
+      account: supp.account,
+      bank: supp.bank,
+      service: supp.service,
+      amount: Number(payAmount),
+      content: payContent || `Thanh toán định kỳ ${supp.name}`,
+      month: payMonth || "06/2026"
+    };
+
+    const updated = [...pendingPayments, newPayment];
+    setPendingPayments(updated);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("tnec_pending_payments", JSON.stringify(updated));
+    }
+
+    // Try to sync with Supabase invoices table
+    try {
+      const { data, error } = await supabase
+        .from("invoices")
+        .insert([{
+          number: `HD-DK-${Date.now().toString().slice(-4)}`,
+          date: new Date().toISOString().slice(0, 10),
+          description: newPayment.content,
+          amount: newPayment.amount,
+          beneficiary_name: newPayment.supplierName,
+          bank_account: newPayment.account,
+          bank_name_branch: newPayment.bank
+        }])
+        .select();
+      if (error) throw error;
+      if (data && data[0]) {
+        const savedInv: Invoice = {
+          id: data[0].id,
+          number: data[0].number,
+          date: data[0].date,
+          desc: data[0].description || "",
+          amount: Number(data[0].amount),
+          file_url: data[0].file_url || "",
+          beneficiary_name: data[0].beneficiary_name || "",
+          bank_account: data[0].bank_account || "",
+          bank_name_branch: data[0].bank_name_branch || ""
+        };
+        setInvoices(prev => [savedInv, ...prev]);
+        alert("Đã thêm khoản thanh toán và đồng bộ thành công lên Supabase!");
+      }
+    } catch (err: any) {
+      console.warn("Could not sync to Supabase (saving locally):", err.message || err);
+      // Create local fallback invoice
+      const newInv: Invoice = {
+        id: newPayment.id,
+        number: `HD-DK-${Date.now().toString().slice(-4)}`,
+        date: new Date().toISOString().slice(0, 10),
+        desc: newPayment.content,
+        amount: newPayment.amount,
+        beneficiary_name: newPayment.supplierName,
+        bank_account: newPayment.account,
+        bank_name_branch: newPayment.bank
+      };
+      setInvoices(prev => [newInv, ...prev]);
+      alert("Đã lưu khoản thanh toán thành công (lưu tạm thời trên trình duyệt do lỗi kết nối Supabase)!");
+    }
+
+    // Reset payment inputs
+    setPayAmount("");
+    setSelectedSupplierId("");
+    setPayContent("");
+  };
+
+  const handleDeletePendingPayment = (id: string) => {
+    if (confirm("Bạn có chắc chắn muốn xóa khoản thanh toán này?")) {
+      const updated = pendingPayments.filter(p => p.id !== id);
+      setPendingPayments(updated);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("tnec_pending_payments", JSON.stringify(updated));
+      }
+    }
+  };
+
+  const handleExportDeNghiChuyenTien = () => {
+    if (pendingPayments.length === 0) {
+      alert("Danh sách thanh toán trống, không thể xuất file!");
+      return;
+    }
+    const html = exportDeNghiChuyenTien(pendingPayments, payMonth || "06/2026");
+    downloadDocFile(html, `Bang_de_nghi_chuyen_tien_thang_${(payMonth || "06/2026").replace("/", "_")}`);
   };
 
   // Department Allocation handler
@@ -1446,95 +1659,307 @@ export default function AdministrationPage() {
               )}
 
               {/* ─── TAB 4: Hồ sơ thanh toán định kỳ ─── */}
+              {/* ─── TAB 4: Hồ sơ thanh toán định kỳ ─── */}
               {activeTab === "recurring" && (
                 <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-5">
-                  <div className="border-b border-slate-100 pb-4">
-                    <h3 className="font-heading font-bold text-slate-800 text-sm">Hồ sơ thanh toán định kỳ hàng tháng</h3>
-                    <p className="text-slate-400 text-[10px] font-semibold mt-1">Ghi nhớ thông tin chuyển khoản ngân hàng trước đó để làm hồ sơ nhanh hơn</p>
+                  <div className="flex flex-col md:flex-row border-b border-slate-100 pb-4 justify-between items-start md:items-center gap-4">
+                    <div>
+                      <h3 className="font-heading font-bold text-slate-800 text-sm">Hồ sơ thanh toán định kỳ hàng tháng</h3>
+                      <p className="text-slate-400 text-[10px] font-semibold mt-1">Quản lý danh mục nhà cung cấp và lập hồ sơ thanh toán nhanh chóng</p>
+                    </div>
+                    
+                    {/* Sub-tab navigation */}
+                    <div className="flex bg-slate-100 p-0.5 rounded-xl text-xs font-semibold shrink-0">
+                      <button
+                        onClick={() => setRecurringSubTab("suppliers")}
+                        className={`px-4 py-1.5 rounded-lg transition-all text-[11px] font-bold cursor-pointer ${
+                          recurringSubTab === "suppliers"
+                            ? "bg-white text-slate-800 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        📁 Danh mục Nhà Cung Cấp ({suppliers.length})
+                      </button>
+                      <button
+                        onClick={() => setRecurringSubTab("payments")}
+                        className={`px-4 py-1.5 rounded-lg transition-all text-[11px] font-bold cursor-pointer ${
+                          recurringSubTab === "payments"
+                            ? "bg-white text-slate-800 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        ✍️ Bảng thanh toán tháng ({pendingPayments.filter(p => p.month === payMonth).length})
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    {recurringPayments.map((payment, idx) => (
-                      <div key={idx} className="border border-slate-250/60 hover:border-slate-350 bg-slate-50/30 rounded-2xl p-5 flex flex-col justify-between h-56 transition-all hover-elevate">
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <h4 className="font-heading font-extrabold text-slate-800 text-xs">{payment.name}</h4>
-                            <span className="text-[9px] bg-blue-50 text-[#005BAC] font-bold px-2 py-0.5 rounded border border-blue-100">Định kỳ</span>
+                  {/* SUB-TAB 1: suppliers (Danh mục NCC) */}
+                  {recurringSubTab === "suppliers" && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* Left form */}
+                      <div className="md:col-span-1 border border-slate-200/80 bg-slate-50/20 p-5 rounded-2xl space-y-4">
+                        <h4 className="font-heading font-extrabold text-slate-800 text-xs flex items-center gap-1.5 border-b border-slate-105 pb-2">
+                          <span>➕</span> Thêm nhà cung cấp mới
+                        </h4>
+                        <form onSubmit={handleAddSupplier} className="space-y-3 text-[11px] font-semibold text-slate-600">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase block">Mã Nhà cung cấp (Tùy chọn)</label>
+                            <input
+                              type="text"
+                              value={supplierIdState}
+                              onChange={(e) => setSupplierIdState(e.target.value)}
+                              placeholder={`Ví dụ: NCC-${String(suppliers.length + 1).padStart(2, "0")}`}
+                              className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
+                            />
                           </div>
-                          <div className="space-y-1.5 text-[10px] font-semibold text-slate-500 pt-1.5">
-                            <p>Ngân hàng: <strong className="text-slate-700">{payment.bank}</strong></p>
-                            <p>Số tài khoản: <strong className="text-slate-700 font-mono">{payment.account}</strong></p>
-                            <p>Đơn vị thụ hưởng: <strong className="text-slate-700">{payment.owner}</strong></p>
-                            <p className="truncate" title={payment.content}>Nội dung cũ: <span className="text-slate-400 italic">"{payment.content}"</span></p>
-                          </div>
-                        </div>
 
-                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between mt-2">
-                          <div>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase">Tháng trước</p>
-                            <p className="text-xs font-bold text-[#005BAC]">{payment.lastAmount.toLocaleString("vi-VN")} đ</p>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase block">Tên nhà cung cấp <span className="text-rose-500">*</span></label>
+                            <input
+                              type="text"
+                              required
+                              value={supplierNameState}
+                              onChange={(e) => setSupplierNameState(e.target.value)}
+                              placeholder="Ví dụ: CÔNG TY CỔ PHẦN HAI BỐN BẢY"
+                              className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
+                            />
                           </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase block">Số tài khoản ngân hàng <span className="text-rose-500">*</span></label>
+                            <input
+                              type="text"
+                              required
+                              value={supplierAccountState}
+                              onChange={(e) => setSupplierAccountState(e.target.value)}
+                              placeholder="Ví dụ: 14020592925013"
+                              className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-mono font-semibold text-slate-800"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase block">Ngân hàng & Chi nhánh <span className="text-rose-500">*</span></label>
+                            <input
+                              type="text"
+                              required
+                              value={supplierBankState}
+                              onChange={(e) => setSupplierBankState(e.target.value)}
+                              placeholder="Ví dụ: Techcombank - CN Quang Trung"
+                              className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase block">Hàng hóa / Dịch vụ cung cấp</label>
+                            <input
+                              type="text"
+                              value={supplierServiceState}
+                              onChange={(e) => setSupplierServiceState(e.target.value)}
+                              placeholder="Ví dụ: Chuyển phát nhanh tài liệu"
+                              className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
+                            />
+                          </div>
+
                           <button
-                            onClick={async () => {
-                              const newAmount = prompt(`Nhập số tiền hóa đơn tháng này cho [${payment.name}]:`, payment.lastAmount.toString());
-                              if (newAmount && !isNaN(Number(newAmount))) {
-                                try {
-                                  const { data, error } = await supabase
-                                    .from("invoices")
-                                    .insert([{
-                                      number: `HD-DK-${Date.now().toString().slice(-2)}`,
-                                      date: new Date().toISOString().slice(0, 10),
-                                      description: `Thanh toán ${payment.name.toLowerCase()} định kỳ tháng này`,
-                                      amount: Number(newAmount),
-                                      beneficiary_name: payment.owner,
-                                      bank_account: payment.account,
-                                      bank_name_branch: payment.bank
-                                    }])
-                                    .select();
-                                  if (error) throw error;
-                                  if (data && data[0]) {
-                                    const savedInv: Invoice = {
-                                      id: data[0].id,
-                                      number: data[0].number,
-                                      date: data[0].date,
-                                      desc: data[0].description || "",
-                                      amount: Number(data[0].amount),
-                                      file_url: data[0].file_url || "",
-                                      beneficiary_name: data[0].beneficiary_name || "",
-                                      bank_account: data[0].bank_account || "",
-                                      bank_name_branch: data[0].bank_name_branch || ""
-                                    };
-                                    setInvoices(prev => [savedInv, ...prev]);
-                                    alert(`Đã tạo và đồng bộ HS thanh toán định kỳ cho ${payment.name}!`);
-                                  }
-                                } catch (dbErr: any) {
-                                  console.error("Save manual invoice to Supabase failed:", dbErr);
-                                  if (dbErr.message && (dbErr.message.includes("Could not find the table") || dbErr.message.includes("does not exist"))) {
-                                    setIsTableMissing(true);
-                                  }
-                                  const newInv: Invoice = {
-                                    id: `INV-${Date.now().toString().slice(-2)}`,
-                                    number: `HD-DK-${Date.now().toString().slice(-2)}`,
-                                    date: new Date().toISOString().slice(0, 10),
-                                    desc: `Thanh toán ${payment.name.toLowerCase()} định kỳ tháng này`,
-                                    amount: Number(newAmount),
-                                    beneficiary_name: payment.owner,
-                                    bank_account: payment.account,
-                                    bank_name_branch: payment.bank
-                                  };
-                                  setInvoices(prev => [newInv, ...prev]);
-                                  alert(`Đã tạo nhanh HS thanh toán cho ${payment.name} (lưu tạm thời trên trình duyệt)!`);
-                                }
-                              }
-                            }}
-                            className="bg-slate-900 hover:bg-slate-800 text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-sm active:scale-95 transition-all"
+                            type="submit"
+                            className="w-full py-2.5 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer shadow"
                           >
-                            Tạo nhanh HS <ArrowRight size={10} />
+                            Lưu nhà cung cấp
                           </button>
+                        </form>
+                      </div>
+
+                      {/* Right list table */}
+                      <div className="md:col-span-2 space-y-4">
+                        <div className="border border-slate-200/80 rounded-2xl overflow-hidden bg-white shadow-sm max-h-[460px] overflow-y-auto">
+                          <table className="w-full text-xs text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
+                                <th className="py-2.5 px-3 w-16 text-center">Mã NCC</th>
+                                <th className="py-2.5 px-3">Tên Nhà Cung Cấp</th>
+                                <th className="py-2.5 px-3">Tài Khoản</th>
+                                <th className="py-2.5 px-3">Ngân Hàng Thụ Hưởng</th>
+                                <th className="py-2.5 px-3">Hàng Hóa / Dịch Vụ</th>
+                                <th className="py-2.5 px-3 w-12 text-center">Xóa</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                              {suppliers.map((s) => (
+                                <tr key={s.id} className="hover:bg-slate-50/50 transition-all font-semibold">
+                                  <td className="py-3 px-3 text-center text-slate-400 font-mono text-[10px]">{s.id}</td>
+                                  <td className="py-3 px-3 text-slate-850 font-bold">{s.name}</td>
+                                  <td className="py-3 px-3 font-mono font-bold text-slate-800 text-[11px]">{s.account}</td>
+                                  <td className="py-3 px-3 text-slate-500 text-[11px] leading-snug">{s.bank}</td>
+                                  <td className="py-3 px-3 text-slate-400 italic text-[11px]">{s.service || "—"}</td>
+                                  <td className="py-3 px-3 text-center">
+                                    <button
+                                      onClick={() => handleDeleteSupplier(s.id)}
+                                      className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                      title="Xóa nhà cung cấp"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                              {suppliers.length === 0 && (
+                                <tr>
+                                  <td colSpan={6} className="py-10 text-center text-slate-400 italic">Danh sách NCC trống. Hãy thêm nhà cung cấp mới.</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
+
+                  {/* SUB-TAB 2: payments (Bảng lập thanh toán NCC) */}
+                  {recurringSubTab === "payments" && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* Left form */}
+                      <div className="md:col-span-1 border border-slate-200/80 bg-slate-50/20 p-5 rounded-2xl space-y-4">
+                        <h4 className="font-heading font-extrabold text-slate-800 text-xs flex items-center gap-1.5 border-b border-slate-105 pb-2">
+                          <span>✍️</span> Lập phiếu thanh toán NCC
+                        </h4>
+                        <form onSubmit={handleAddPendingPayment} className="space-y-3 text-[11px] font-semibold text-slate-600">
+                          
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase block">Chọn Nhà Cung Cấp <span className="text-rose-500">*</span></label>
+                            <select
+                              required
+                              value={selectedSupplierId}
+                              onChange={(e) => handleSupplierSelect(e.target.value)}
+                              className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800 cursor-pointer"
+                            >
+                              <option value="">-- Chọn Nhà cung cấp (Vlookup) --</option>
+                              {suppliers.map(s => (
+                                <option key={s.id} value={s.id}>{s.name} ({s.id})</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {selectedSupplierId && (() => {
+                            const s = suppliers.find(x => x.id === selectedSupplierId);
+                            if (!s) return null;
+                            return (
+                              <div className="p-3 bg-white border border-slate-100 rounded-xl space-y-1 text-[10px] text-slate-500 leading-normal animate-in fade-in duration-200 font-bold">
+                                <p>🏦 Tài khoản: <strong className="text-slate-700 font-mono">{s.account}</strong></p>
+                                <p>🏢 Ngân hàng: <strong className="text-slate-700">{s.bank}</strong></p>
+                                <p>📦 Dịch vụ mặc định: <strong className="text-slate-750 italic">{s.service || "—"}</strong></p>
+                              </div>
+                            );
+                          })()}
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase block">Số tiền thanh toán (VNĐ) <span className="text-rose-500">*</span></label>
+                            <input
+                              type="number"
+                              required
+                              value={payAmount}
+                              onChange={(e) => setPayAmount(e.target.value)}
+                              placeholder="Nhập số tiền chuyển, ví dụ: 3500000"
+                              className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase block">Tháng thanh toán <span className="text-rose-500">*</span></label>
+                            <input
+                              type="text"
+                              required
+                              value={payMonth}
+                              onChange={(e) => setPayMonth(e.target.value)}
+                              placeholder="Ví dụ: 06/2026"
+                              className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase block">Nội dung thanh toán</label>
+                            <textarea
+                              value={payContent}
+                              onChange={(e) => setPayContent(e.target.value)}
+                              placeholder="Ví dụ: Thanh toan cuoc internet thang 06/2026"
+                              rows={2}
+                              className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800 resize-none font-medium text-slate-700"
+                            />
+                          </div>
+
+                          <button
+                            type="submit"
+                            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer shadow"
+                          >
+                            + Thêm & Đồng bộ lên Hóa Đơn
+                          </button>
+                        </form>
+                      </div>
+
+                      {/* Right list and export */}
+                      <div className="md:col-span-2 space-y-4">
+                        <div className="flex justify-between items-center bg-slate-50/50 p-4 border border-slate-200/65 rounded-2xl">
+                          <div>
+                            <span className="text-[10px] font-black text-slate-400 uppercase block">Tổng cộng tháng {payMonth}</span>
+                            <span className="text-base font-black text-[#005BAC]">
+                              {pendingPayments
+                                .filter(p => p.month === payMonth)
+                                .reduce((sum, p) => sum + p.amount, 0)
+                                .toLocaleString("vi-VN")} đ
+                            </span>
+                          </div>
+                          <button
+                            onClick={handleExportDeNghiChuyenTien}
+                            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                          >
+                            📝 Xuất đề nghị chuyển tiền (Word)
+                          </button>
+                        </div>
+
+                        <div className="border border-slate-200/80 rounded-2xl overflow-hidden bg-white shadow-sm max-h-[365px] overflow-y-auto">
+                          <table className="w-full text-xs text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
+                                <th className="py-2.5 px-3">Tên Nhà Cung Cấp</th>
+                                <th className="py-2.5 px-3">Tài khoản & Ngân hàng</th>
+                                <th className="py-2.5 px-3">Nội dung</th>
+                                <th className="py-2.5 px-3 text-right">Số tiền (đ)</th>
+                                <th className="py-2.5 px-3 w-12 text-center">Xóa</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                              {pendingPayments
+                                .filter(p => p.month === payMonth)
+                                .map((p) => (
+                                  <tr key={p.id} className="hover:bg-slate-50/50 transition-all font-semibold">
+                                    <td className="py-3 px-3 text-slate-850 font-bold">{p.supplierName}</td>
+                                    <td className="py-3 px-3 leading-snug">
+                                      <div className="font-mono text-slate-800 font-bold text-[11px]">{p.account}</div>
+                                      <div className="text-slate-450 text-[10px] font-semibold">{p.bank}</div>
+                                    </td>
+                                    <td className="py-3 px-3 text-slate-500 text-[11.5px] leading-snug font-medium">{p.content}</td>
+                                    <td className="py-3 px-3 text-right font-black text-slate-800">{p.amount.toLocaleString("vi-VN")}</td>
+                                    <td className="py-3 px-3 text-center">
+                                      <button
+                                        onClick={() => handleDeletePendingPayment(p.id)}
+                                        className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                        title="Xóa thanh toán"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              {pendingPayments.filter(p => p.month === payMonth).length === 0 && (
+                                <tr>
+                                  <td colSpan={5} className="py-10 text-center text-slate-400 italic">Không có khoản thanh toán nào cho tháng {payMonth}.</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

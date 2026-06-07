@@ -524,6 +524,117 @@ export function exportPhieuCongTac(data: any) {
       </tr>
     </table>
   `;
+  return wrapInWordShell(bodyHtml);
+}
+
+export function exportDeNghiChuyenTien(payments: any[], month: string) {
+  let totalAmount = 0;
+  let rowsHtml = "";
+  
+  payments.forEach((p, idx) => {
+    const amt = Number(p.amount) || 0;
+    totalAmount += amt;
+    rowsHtml += `
+      <tr>
+        <td class="text-center" style="font-size: 11pt; border: 1px solid #000000; padding: 6px 8px;">${idx + 1}</td>
+        <td class="text-left" style="font-size: 11pt; font-weight: bold; border: 1px solid #000000; padding: 6px 8px;">${p.supplierName || p.beneficiary_name || ""}</td>
+        <td class="text-center font-mono" style="font-size: 11pt; font-weight: bold; border: 1px solid #000000; padding: 6px 8px;">${p.account || p.bank_account || ""}</td>
+        <td class="text-left" style="font-size: 11pt; border: 1px solid #000000; padding: 6px 8px;">${p.bank || p.bank_name_branch || ""}</td>
+        <td class="text-left" style="font-size: 11pt; border: 1px solid #000000; padding: 6px 8px;">${p.content || p.desc || ""}</td>
+        <td class="text-right" style="font-size: 11pt; font-weight: bold; border: 1px solid #000000; padding: 6px 8px;">${formatNumber(amt)}</td>
+      </tr>
+    `;
+  });
+
+  const textAmount = docSoVietNam(totalAmount);
+
+  const bodyHtml = `
+    <!-- Header Block -->
+    <table class="header-table" style="width:100%; border-collapse: collapse;">
+      <tr>
+        <td style="width: 55%; text-align: left; border: none; padding: 2px; vertical-align: top;">
+          <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 15pt; color: #005BAC;">TRUNG <span style="color: #EF4444;">N</span>AM <span style="color: #00AEEF; font-size: 11pt; font-weight: normal; font-style: italic;">E&C</span></div>
+          <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 7.5pt; color: #333333; margin-top: 2px;">CÔNG TY CP XÂY DỰNG VÀ LẮP MÁY TRUNG NAM</div>
+          <div style="font-family: Arial, sans-serif; font-size: 6.5pt; color: #555555; line-height: 1.2; margin-top: 3px;">
+            A : Tầng trệt tòa nhà Safomec, 7/1 Thành Thái, Phường 14, Quận 10, TPHCM<br>
+            T : (+84) 834 70 75 79   E : info.tnec@trungnamgroup.com.vn<br>
+            W : trungnamec.com.vn
+          </div>
+        </td>
+        <td style="width: 45%; text-align: center; vertical-align: middle; border: none; padding: 2px;">
+          <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 14pt; color: #000000; letter-spacing: 0.5px;">BẢNG ĐỀ NGHỊ CHUYỂN TIỀN</div>
+          <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 9.5pt; color: #000000; margin-top: 3px; text-decoration: underline;">Tháng ${month || ""}</div>
+        </td>
+      </tr>
+    </table>
+
+    <br/>
+
+    <!-- Target Destination -->
+    <div style="margin-left: 10px;">
+      <table style="width: 100%; font-size: 12pt; border-collapse: collapse;">
+        <tr>
+          <td style="width: 12%; font-weight: bold; vertical-align: top; border: none; padding: 2px;">Kính gửi:</td>
+          <td style="width: 88%; font-weight: bold; border: none; padding: 2px;">
+            - Ban Lãnh đạo Công ty Cổ phần Xây dựng và Lắp máy Trung Nam;<br/>
+            - Phòng Tài chính - Kế toán.
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <br/>
+
+    <div style="font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.5; margin-bottom: 10px;">
+      Bộ phận Hành chính Nhân sự kính trình Ban lãnh đạo phê duyệt danh sách chuyển tiền thanh toán cho các Nhà cung cấp định kỳ tháng ${month || ""} chi tiết như sau:
+    </div>
+
+    <!-- Expense Table -->
+    <table class="data-table" style="width: 100%; border-collapse: collapse; border: 1px solid #000000; margin-top: 15px; margin-bottom: 15px;">
+      <thead>
+        <tr style="background-color: #F2F2F2;">
+          <th style="width: 5%; border: 1px solid #000000; padding: 6px 8px; font-weight: bold; text-align: center;">STT</th>
+          <th style="width: 25%; border: 1px solid #000000; padding: 6px 8px; font-weight: bold; text-align: center;">Đơn vị thụ hưởng</th>
+          <th style="width: 15%; border: 1px solid #000000; padding: 6px 8px; font-weight: bold; text-align: center;">Số tài khoản</th>
+          <th style="width: 20%; border: 1px solid #000000; padding: 6px 8px; font-weight: bold; text-align: center;">Ngân hàng thụ hưởng</th>
+          <th style="width: 20%; border: 1px solid #000000; padding: 6px 8px; font-weight: bold; text-align: center;">Nội dung thanh toán</th>
+          <th style="width: 15%; border: 1px solid #000000; padding: 6px 8px; font-weight: bold; text-align: center;">Số tiền (VNĐ)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+        <tr class="bold" style="background-color: #F2F2F2; font-weight: bold;">
+          <td colspan="5" class="text-center" style="font-size: 11pt; border: 1px solid #000000; padding: 6px 8px; text-align: center;">Tổng cộng</td>
+          <td class="text-right" style="font-size: 11pt; border: 1px solid #000000; padding: 6px 8px; text-align: right;">${formatNumber(totalAmount)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Text Amount & Undertaking -->
+    <div style="font-family: 'Times New Roman', serif; font-size: 11.5pt; line-height: 1.4; margin-top: 10px;">
+      <div class="italic" style="font-style: italic;"><span class="bold" style="font-weight: bold;">Bằng chữ:</span> ${textAmount}</div>
+      <div style="margin-top: 8px;">Kính trình Ban lãnh đạo xem xét và phê duyệt chuyển khoản thanh toán.</div>
+    </div>
+
+    <br/>
+
+    <!-- Signature Block -->
+    <table style="width: 100%; margin-top: 15px; font-size: 10.5pt; text-align: center; border-collapse: collapse;">
+      <tr>
+        <td colspan="3" style="text-align: right; font-style: italic; padding-right: 30px; border: none;">Tp.HCM, ngày ${getFormattedDayString(new Date())}</td>
+      </tr>
+      <tr style="font-weight: bold; height: 35px; vertical-align: top;">
+        <td style="width: 33%; border: none; padding: 2px; font-weight: bold;">BAN GIÁM ĐỐC</td>
+        <td style="width: 33%; border: none; padding: 2px; font-weight: bold;">KẾ TOÁN TRƯỞNG</td>
+        <td style="width: 33%; border: none; padding: 2px; font-weight: bold;">NGƯỜI ĐỀ NGHỊ</td>
+      </tr>
+      <tr style="height: 70px;">
+        <td style="border: none;"></td>
+        <td style="border: none;"></td>
+        <td style="border: none;"></td>
+      </tr>
+    </table>
+  `;
 
   return wrapInWordShell(bodyHtml);
 }

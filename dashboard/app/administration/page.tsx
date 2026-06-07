@@ -27,7 +27,9 @@ import {
   Download,
   Eye,
   X,
-  Pencil
+  Pencil,
+  Calendar,
+  ChevronDown
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { docSoVietNam, exportDeNghiChuyenTien, downloadDocFile } from "@/lib/wordExporter";
@@ -253,7 +255,13 @@ export default function AdministrationPage() {
   const [isTableMissing, setIsTableMissing] = useState(false);
   const [editingPayment, setEditingPayment] = useState<SupplierPayment | null>(null);
   const [uploadingPaymentId, setUploadingPaymentId] = useState<string | null>(null);
-  const [reportMonth, setReportMonth] = useState("06/2026");
+
+  // Report date range states
+  const [reportStartDate, setReportStartDate] = useState("2026-06-01");
+  const [reportEndDate, setReportEndDate] = useState("2026-06-30");
+  const [showDatePickerPopover, setShowDatePickerPopover] = useState(false);
+  const [tempStartDate, setTempStartDate] = useState("2026-06-01");
+  const [tempEndDate, setTempEndDate] = useState("2026-06-30");
 
   // Form metadata for document generation
   const [employeeName, setEmployeeName] = useState("Nguyễn Bích Như Quỳnh");
@@ -550,20 +558,22 @@ export default function AdministrationPage() {
     return "Chi phí khác";
   };
 
-  const getReportData = (monthStr: string) => {
-    const parts = monthStr.split("/");
-    let yyyyMM = "";
-    if (parts.length === 2) {
-      yyyyMM = `${parts[1]}-${parts[0].padStart(2, "0")}`;
-    }
-
+  const getReportData = (startDate: string, endDate: string) => {
     const filteredInvoices = invoices.filter(inv => {
       if (!inv.date) return false;
-      return inv.date.startsWith(yyyyMM);
+      return inv.date >= startDate && inv.date <= endDate;
     });
 
     const filteredPayments = pendingPayments.filter(p => {
-      return p.month === monthStr;
+      if (!p.month) return false;
+      const parts = p.month.split("/");
+      if (parts.length !== 2) return false;
+      const mm = parts[0].padStart(2, "0");
+      const yyyy = parts[1];
+      const monthStart = `${yyyy}-${mm}-01`;
+      const lastDay = new Date(parseInt(yyyy), parseInt(mm), 0).getDate();
+      const monthEnd = `${yyyy}-${mm}-${String(lastDay).padStart(2, "0")}`;
+      return monthEnd >= startDate && monthStart <= endDate;
     });
 
     const combinedItems = [
@@ -619,13 +629,61 @@ export default function AdministrationPage() {
     };
   };
 
-  const handleExportReportExcel = (monthStr: string) => {
+  const formatDateVN = (dateStr: string) => {
+    if (!dateStr) return "";
+    const parts = dateStr.split("-");
+    if (parts.length !== 3) return dateStr;
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  };
+
+  const handleApplyDateRange = () => {
+    setReportStartDate(tempStartDate);
+    setReportEndDate(tempEndDate);
+    setShowDatePickerPopover(false);
+  };
+
+  const handleCancelDateRange = () => {
+    setTempStartDate(reportStartDate);
+    setTempEndDate(reportEndDate);
+    setShowDatePickerPopover(false);
+  };
+
+  const handleQuickSelect = (type: string) => {
+    const now = new Date();
+    let start: Date;
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    switch (type) {
+      case "thisMonth":
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case "1month":
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        break;
+      case "2months":
+        start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+        break;
+      case "3months":
+        start = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+        break;
+      default:
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
+    const toISO = (d: Date) => d.toISOString().slice(0, 10);
+    setTempStartDate(toISO(start));
+    setTempEndDate(toISO(end));
+  };
+
+  const handleExportReportExcel = (startDate: string, endDate: string) => {
     try {
-      const { combinedItems, totalAmount, invoiceCount, recurringCount, categoriesMap } = getReportData(monthStr);
+      const { combinedItems, totalAmount, invoiceCount, recurringCount, categoriesMap } = getReportData(startDate, endDate);
+      const rangeLabel = `${formatDateVN(startDate)} - ${formatDateVN(endDate)}`;
 
-      let csvContent = "\uFEFF"; // UTF-8 BOM for Excel
+      let csvContent = "\uFEFF";
 
-      csvContent += `"BÁO CÁO TỔNG HỢP CHI PHÍ THÁNG ${monthStr.toUpperCase()}"\n`;
+      csvContent += `"BÁO CÁO TỔNG HỢP CHI PHÍ"\n`;
+      csvContent += `"Kỳ báo cáo:","${rangeLabel}"\n`;
       csvContent += `"Ngày xuất báo cáo:","${new Date().toLocaleDateString("vi-VN")}"\n`;
       csvContent += `"Tổng chi phí:","${totalAmount}","VNĐ"\n`;
       csvContent += `"Số lượng hóa đơn:","${invoiceCount}","hồ sơ"\n`;
@@ -652,7 +710,7 @@ export default function AdministrationPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Bao_cao_chi_phi_thang_${monthStr.replace("/", "_")}.csv`;
+      a.download = `Bao_cao_chi_phi_${startDate}_den_${endDate}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -2403,7 +2461,7 @@ export default function AdministrationPage() {
 
               {/* ─── TAB 4: Báo cáo chi phí tháng ─── */}
               {activeTab === "report" && (() => {
-                const { combinedItems, totalAmount, invoiceCount, recurringCount, categoriesMap } = getReportData(reportMonth);
+                const { combinedItems, totalAmount, invoiceCount, recurringCount, categoriesMap } = getReportData(reportStartDate, reportEndDate);
                 
                 return (
                   <div className="space-y-6">
@@ -2411,24 +2469,148 @@ export default function AdministrationPage() {
                     <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
-                          <h3 className="font-heading font-bold text-slate-800 text-sm">Báo cáo tổng hợp chi phí tháng</h3>
-                          <p className="text-slate-400 text-[10px] font-semibold mt-1">Tổng hợp tự động toàn bộ hóa đơn và các khoản thanh toán định kỳ trong tháng</p>
+                          <h3 className="font-heading font-bold text-slate-800 text-sm">Báo cáo tổng hợp chi phí</h3>
+                          <p className="text-slate-400 text-[10px] font-semibold mt-1">Tổng hợp tự động toàn bộ hóa đơn và các khoản thanh toán định kỳ theo khoảng ngày</p>
                         </div>
                         
                         <div className="flex flex-wrap items-center gap-3">
-                          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-1.5">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tháng báo cáo:</span>
-                            <input
-                              type="text"
-                              value={reportMonth}
-                              onChange={(e) => setReportMonth(e.target.value)}
-                              placeholder="MM/YYYY"
-                              className="w-20 bg-transparent text-xs font-bold text-[#005BAC] focus:outline-none text-center"
-                            />
+                          {/* Date Range Trigger Button */}
+                          <div className="relative">
+                            <button
+                              onClick={() => {
+                                setTempStartDate(reportStartDate);
+                                setTempEndDate(reportEndDate);
+                                setShowDatePickerPopover(!showDatePickerPopover);
+                              }}
+                              className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100/80 border border-slate-200/80 rounded-xl px-3.5 py-2 transition-all group"
+                            >
+                              <Calendar size={14} className="text-[#005BAC]" />
+                              <span className="text-[11px] font-bold text-slate-700">
+                                {formatDateVN(reportStartDate)} <span className="text-slate-400 font-normal">→</span> {formatDateVN(reportEndDate)}
+                              </span>
+                              <ChevronDown size={12} className={`text-slate-400 transition-transform duration-200 ${showDatePickerPopover ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {/* Date Range Popover */}
+                            {showDatePickerPopover && (
+                              <>
+                                {/* Backdrop */}
+                                <div className="fixed inset-0 z-[90]" onClick={handleCancelDateRange} />
+
+                                {/* Popover Panel */}
+                                <div className="absolute right-0 top-full mt-2 z-[100] w-[420px] bg-white rounded-2xl border border-slate-200/80 shadow-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150">
+                                  {/* Popover Header */}
+                                  <div className="bg-gradient-to-r from-[#005BAC]/5 to-indigo-50/30 px-5 py-3.5 border-b border-slate-100">
+                                    <div className="flex items-center gap-2">
+                                      <div className="bg-[#005BAC]/10 p-1.5 rounded-lg">
+                                        <Calendar size={13} className="text-[#005BAC]" />
+                                      </div>
+                                      <div>
+                                        <h4 className="text-[11px] font-bold text-slate-700">Chọn khoảng thời gian</h4>
+                                        <p className="text-[9px] text-slate-400 font-semibold">Chọn nhanh hoặc tùy chỉnh ngày bắt đầu và kết thúc</p>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="p-5 space-y-5">
+                                    {/* Quick Select Section */}
+                                    <div className="space-y-2.5">
+                                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Chọn nhanh</span>
+                                      <div className="grid grid-cols-2 gap-2">
+                                        {[
+                                          { label: "Tháng này", value: "thisMonth" },
+                                          { label: "1 Tháng gần nhất", value: "1month" },
+                                          { label: "2 Tháng gần nhất", value: "2months" },
+                                          { label: "3 Tháng gần nhất", value: "3months" },
+                                        ].map((opt) => (
+                                          <button
+                                            key={opt.value}
+                                            onClick={() => handleQuickSelect(opt.value)}
+                                            className="px-3 py-2.5 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-[#005BAC]/5 hover:border-[#005BAC]/30 text-[11px] font-bold text-slate-600 hover:text-[#005BAC] transition-all duration-150 active:scale-[0.97]"
+                                          >
+                                            {opt.label}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+
+                                    {/* Divider */}
+                                    <div className="flex items-center gap-3">
+                                      <div className="flex-1 h-px bg-slate-100" />
+                                      <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">hoặc chọn tùy chỉnh</span>
+                                      <div className="flex-1 h-px bg-slate-100" />
+                                    </div>
+
+                                    {/* Custom Date Inputs */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Từ ngày</label>
+                                        <div className="relative">
+                                          <input
+                                            type="date"
+                                            value={tempStartDate}
+                                            onChange={(e) => setTempStartDate(e.target.value)}
+                                            className="w-full bg-white border border-slate-200/80 rounded-xl px-3 py-2.5 text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#005BAC]/20 focus:border-[#005BAC]/40 transition-all hover:border-slate-300"
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Đến ngày</label>
+                                        <div className="relative">
+                                          <input
+                                            type="date"
+                                            value={tempEndDate}
+                                            onChange={(e) => setTempEndDate(e.target.value)}
+                                            className="w-full bg-white border border-slate-200/80 rounded-xl px-3 py-2.5 text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#005BAC]/20 focus:border-[#005BAC]/40 transition-all hover:border-slate-300"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Preview Range */}
+                                    {tempStartDate && tempEndDate && (
+                                      <div className="bg-slate-50/80 border border-slate-100 rounded-xl px-3.5 py-2 flex items-center justify-center gap-2">
+                                        <Calendar size={11} className="text-[#005BAC]" />
+                                        <span className="text-[10px] font-bold text-slate-500">
+                                          Kỳ chọn: <span className="text-[#005BAC]">{formatDateVN(tempStartDate)}</span>
+                                          <span className="text-slate-300 mx-1">→</span>
+                                          <span className="text-[#005BAC]">{formatDateVN(tempEndDate)}</span>
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Popover Footer Actions */}
+                                  <div className="bg-slate-50/50 border-t border-slate-100 px-5 py-3.5 flex items-center justify-end gap-2.5">
+                                    <button
+                                      onClick={handleCancelDateRange}
+                                      className="px-4 py-2 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-50 text-[11px] font-bold text-slate-500 hover:text-slate-700 transition-all active:scale-95"
+                                    >
+                                      Hủy
+                                    </button>
+                                    <button
+                                      onClick={handleApplyDateRange}
+                                      className="px-4 py-2 rounded-xl bg-[#005BAC] hover:bg-blue-700 text-white text-[11px] font-bold shadow-md transition-all active:scale-95"
+                                    >
+                                      Áp dụng
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        handleExportReportExcel(tempStartDate, tempEndDate);
+                                        setShowDatePickerPopover(false);
+                                      }}
+                                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shadow-md transition-all active:scale-95"
+                                    >
+                                      <FileSpreadsheet size={12} /> Xuất Excel
+                                    </button>
+                                  </div>
+                                </div>
+                              </>
+                            )}
                           </div>
 
                           <button
-                            onClick={() => handleExportReportExcel(reportMonth)}
+                            onClick={() => handleExportReportExcel(reportStartDate, reportEndDate)}
                             className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-all active:scale-95"
                           >
                             <FileSpreadsheet size={14} /> Tải xuống báo cáo (Excel)
@@ -2442,7 +2624,7 @@ export default function AdministrationPage() {
                       {/* Total cost card */}
                       <div className="glass bg-gradient-to-br from-blue-50/50 to-indigo-50/20 rounded-2xl p-5 border border-blue-100/60 shadow-premium flex items-center justify-between">
                         <div className="space-y-1.5">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Tổng chi phí tháng</span>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Tổng chi phí kỳ</span>
                           <h3 className="text-xl font-black text-[#005BAC] tracking-tight">{totalAmount.toLocaleString("vi-VN")} đ</h3>
                           <p className="text-[10px] text-slate-400 font-semibold">Tự động tổng hợp thời gian thực</p>
                         </div>
@@ -2468,7 +2650,7 @@ export default function AdministrationPage() {
                         <div className="space-y-1.5">
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Thanh toán định kỳ</span>
                           <h3 className="text-xl font-black text-purple-600 tracking-tight">{recurringCount} Hồ sơ</h3>
-                          <p className="text-[10px] text-slate-400 font-semibold">Các khoản chi định kỳ tháng</p>
+                          <p className="text-[10px] text-slate-400 font-semibold">Các khoản chi định kỳ trong kỳ</p>
                         </div>
                         <div className="bg-purple-500/10 text-purple-600 p-3.5 rounded-2xl">
                           <RefreshCw size={24} />
@@ -2524,8 +2706,8 @@ export default function AdministrationPage() {
 
                           <div className="space-y-2 text-[10.5px] font-semibold text-slate-500 pt-1">
                             <div className="flex justify-between border-b border-slate-50 pb-1.5">
-                              <span>Tháng đối soát:</span>
-                              <span className="text-slate-800 font-bold">Tháng {reportMonth}</span>
+                              <span>Kỳ đối soát:</span>
+                              <span className="text-slate-800 font-bold">{formatDateVN(reportStartDate)} → {formatDateVN(reportEndDate)}</span>
                             </div>
                             <div className="flex justify-between border-b border-slate-50 pb-1.5">
                               <span>Tổng chứng từ tổng hợp:</span>
@@ -2605,7 +2787,7 @@ export default function AdministrationPage() {
                             {combinedItems.length === 0 && (
                               <tr>
                                 <td colSpan={8} className="py-12 text-center text-slate-400 italic">
-                                  Không có dữ liệu chi phí nào cho tháng {reportMonth}.
+                                  Không có dữ liệu chi phí nào cho kỳ {formatDateVN(reportStartDate)} → {formatDateVN(reportEndDate)}.
                                 </td>
                               </tr>
                             )}

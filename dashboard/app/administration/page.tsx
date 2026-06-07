@@ -240,6 +240,8 @@ export default function AdministrationPage() {
   const [isExtractingBatch, setIsExtractingBatch] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showRecurringPreviewModal, setShowRecurringPreviewModal] = useState(false);
+  const [selectedRecurringPreviewIdx, setSelectedRecurringPreviewIdx] = useState(0);
 
   // States for viewing original files in popups
   const [previewFileUrl, setPreviewFileUrl] = useState<string>("");
@@ -440,13 +442,62 @@ export default function AdministrationPage() {
     }
   };
 
-  const handleExportDeNghiChuyenTien = () => {
-    if (pendingPayments.length === 0) {
+  const handleExportDeNghiChuyenTien = async () => {
+    const currentMonthPayments = pendingPayments.filter(p => p.month === payMonth);
+    if (currentMonthPayments.length === 0) {
       alert("Danh sách thanh toán trống, không thể xuất file!");
       return;
     }
-    const html = exportDeNghiChuyenTien(pendingPayments, payMonth || "06/2026");
-    downloadDocFile(html, `Bang_de_nghi_chuyen_tien_thang_${(payMonth || "06/2026").replace("/", "_")}`);
+
+    setExportLoading(true);
+    try {
+      for (const p of currentMonthPayments) {
+        const response = await fetch("/api/export-invoice-payment", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            employeeName,
+            employeeDept,
+            mission: p.content,
+            projectName: "Văn phòng HCM",
+            supplierName: p.supplierName,
+            bankAccount: p.account,
+            bankNameBranch: p.bank,
+            templateType: "transfer",
+            items: [
+              {
+                number: "",
+                date: new Date().toISOString().slice(0, 10),
+                desc: p.content,
+                amount: p.amount
+              }
+            ]
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Không thể xuất phiếu cho ${p.supplierName}`);
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Giay_De_Nghi_Chuyen_Tien_${p.supplierName.replace(/\s+/g, "_")}.docx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        // Add a small delay between downloads
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    } catch (error: any) {
+      alert("Lỗi khi xuất phiếu đề nghị chuyển tiền: " + error.message);
+    } finally {
+      setExportLoading(false);
+    }
   };
 
   // Department Allocation handler
@@ -1907,12 +1958,42 @@ export default function AdministrationPage() {
                                 .toLocaleString("vi-VN")} đ
                             </span>
                           </div>
-                          <button
-                            onClick={handleExportDeNghiChuyenTien}
-                            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
-                          >
-                            📝 Xuất đề nghị chuyển tiền (Word)
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const currentMonthPayments = pendingPayments.filter(p => p.month === payMonth);
+                                if (currentMonthPayments.length === 0) {
+                                  alert("Danh sách thanh toán trống, không thể xem trước!");
+                                  return;
+                                }
+                                setSelectedRecurringPreviewIdx(0);
+                                setShowRecurringPreviewModal(true);
+                              }}
+                              className="px-4 py-2.5 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-[#005BAC] text-xs font-bold rounded-xl flex items-center gap-1.5 active:scale-95 transition-all shadow cursor-pointer"
+                            >
+                              <Eye size={14} />
+                              Xem trước
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleExportDeNghiChuyenTien}
+                              disabled={exportLoading}
+                              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                            >
+                              {exportLoading ? (
+                                <>
+                                  <Loader2 size={13} className="animate-spin" />
+                                  Đang tạo...
+                                </>
+                              ) : (
+                                <>
+                                  <Download size={13} />
+                                  Xuất đề nghị chuyển tiền (Word)
+                                </>
+                              )}
+                            </button>
+                          </div>
                         </div>
 
                         <div className="border border-slate-200/80 rounded-2xl overflow-hidden bg-white shadow-sm max-h-[365px] overflow-y-auto">
@@ -2453,6 +2534,249 @@ CREATE POLICY "Allow public delete for invoices" ON public.invoices FOR DELETE U
           </div>
         </div>
       )}
+
+      {/* Recurring Preview Modal */}
+      {showRecurringPreviewModal && (() => {
+        const currentMonthPayments = pendingPayments.filter(p => p.month === payMonth);
+        const p = currentMonthPayments[selectedRecurringPreviewIdx];
+        if (!p) return null;
+
+        const totalAmountVal = p.amount;
+        const textAmountStr = docSoVietNam(totalAmountVal);
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-slate-100 flex flex-col space-y-5 animate-in fade-in-50 zoom-in-95 duration-150 relative">
+              
+              {/* Close Button */}
+              <button
+                onClick={() => setShowRecurringPreviewModal(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors p-1.5 hover:bg-slate-100 rounded-full cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+
+              {/* Modal Header */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-3 gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-[#005BAC]">
+                    <Eye size={15} />
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-extrabold text-slate-800 text-sm">
+                      Xem trước Giấy đề nghị chuyển tiền (Định kỳ)
+                    </h3>
+                    <p className="text-slate-400 text-[10px] font-semibold mt-0.5">
+                      Biểu mẫu HC-BM021/ĐNCT (Xem trước nội dung điền tự động)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Dropdown to switch between payments */}
+                {currentMonthPayments.length > 1 && (
+                  <div className="flex items-center gap-2 pr-8">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Chọn Nhà Cung Cấp:</span>
+                    <select
+                      value={selectedRecurringPreviewIdx}
+                      onChange={(e) => setSelectedRecurringPreviewIdx(Number(e.target.value))}
+                      className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-bold bg-white text-slate-700 outline-none cursor-pointer"
+                    >
+                      {currentMonthPayments.map((pay, idx) => (
+                        <option key={pay.id} value={idx}>{pay.supplierName} ({pay.amount.toLocaleString("vi-VN")} đ)</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Paper Container */}
+              <div className="bg-white border border-slate-200 shadow p-8 rounded-xl font-serif text-[#1e293b] leading-relaxed max-w-2xl mx-auto w-full select-none font-medium" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
+                
+                {/* Header block */}
+                <div className="flex justify-between items-start border-b border-slate-300 pb-4 mb-4">
+                  <div className="text-left font-sans">
+                    <div className="text-base font-black text-[#005BAC]">TRUNG <span className="text-red-500">N</span>AM <span className="text-sky-400 text-xs font-normal italic">E&C</span></div>
+                    <div className="text-[7.5px] font-bold text-slate-800 mt-0.5">CÔNG TY CP XÂY DỰNG VÀ LẮP MÁY TRUNG NAM</div>
+                    <div className="text-[6.5px] text-slate-500 mt-1 leading-tight">
+                      A: Tầng trệt tòa nhà Safomec, 7/1 Thành Thái, Phường 14, Quận 10, TPHCM<br/>
+                      T: (+84) 834 70 75 79 &nbsp; E: info.tnec@trungnamgroup.com.vn
+                    </div>
+                  </div>
+                  <div className="text-center font-sans">
+                    <div className="text-[13px] font-bold tracking-wide">
+                      GIẤY ĐỀ NGHỊ CHUYỂN TIỀN
+                    </div>
+                    <div className="text-[9.5px] font-bold underline mt-0.5">
+                      HC-BM021/ĐNCT
+                    </div>
+                  </div>
+                </div>
+
+                {/* Destination */}
+                <div className="mb-4 text-xs font-bold leading-normal">
+                  Kính gửi: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; - Ban lãnh đạo Công ty CP XD và LM Trung Nam;<br/>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; - Phòng Kế toán công ty,
+                </div>
+
+                {/* Form Details */}
+                <div className="space-y-1.5 text-xs mb-4">
+                  <div>
+                    <span className="underline">Họ và tên người đề nghị</span>: <span className="font-bold">{employeeName}</span>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                    <span className="underline">Bộ phận</span>: <span className="font-bold">{employeeDept}</span>
+                  </div>
+                  <div>
+                    <span className="underline">Lý do xin đề nghị chuyển tiền</span>: <span>{p.content}</span>
+                  </div>
+                  <div>
+                    <span className="underline">Tên dự án</span>: <span className="font-bold">Văn phòng HCM</span>
+                  </div>
+                  <div>
+                    <span className="underline">Tên đơn vị thụ hưởng</span>: <span className="font-bold">{p.supplierName}</span>
+                  </div>
+                  <div>
+                    <span className="underline">Số tài khoản</span>: <span className="font-bold">{p.account}</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; tại Ngân hàng <span className="font-bold">{p.bank}</span>
+                  </div>
+                </div>
+
+                {/* Invoice list table */}
+                <table className="w-full border-collapse border border-slate-900 text-[10px] mb-4 text-left">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-900 font-bold border-b border-slate-900 text-center font-sans">
+                      <th className="border border-slate-900 p-1 text-center" rowSpan={2}>TT</th>
+                      <th className="border border-slate-900 p-1 text-center" colSpan={2}>HÓA ĐƠN</th>
+                      <th className="border border-slate-900 p-1 text-center" rowSpan={2}>NỘI DUNG THANH TOÁN</th>
+                      <th className="border border-slate-900 p-1 text-center" rowSpan={2}>SỐ TIỀN (VNĐ)</th>
+                      <th className="border border-slate-900 p-1 text-center" rowSpan={2}>GHI CHÚ</th>
+                    </tr>
+                    <tr className="bg-slate-50 text-slate-900 font-bold border-b border-slate-900 text-center font-sans">
+                      <th className="border border-slate-900 p-1 text-center">SỐ</th>
+                      <th className="border border-slate-900 p-1 text-center">NGÀY</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-slate-900">
+                      <td className="border border-slate-900 p-1 text-center">1</td>
+                      <td className="border border-slate-900 p-1 font-mono font-bold text-center">—</td>
+                      <td className="border border-slate-900 p-1 text-center">{new Date().toLocaleDateString("vi-VN")}</td>
+                      <td className="border border-slate-900 p-1">{p.content}</td>
+                      <td className="border border-slate-900 p-1 text-right font-mono font-bold">
+                        {p.amount.toLocaleString("vi-VN")}
+                      </td>
+                      <td className="border border-slate-900 p-1"></td>
+                    </tr>
+                    <tr className="font-bold border-b border-slate-900">
+                      <td className="border border-slate-900 p-1 text-center" colSpan={4}>Tổng cộng</td>
+                      <td className="border border-slate-900 p-1 text-right font-mono font-bold">
+                        {p.amount.toLocaleString("vi-VN")}
+                      </td>
+                      <td className="border border-slate-900 p-1"></td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Undertakings */}
+                <div className="text-xs space-y-1.5 mb-6 leading-relaxed">
+                  <div className="italic">
+                    <span className="font-bold">Bằng chữ: </span>
+                    {textAmountStr}
+                  </div>
+                  <div>
+                    Tôi xin chịu trách nhiệm về nội dung thanh toán và các hóa đơn chứng từ kèm theo.
+                  </div>
+                  <div><i>(Kèm theo .................................................... chứng từ gốc).</i></div>
+                </div>
+
+                {/* Signatures */}
+                <table className="w-full text-center text-[10px] leading-normal font-sans">
+                  <tbody>
+                    <tr>
+                      <td colSpan={3} className="text-right italic pr-6 pb-2">
+                        Tp.HCM, ngày {new Date().getDate()} tháng {new Date().getMonth() + 1} năm {new Date().getFullYear()}
+                      </td>
+                    </tr>
+                    <tr className="font-bold">
+                      <td className="w-1/3">BAN GIÁM ĐỐC</td>
+                      <td className="w-1/3">KẾ TOÁN TRƯỞNG</td>
+                      <td className="w-1/3">NGƯỜI ĐỀ NGHỊ</td>
+                    </tr>
+                    <tr className="h-16">
+                      <td></td>
+                      <td></td>
+                      <td></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
+                <button
+                  onClick={() => setShowRecurringPreviewModal(false)}
+                  className="px-4 py-2 border border-slate-200 text-slate-500 font-bold rounded-xl text-xs hover:bg-slate-50 transition-all cursor-pointer"
+                >
+                  Đóng lại
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowRecurringPreviewModal(false);
+                    // Export this single one
+                    setExportLoading(true);
+                    try {
+                      const response = await fetch("/api/export-invoice-payment", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                          employeeName,
+                          employeeDept,
+                          mission: p.content,
+                          projectName: "Văn phòng HCM",
+                          supplierName: p.supplierName,
+                          bankAccount: p.account,
+                          bankNameBranch: p.bank,
+                          templateType: "transfer",
+                          items: [
+                            {
+                              number: "",
+                              date: new Date().toISOString().slice(0, 10),
+                              desc: p.content,
+                              amount: p.amount
+                            }
+                          ]
+                        })
+                      });
+
+                      if (!response.ok) {
+                        throw new Error(`Không thể xuất phiếu cho ${p.supplierName}`);
+                      }
+
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `Giay_De_Nghi_Chuyen_Tien_${p.supplierName.replace(/\s+/g, "_")}.docx`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      window.URL.revokeObjectURL(url);
+                    } catch (error: any) {
+                      alert("Lỗi khi xuất phiếu đề nghị chuyển tiền: " + error.message);
+                    } finally {
+                      setExportLoading(false);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs active:scale-95 transition-all shadow cursor-pointer"
+                >
+                  <Download size={13} /> Tải xuống file Word
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -58,6 +58,14 @@ interface DeptRequest {
   targetName?: string;
 }
 
+interface AllocationTarget {
+  id: string;
+  type: "phongban" | "duan";
+  name: string;
+  receiver: string;
+  notes: string;
+}
+
 interface ChecklistItem {
   id: string;
   task: string;
@@ -148,6 +156,28 @@ const PROJECTS = [
   "KCN Cà Ná",
   "Điện mặt trời Trà Vinh 2",
   "Rạch Xuyên Tâm"
+];
+
+const INITIAL_ALLOCATION_TARGETS: AllocationTarget[] = [
+  { id: "CP-01", type: "phongban", name: "Phòng HCNS", receiver: "Như Quỳnh", notes: "Văn phòng công ty" },
+  { id: "CP-02", type: "phongban", name: "Kế toán", receiver: "Thanh Hằng", notes: "Văn phòng công ty" },
+  { id: "CP-03", type: "phongban", name: "Phòng Kế hoạch", receiver: "Thùy Quyên", notes: "Văn phòng công ty" },
+  { id: "CP-04", type: "phongban", name: "Phòng Dự án", receiver: "Nguyễn Văn A", notes: "Văn phòng công ty" },
+  { id: "CP-05", type: "phongban", name: "Phòng Vật tư", receiver: "Nguyễn Văn B", notes: "Văn phòng công ty" },
+  { id: "CP-06", type: "phongban", name: "Phòng Đấu thầu", receiver: "Nguyễn Văn C", notes: "Văn phòng công ty" },
+  { id: "CP-07", type: "phongban", name: "Phòng MKT", receiver: "Nguyễn Văn D", notes: "Văn phòng công ty" },
+  { id: "CP-08", type: "phongban", name: "Phòng ATLĐ", receiver: "Nguyễn Văn E", notes: "Văn phòng công ty" },
+  { id: "CP-09", type: "phongban", name: "Phòng Kỹ thuật", receiver: "Nguyễn Văn F", notes: "Văn phòng công ty" },
+  { id: "CP-10", type: "phongban", name: "Giám đốc", receiver: "Trần Nghiệp Quang", notes: "Ban Giám đốc" },
+  { id: "CP-11", type: "phongban", name: "Phó Giám đốc", receiver: "Phó Giám đốc", notes: "Ban Giám đốc" },
+  { id: "CP-12", type: "duan", name: "Vàm Lẽo", receiver: "Chỉ huy trưởng", notes: "Dự án Vàm Lẽo" },
+  { id: "CP-13", type: "duan", name: "Tỉnh Lộ 8", receiver: "Chỉ huy trưởng", notes: "Dự án Tỉnh Lộ 8" },
+  { id: "CP-14", type: "duan", name: "Cầu Mã Đà", receiver: "Chỉ huy trưởng", notes: "Dự án Cầu Mã Đà" },
+  { id: "CP-15", type: "duan", name: "Thường Phước", receiver: "Chỉ huy trưởng", notes: "Dự án Thường Phước" },
+  { id: "CP-16", type: "duan", name: "Xử lý nước thải Tây Ninh", receiver: "Chỉ huy trưởng", notes: "Dự án XLNT Tây Ninh" },
+  { id: "CP-17", type: "duan", name: "KCN Cà Ná", receiver: "Chỉ huy trưởng", notes: "Dự án KCN Cà Ná" },
+  { id: "CP-18", type: "duan", name: "Điện mặt trời Trà Vinh 2", receiver: "Chỉ huy trưởng", notes: "Dự án ĐMT Trà Vinh 2" },
+  { id: "CP-19", type: "duan", name: "Rạch Xuyên Tâm", receiver: "Chỉ huy trưởng", notes: "Dự án Rạch Xuyên Tâm" }
 ];
 
 const KANBAN_COLUMNS = [
@@ -263,6 +293,14 @@ export default function AdministrationPage() {
   const [newSupplyUnit, setNewSupplyUnit] = useState("");
   const [newSupplyStock, setNewSupplyStock] = useState(0);
 
+  // State for Allocation Targets Directory (Danh mục cấp phát)
+  const [allocationTargets, setAllocationTargets] = useState<AllocationTarget[]>(INITIAL_ALLOCATION_TARGETS);
+  const [showAllocationDirectory, setShowAllocationDirectory] = useState(false);
+  const [newTargetType, setNewTargetType] = useState<"phongban" | "duan">("phongban");
+  const [newTargetName, setNewTargetName] = useState("");
+  const [newTargetReceiver, setNewTargetReceiver] = useState("");
+  const [newTargetNotes, setNewTargetNotes] = useState("");
+
   // State for editing stock directly
   const [editingSupplyName, setEditingSupplyName] = useState<string | null>(null);
   const [editingStockVal, setEditingStockVal] = useState(0);
@@ -348,6 +386,15 @@ export default function AdministrationPage() {
       } else {
         setSuppliers(INITIAL_SUPPLIERS);
         localStorage.setItem("tnec_suppliers", JSON.stringify(INITIAL_SUPPLIERS));
+      }
+
+      // Load Allocation Targets
+      const savedTargets = localStorage.getItem("tnec_allocation_targets");
+      if (savedTargets) {
+        setAllocationTargets(JSON.parse(savedTargets));
+      } else {
+        setAllocationTargets(INITIAL_ALLOCATION_TARGETS);
+        localStorage.setItem("tnec_allocation_targets", JSON.stringify(INITIAL_ALLOCATION_TARGETS));
       }
 
       // Load Pending Payments
@@ -932,6 +979,44 @@ export default function AdministrationPage() {
     setNewPYCItem("");
     setNewPYCQty(1);
     alert(`Đã tạo thành công Phiếu yêu cầu ${newReq.id} cho ${deptName}.`);
+  };
+
+  // Add Allocation Target Handler
+  const handleAddAllocationTarget = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTargetName.trim()) return;
+
+    // Check duplicate
+    if (allocationTargets.some(t => t.type === newTargetType && t.name.toLowerCase() === newTargetName.trim().toLowerCase())) {
+      alert("Đối tượng cấp phát này đã tồn tại trong danh mục.");
+      return;
+    }
+
+    const newTarget: AllocationTarget = {
+      id: `CP-${Date.now().toString().slice(-4)}`,
+      type: newTargetType,
+      name: newTargetName.trim(),
+      receiver: newTargetReceiver.trim(),
+      notes: newTargetNotes.trim()
+    };
+
+    const updated = [...allocationTargets, newTarget];
+    setAllocationTargets(updated);
+    localStorage.setItem("tnec_allocation_targets", JSON.stringify(updated));
+
+    // Reset fields
+    setNewTargetName("");
+    setNewTargetReceiver("");
+    setNewTargetNotes("");
+    alert("Đã thêm đối tượng cấp phát mới thành công.");
+  };
+
+  // Delete Allocation Target Handler
+  const handleDeleteAllocationTarget = (id: string) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa đối tượng cấp phát này không? Các phiếu yêu cầu hiện tại của đối tượng này vẫn được giữ nguyên.")) return;
+    const updated = allocationTargets.filter(t => t.id !== id);
+    setAllocationTargets(updated);
+    localStorage.setItem("tnec_allocation_targets", JSON.stringify(updated));
   };
 
   // Toggle Checklist Status
@@ -1542,13 +1627,166 @@ export default function AdministrationPage() {
                             className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500/30 transition-all"
                           />
                         </div>
-                        <button 
-                          onClick={() => setShowAddSupply(!showAddSupply)}
-                          className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
-                        >
-                          <Plus size={14} /> {showAddSupply ? "Đóng lại" : "Nhập kho mới"}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              setShowAllocationDirectory(!showAllocationDirectory);
+                              setShowAddSupply(false);
+                            }}
+                            className={`flex items-center gap-1.5 text-xs font-bold px-4 py-2.5 rounded-xl shadow hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 ${
+                              showAllocationDirectory 
+                                ? "bg-slate-700 hover:bg-slate-800 text-white" 
+                                : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                            }`}
+                          >
+                            <Settings size={14} /> {showAllocationDirectory ? "Đóng danh mục" : "Danh mục cấp phát"}
+                          </button>
+                          
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              setShowAddSupply(!showAddSupply);
+                              setShowAllocationDirectory(false);
+                            }}
+                            className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+                          >
+                            <Plus size={14} /> {showAddSupply ? "Đóng lại" : "Nhập kho mới"}
+                          </button>
+                        </div>
                       </div>
+
+                      {/* Allocation Targets Directory (Danh mục cấp phát) Panel */}
+                      {showAllocationDirectory && (
+                        <div className="border border-slate-200/80 bg-slate-50/20 p-5 rounded-2xl space-y-4 animate-in slide-in-from-top-2 duration-200">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-2">
+                            <h4 className="font-heading font-extrabold text-slate-800 text-xs flex items-center gap-1.5">
+                              <span>📂</span> Quản lý Danh mục cấp phát
+                            </h4>
+                            <span className="text-[10px] text-slate-400 font-semibold">Cấu hình danh sách phòng ban và dự án để cấp phát văn phòng phẩm</span>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {/* Left Form: Add target */}
+                            <div className="md:col-span-1 border border-slate-200/80 bg-white p-4 rounded-xl space-y-3 shadow-sm">
+                              <h5 className="font-bold text-slate-700 text-[11px] uppercase tracking-wider flex items-center gap-1">
+                                <span>➕</span> Thêm đối tượng mới
+                              </h5>
+                              <form onSubmit={handleAddAllocationTarget} className="space-y-3 text-[11px] font-semibold text-slate-600">
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-black text-slate-400 uppercase block">Loại đối tượng</label>
+                                  <select
+                                    value={newTargetType}
+                                    onChange={(e) => setNewTargetType(e.target.value as any)}
+                                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800 cursor-pointer"
+                                  >
+                                    <option value="phongban">Phòng ban Văn phòng</option>
+                                    <option value="duan">Ban điều hành Dự án</option>
+                                  </select>
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-black text-slate-400 uppercase block">Tên phòng ban / dự án <span className="text-rose-500">*</span></label>
+                                  <input
+                                    type="text"
+                                    required
+                                    value={newTargetName}
+                                    onChange={(e) => setNewTargetName(e.target.value)}
+                                    placeholder={newTargetType === "phongban" ? "Ví dụ: Phòng Vật tư" : "Ví dụ: Dự án Rạch Xuyên Tâm"}
+                                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-black text-slate-400 uppercase block">Người nhận / Chức vụ mặc định</label>
+                                  <input
+                                    type="text"
+                                    value={newTargetReceiver}
+                                    onChange={(e) => setNewTargetReceiver(e.target.value)}
+                                    placeholder="Ví dụ: Như Quỳnh, Chỉ huy trưởng..."
+                                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-black text-slate-400 uppercase block">Ghi chú / Địa điểm</label>
+                                  <input
+                                    type="text"
+                                    value={newTargetNotes}
+                                    onChange={(e) => setNewTargetNotes(e.target.value)}
+                                    placeholder="Ví dụ: Văn phòng công ty, Công trường..."
+                                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
+                                  />
+                                </div>
+
+                                <button
+                                  type="submit"
+                                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer shadow"
+                                >
+                                  Lưu đối tượng
+                                </button>
+                              </form>
+                            </div>
+
+                            {/* Right Table: Targets list */}
+                            <div className="md:col-span-2 space-y-3">
+                              <h5 className="font-bold text-slate-700 text-[11px] uppercase tracking-wider flex items-center gap-1">
+                                <span>📋</span> Danh sách đối tượng ({allocationTargets.length})
+                              </h5>
+                              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm max-h-[300px] overflow-y-auto">
+                                <table className="w-full text-xs text-left border-collapse">
+                                  <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
+                                      <th className="py-2.5 px-3 w-12 text-center">STT</th>
+                                      <th className="py-2.5 px-3 w-28">Phân loại</th>
+                                      <th className="py-2.5 px-3">Tên phòng / dự án</th>
+                                      <th className="py-2.5 px-3">Người nhận</th>
+                                      <th className="py-2.5 px-3">Ghi chú</th>
+                                      <th className="py-2.5 px-3 w-12 text-center">Xóa</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                                    {allocationTargets.map((t, index) => (
+                                      <tr key={t.id} className="hover:bg-slate-50/50 transition-all">
+                                        <td className="py-2 px-3 text-center text-slate-400 font-mono text-[10px]">{index + 1}</td>
+                                        <td className="py-2 px-3">
+                                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                                            t.type === "phongban" 
+                                              ? "bg-blue-50 text-blue-700 border border-blue-100" 
+                                              : "bg-purple-50 text-purple-700 border border-purple-100"
+                                          }`}>
+                                            {t.type === "phongban" ? "Phòng ban" : "Dự án"}
+                                          </span>
+                                        </td>
+                                        <td className="py-2 px-3 text-slate-800 font-bold">{t.name}</td>
+                                        <td className="py-2 px-3 text-slate-500 text-[11px]">{t.receiver || "—"}</td>
+                                        <td className="py-2 px-3 text-slate-400 italic text-[11px]">{t.notes || "—"}</td>
+                                        <td className="py-2 px-3 text-center">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteAllocationTarget(t.id)}
+                                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                            title="Xóa đối tượng"
+                                          >
+                                            <Trash2 size={13} />
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                    {allocationTargets.length === 0 && (
+                                      <tr>
+                                        <td colSpan={6} className="py-6 text-center text-slate-400 italic">
+                                          Chưa có đối tượng cấp phát nào được cấu hình
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Add Supply Form */}
                       {showAddSupply && (
@@ -1711,16 +1949,18 @@ export default function AdministrationPage() {
                               className="bg-transparent border-none outline-none font-semibold text-slate-700 cursor-pointer text-xs"
                             >
                               <option value="Tất cả">-- Tất cả --</option>
-                              {DEPARTMENTS.map((dept, i) => (
-                                <option key={i} value={dept}>{dept}</option>
+                              {allocationTargets.filter(t => t.type === "phongban").map((t) => (
+                                <option key={t.id} value={t.name}>{t.name}</option>
                               ))}
                             </select>
                           </div>
                           
                           <button
+                            type="button"
                             onClick={() => {
                               setNewPYCTarget("phongban");
-                              setNewPYCTargetName(DEPARTMENTS[0]);
+                              const pbs = allocationTargets.filter(t => t.type === "phongban");
+                              setNewPYCTargetName(pbs.length > 0 ? pbs[0].name : "");
                               if (supplies.length > 0) setNewPYCItem(supplies[0].name);
                               setNewPYCQty(1);
                               setShowNewPYCModal(true);
@@ -1807,16 +2047,18 @@ export default function AdministrationPage() {
                               className="bg-transparent border-none outline-none font-semibold text-slate-700 cursor-pointer text-xs"
                             >
                               <option value="Tất cả">-- Tất cả --</option>
-                              {PROJECTS.map((proj, i) => (
-                                <option key={i} value={proj}>{proj}</option>
+                              {allocationTargets.filter(t => t.type === "duan").map((t) => (
+                                <option key={t.id} value={t.name}>{t.name}</option>
                               ))}
                             </select>
                           </div>
                           
                           <button
+                            type="button"
                             onClick={() => {
                               setNewPYCTarget("duan");
-                              setNewPYCTargetName(PROJECTS[0]);
+                              const das = allocationTargets.filter(t => t.type === "duan");
+                              setNewPYCTargetName(das.length > 0 ? das[0].name : "");
                               if (supplies.length > 0) setNewPYCItem(supplies[0].name);
                               setNewPYCQty(1);
                               setShowNewPYCModal(true);
@@ -1910,7 +2152,8 @@ export default function AdministrationPage() {
                                 type="button"
                                 onClick={() => {
                                   setNewPYCTarget("phongban");
-                                  setNewPYCTargetName(DEPARTMENTS[0]);
+                                  const pbs = allocationTargets.filter(t => t.type === "phongban");
+                                  setNewPYCTargetName(pbs.length > 0 ? pbs[0].name : "");
                                 }}
                                 className={`py-2.5 px-3 border rounded-xl font-bold transition-all text-center active:scale-[0.98] ${
                                   newPYCTarget === "phongban"
@@ -1924,7 +2167,8 @@ export default function AdministrationPage() {
                                 type="button"
                                 onClick={() => {
                                   setNewPYCTarget("duan");
-                                  setNewPYCTargetName(PROJECTS[0]);
+                                  const das = allocationTargets.filter(t => t.type === "duan");
+                                  setNewPYCTargetName(das.length > 0 ? das[0].name : "");
                                 }}
                                 className={`py-2.5 px-3 border rounded-xl font-bold transition-all text-center active:scale-[0.98] ${
                                   newPYCTarget === "duan"
@@ -1948,11 +2192,11 @@ export default function AdministrationPage() {
                               className="w-full px-3 py-2.5 border border-slate-200 rounded-lg bg-white font-semibold text-slate-700 focus:border-blue-500 focus:outline-none mt-1 cursor-pointer"
                             >
                               {newPYCTarget === "phongban"
-                                ? DEPARTMENTS.map((dept, i) => (
-                                    <option key={i} value={dept}>{dept}</option>
+                                ? allocationTargets.filter(t => t.type === "phongban").map((t) => (
+                                    <option key={t.id} value={t.name}>{t.name}</option>
                                   ))
-                                : PROJECTS.map((proj, i) => (
-                                    <option key={i} value={proj}>{proj}</option>
+                                : allocationTargets.filter(t => t.type === "duan").map((t) => (
+                                    <option key={t.id} value={t.name}>{t.name}</option>
                                   ))}
                             </select>
                           </div>

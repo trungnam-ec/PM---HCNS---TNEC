@@ -1406,77 +1406,96 @@ export default function AdministrationPage() {
               
               {/* ─── TAB 5: VPP (Văn phòng phẩm) ─── */}
               {activeTab === "vpp" && (
-                <div className="space-y-6">
-                  {/* KPI Cards (4 Columns) */}
+                <div className="space-y-6 animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
+                  {/* KPI Cards (4 Columns with Modern Gradients & Shadow Glows) */}
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="glass bg-white rounded-2xl p-4 border border-slate-200/40 shadow-sm flex items-center gap-4">
-                      <div className="p-3 bg-blue-50 text-[#005BAC] rounded-xl">
+                    {/* Tồn kho Card */}
+                    <div className="relative overflow-hidden glass bg-gradient-to-br from-blue-50/40 to-indigo-50/20 rounded-2xl p-5 border border-blue-100/50 shadow-sm flex items-center gap-4 group hover:shadow-md transition-all duration-300">
+                      <div className="p-3 bg-gradient-to-br from-blue-500 to-[#005BAC] text-white rounded-xl shadow-lg shadow-blue-500/25">
                         <Package size={20} />
                       </div>
-                      <div>
-                        <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Tồn kho Hành chính</p>
-                        <p className="font-heading font-extrabold text-lg text-slate-800 mt-0.5">
+                      <div className="z-10">
+                        <p className="text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">Tồn kho Hành chính</p>
+                        <p className="font-heading font-black text-xl text-slate-800 mt-1">
                           {supplies.reduce((sum, item) => sum + item.stock, 0)} <span className="text-xs font-semibold text-slate-500">vật tư</span>
                         </p>
-                        <p className="text-[10px] text-slate-400 font-medium">{supplies.length} danh mục hàng hóa</p>
+                        <p className="text-[10px] text-slate-400 font-semibold">{supplies.length} danh mục hàng hóa</p>
+                      </div>
+                      <div className="absolute -right-6 -bottom-6 text-blue-500/5 opacity-10 group-hover:scale-110 transition-transform duration-300 pointer-events-none">
+                        <Package size={80} />
                       </div>
                     </div>
                     
-                    <div className="glass bg-white rounded-2xl p-4 border border-slate-200/40 shadow-sm flex items-center gap-4">
-                      <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                    {/* Cấp Phòng Ban VP Card */}
+                    <div className="relative overflow-hidden glass bg-gradient-to-br from-emerald-50/40 to-teal-50/20 rounded-2xl p-5 border border-emerald-100/50 shadow-sm flex items-center gap-4 group hover:shadow-md transition-all duration-300">
+                      <div className="p-3 bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-xl shadow-lg shadow-emerald-500/25">
                         <Building2 size={20} />
                       </div>
-                      <div>
-                        <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Cấp Phòng Ban VP</p>
-                        <p className="font-heading font-extrabold text-lg text-emerald-700 mt-0.5">
+                      <div className="z-10">
+                        <p className="text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">Cấp Phòng Ban VP</p>
+                        <p className="font-heading font-black text-xl text-emerald-700 mt-1">
                           {deptRequests.filter(r => r.target === "phongban" && r.status === "Đã cấp phát").reduce((sum, r) => sum + r.qty, 0)} <span className="text-xs font-semibold text-slate-500">cái/ram</span>
                         </p>
-                        <p className="text-[10px] text-slate-400 font-medium">
+                        <p className="text-[10px] text-slate-400 font-semibold">
                           {deptRequests.filter(r => r.target === "phongban" && r.status === "Đã cấp phát").length} lượt bàn giao
                         </p>
                       </div>
+                      <div className="absolute -right-6 -bottom-6 text-emerald-500/5 opacity-10 group-hover:scale-110 transition-transform duration-300 pointer-events-none">
+                        <Building2 size={80} />
+                      </div>
                     </div>
 
-                    <div className="glass bg-white rounded-2xl p-4 border border-slate-200/40 shadow-sm flex items-center gap-4">
-                      <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
+                    {/* Cấp Ban ĐH Dự Án Card */}
+                    <div className="relative overflow-hidden glass bg-gradient-to-br from-purple-50/40 to-fuchsia-50/20 rounded-2xl p-5 border border-purple-100/50 shadow-sm flex items-center gap-4 group hover:shadow-md transition-all duration-300">
+                      <div className="p-3 bg-gradient-to-br from-purple-500 to-fuchsia-600 text-white rounded-xl shadow-lg shadow-purple-500/25">
                         <Briefcase size={20} />
                       </div>
-                      <div>
-                        <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Cấp Ban ĐH Dự Án</p>
-                        <p className="font-heading font-extrabold text-lg text-purple-700 mt-0.5">
+                      <div className="z-10">
+                        <p className="text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">Cấp Ban ĐH Dự Án</p>
+                        <p className="font-heading font-black text-xl text-purple-700 mt-1">
                           {deptRequests.filter(r => r.target === "duan" && r.status === "Đã cấp phát").reduce((sum, r) => sum + r.qty, 0)} <span className="text-xs font-semibold text-slate-500">cái/ram</span>
                         </p>
-                        <p className="text-[10px] text-slate-400 font-medium">
+                        <p className="text-[10px] text-slate-400 font-semibold">
                           {deptRequests.filter(r => r.target === "duan" && r.status === "Đã cấp phát").length} lượt bàn giao
                         </p>
                       </div>
+                      <div className="absolute -right-6 -bottom-6 text-purple-500/5 opacity-10 group-hover:scale-110 transition-transform duration-300 pointer-events-none">
+                        <Briefcase size={80} />
+                      </div>
                     </div>
 
-                    <div className="glass bg-white rounded-2xl p-4 border border-slate-200/40 shadow-sm flex items-center gap-4">
-                      <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                    {/* Yêu cầu chờ duyệt Card */}
+                    <div className="relative overflow-hidden glass bg-gradient-to-br from-amber-50/40 to-orange-50/20 rounded-2xl p-5 border border-amber-100/50 shadow-sm flex items-center gap-4 group hover:shadow-md transition-all duration-300">
+                      <div className="p-3 bg-gradient-to-br from-amber-500 to-orange-550 text-white rounded-xl shadow-lg shadow-amber-500/25">
                         <AlertTriangle size={20} className={deptRequests.filter(r => r.status === "Chờ duyệt").length > 0 ? "animate-pulse" : ""} />
                       </div>
-                      <div>
-                        <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Yêu cầu chờ duyệt</p>
-                        <p className="font-heading font-extrabold text-lg text-amber-700 mt-0.5">
+                      <div className="z-10">
+                        <p className="text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">Yêu cầu chờ duyệt</p>
+                        <p className="font-heading font-black text-xl text-amber-700 mt-1">
                           {deptRequests.filter(r => r.status === "Chờ duyệt").length} <span className="text-xs font-semibold text-slate-500">phiếu</span>
                         </p>
-                        <p className="text-[10px] text-slate-400 font-medium">Trừ kho khi phê duyệt</p>
+                        <p className="text-[10px] text-slate-400 font-semibold">Trừ kho khi phê duyệt</p>
+                      </div>
+                      <div className="absolute -right-6 -bottom-6 text-amber-500/5 opacity-10 group-hover:scale-110 transition-transform duration-300 pointer-events-none">
+                        <AlertTriangle size={80} />
                       </div>
                     </div>
                   </div>
 
-                  {/* VPP Sub-navigation */}
-                  <div className="flex border-b border-slate-200 gap-4">
+                  {/* VPP Sub-navigation (Modern Capsule Segmented Style) */}
+                  <div className="bg-slate-100/90 p-1 rounded-xl flex flex-wrap gap-1.5 w-fit border border-slate-200/50 shadow-sm">
                     <button
                       onClick={() => {
                         setVppSubTab("inventory");
                         setSearchTerm("");
                       }}
-                      className={`pb-2.5 text-xs font-bold border-b-2 transition-all ${
-                        vppSubTab === "inventory" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400"
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 active:scale-[0.98] ${
+                        vppSubTab === "inventory"
+                          ? "bg-white text-blue-600 shadow-sm border border-slate-200/20"
+                          : "text-slate-500 hover:text-slate-800 hover:bg-white/40"
                       }`}
                     >
+                      <Package size={13} />
                       1. Mục tồn kho của Hành chính
                     </button>
                     <button
@@ -1484,10 +1503,13 @@ export default function AdministrationPage() {
                         setVppSubTab("phongban");
                         setSearchTerm("");
                       }}
-                      className={`pb-2.5 text-xs font-bold border-b-2 transition-all ${
-                        vppSubTab === "phongban" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400"
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 active:scale-[0.98] ${
+                        vppSubTab === "phongban"
+                          ? "bg-white text-blue-600 shadow-sm border border-slate-200/20"
+                          : "text-slate-500 hover:text-slate-800 hover:bg-white/40"
                       }`}
                     >
+                      <Building2 size={13} />
                       2. VPP cấp cho từng phòng ban VP
                     </button>
                     <button
@@ -1495,17 +1517,20 @@ export default function AdministrationPage() {
                         setVppSubTab("duan");
                         setSearchTerm("");
                       }}
-                      className={`pb-2.5 text-xs font-bold border-b-2 transition-all ${
-                        vppSubTab === "duan" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400"
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 active:scale-[0.98] ${
+                        vppSubTab === "duan"
+                          ? "bg-white text-blue-600 shadow-sm border border-slate-200/20"
+                          : "text-slate-500 hover:text-slate-800 hover:bg-white/40"
                       }`}
                     >
+                      <Briefcase size={13} />
                       3. VPP cấp cho Ban điều hành dự án
                     </button>
                   </div>
 
                   {/* Sub-tab 1: Inventory Table */}
                   {vppSubTab === "inventory" && (
-                    <div className="glass bg-white rounded-2xl p-5 border border-slate-200/50 shadow-premium space-y-4">
+                    <div className="glass bg-white rounded-2xl p-5 border border-slate-200/50 shadow-premium space-y-4 animate-in fade-in-40 duration-200">
                       <div className="flex justify-between items-center gap-4">
                         <div className="relative w-64">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
@@ -1514,34 +1539,34 @@ export default function AdministrationPage() {
                             placeholder="Tìm kiếm vật tư tồn kho..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-slate-200 rounded-xl outline-none"
+                            className="w-full pl-9 pr-4 py-2 text-xs bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500/30 transition-all"
                           />
                         </div>
                         <button 
                           onClick={() => setShowAddSupply(!showAddSupply)}
-                          className="flex items-center gap-1 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow transition-all"
+                          className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
                         >
-                          <Plus size={13} /> {showAddSupply ? "Đóng lại" : "Nhập kho mới"}
+                          <Plus size={14} /> {showAddSupply ? "Đóng lại" : "Nhập kho mới"}
                         </button>
                       </div>
 
                       {/* Add Supply Form */}
                       {showAddSupply && (
-                        <form onSubmit={handleAddSupply} className="bg-slate-50/60 border border-slate-200 rounded-2xl p-4 space-y-3">
+                        <form onSubmit={handleAddSupply} className="bg-slate-50/60 border border-slate-200 rounded-2xl p-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
                           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div className="space-y-1">
-                              <label className="text-[10px] font-bold text-slate-400 uppercase">Tên vật tư</label>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tên vật tư</label>
                               <input
                                 type="text"
                                 value={newSupplyName}
                                 onChange={(e) => setNewSupplyName(e.target.value)}
                                 placeholder="Ví dụ: Giấy A4 Double A..."
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold focus:border-blue-500 focus:outline-none"
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold focus:border-blue-500 focus:outline-none bg-white"
                                 required
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="text-[10px] font-bold text-slate-400 uppercase">Danh mục</label>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Danh mục</label>
                               <select
                                 value={newSupplyCat}
                                 onChange={(e) => setNewSupplyCat(e.target.value)}
@@ -1554,23 +1579,23 @@ export default function AdministrationPage() {
                               </select>
                             </div>
                             <div className="space-y-1">
-                              <label className="text-[10px] font-bold text-slate-400 uppercase">Đơn vị tính</label>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đơn vị tính</label>
                               <input
                                 type="text"
                                 value={newSupplyUnit}
                                 onChange={(e) => setNewSupplyUnit(e.target.value)}
                                 placeholder="Ví dụ: Ram, Hộp, Cái..."
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold focus:border-blue-500 focus:outline-none"
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold focus:border-blue-500 focus:outline-none bg-white"
                                 required
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="text-[10px] font-bold text-slate-400 uppercase">Số lượng tồn ban đầu</label>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Số lượng tồn ban đầu</label>
                               <input
                                 type="number"
                                 value={newSupplyStock}
                                 onChange={(e) => setNewSupplyStock(Number(e.target.value))}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold focus:border-blue-500 focus:outline-none"
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold focus:border-blue-500 focus:outline-none bg-white"
                                 min={0}
                                 required
                               />
@@ -1580,13 +1605,13 @@ export default function AdministrationPage() {
                             <button
                               type="button"
                               onClick={() => setShowAddSupply(false)}
-                              className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-100 transition-all"
+                              className="px-3.5 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-100 transition-all active:scale-95"
                             >
                               Hủy
                             </button>
                             <button
                               type="submit"
-                              className="px-3 py-1.5 bg-[#005BAC] text-white rounded-lg text-xs font-bold hover:bg-blue-700 shadow-sm transition-all"
+                              className="px-3.5 py-1.5 bg-[#005BAC] text-white rounded-lg text-xs font-bold hover:bg-blue-700 shadow-sm transition-all active:scale-95"
                             >
                               Thêm vật tư
                             </button>
@@ -1594,34 +1619,34 @@ export default function AdministrationPage() {
                         </form>
                       )}
 
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto rounded-xl border border-slate-100">
                         <table className="w-full text-xs text-left">
                           <thead>
-                            <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px] pb-2">
-                              <th className="pb-2">Vật tư văn phòng</th>
-                              <th className="pb-2">Danh mục</th>
-                              <th className="pb-2">Đơn vị</th>
-                              <th className="pb-2">Số lượng tồn kho</th>
-                              <th className="pb-2">Đã cấp phát</th>
-                              <th className="pb-2">Trạng thái tồn kho</th>
+                            <tr className="bg-slate-50/75 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                              <th className="py-3 px-4">Vật tư văn phòng</th>
+                              <th className="py-3 px-4">Danh mục</th>
+                              <th className="py-3 px-4">Đơn vị</th>
+                              <th className="py-3 px-4">Số lượng tồn kho</th>
+                              <th className="py-3 px-4">Đã cấp phát</th>
+                              <th className="py-3 px-4">Trạng thái tồn kho</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
                             {supplies
                               .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()))
                               .map((item, idx) => (
-                                <tr key={idx} className="hover:bg-slate-50/50">
-                                  <td className="py-3 font-bold text-slate-800">{item.name}</td>
-                                  <td className="py-3 text-slate-500">{item.cat}</td>
-                                  <td className="py-3 font-mono text-slate-500">{item.unit}</td>
-                                  <td className="py-3 text-slate-800 font-bold">
+                                <tr key={idx} className="hover:bg-slate-50/50 hover:translate-x-[2px] transition-all duration-150">
+                                  <td className="py-3.5 px-4 font-bold text-slate-800">{item.name}</td>
+                                  <td className="py-3.5 px-4 text-slate-500">{item.cat}</td>
+                                  <td className="py-3.5 px-4 font-mono text-slate-500">{item.unit}</td>
+                                  <td className="py-3.5 px-4 text-slate-800 font-bold">
                                     {editingSupplyName === item.name ? (
                                       <div className="flex items-center gap-1.5">
                                         <input
                                           type="number"
                                           value={editingStockVal}
                                           onChange={(e) => setEditingStockVal(Number(e.target.value))}
-                                          className="w-16 px-1.5 py-0.5 border border-slate-300 rounded text-xs font-semibold focus:border-blue-500 focus:outline-none"
+                                          className="w-16 px-2 py-0.5 border border-slate-300 rounded text-xs font-semibold focus:border-blue-500 focus:outline-none"
                                           min={0}
                                         />
                                         <button
@@ -1640,20 +1665,20 @@ export default function AdministrationPage() {
                                         </button>
                                       </div>
                                     ) : (
-                                      <div className="flex items-center gap-2 group">
+                                      <div className="flex items-center gap-2">
                                         <span>{item.stock}</span>
                                         <button
                                           onClick={() => handleStartEditStock(item)}
-                                          className="text-slate-400 hover:text-blue-600 p-0.5 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all"
+                                          className="text-slate-400 hover:text-blue-600 p-1 bg-slate-50 hover:bg-blue-50 border border-slate-200/50 rounded-lg transition-all"
                                           title="Sửa số lượng"
                                         >
-                                          <Pencil size={11} />
+                                          <Pencil size={10} />
                                         </button>
                                       </div>
                                     )}
                                   </td>
-                                  <td className="py-3 text-slate-400">{item.allocated}</td>
-                                  <td className="py-3">
+                                  <td className="py-3.5 px-4 text-slate-400">{item.allocated}</td>
+                                  <td className="py-3.5 px-4">
                                     <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${
                                       item.stock < 15 ? "bg-amber-100 text-amber-700 animate-pulse" : "bg-emerald-100 text-emerald-700"
                                     }`}>
@@ -1670,7 +1695,7 @@ export default function AdministrationPage() {
 
                   {/* Sub-tab 2: Department VP Allocation */}
                   {vppSubTab === "phongban" && (
-                    <div className="glass bg-white rounded-2xl p-5 border border-slate-200/50 shadow-premium space-y-4">
+                    <div className="glass bg-white rounded-2xl p-5 border border-slate-200/50 shadow-premium space-y-4 animate-in fade-in-40 duration-200">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-3">
                         <div>
                           <h4 className="font-heading font-bold text-slate-800 text-xs">VPP cấp phát cho từng Phòng Ban khối Văn Phòng</h4>
@@ -1678,7 +1703,7 @@ export default function AdministrationPage() {
                         </div>
                         
                         <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs">
+                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Phòng ban:</span>
                             <select
                               value={selectedDeptFilter}
@@ -1700,48 +1725,48 @@ export default function AdministrationPage() {
                               setNewPYCQty(1);
                               setShowNewPYCModal(true);
                             }}
-                            className="flex items-center gap-1 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm transition-all"
+                            className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
                           >
-                            <Plus size={13} /> Tạo yêu cầu cấp
+                            <Plus size={14} /> Tạo yêu cầu cấp
                           </button>
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto rounded-xl border border-slate-100">
                         <table className="w-full text-xs text-left">
                           <thead>
-                            <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px] pb-2">
-                              <th className="pb-2">Mã PYC</th>
-                              <th className="pb-2">Phòng ban</th>
-                              <th className="pb-2">Vật tư yêu cầu</th>
-                              <th className="pb-2 text-center">Số lượng</th>
-                              <th className="pb-2">Ngày yêu cầu</th>
-                              <th className="pb-2">Trạng thái</th>
-                              <th className="pb-2 text-center">Thao tác</th>
+                            <tr className="bg-slate-50/75 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                              <th className="py-3 px-4">Mã PYC</th>
+                              <th className="py-3 px-4">Phòng ban</th>
+                              <th className="py-3 px-4">Vật tư yêu cầu</th>
+                              <th className="py-3 px-4 text-center">Số lượng</th>
+                              <th className="py-3 px-4">Ngày yêu cầu</th>
+                              <th className="py-3 px-4">Trạng thái</th>
+                              <th className="py-3 px-4 text-center">Thao tác</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
                             {deptRequests
                               .filter(r => r.target === "phongban" && (selectedDeptFilter === "Tất cả" || r.targetName === selectedDeptFilter))
                               .map((req) => (
-                                <tr key={req.id} className="hover:bg-slate-50/50">
-                                  <td className="py-3 font-mono text-slate-400">{req.id}</td>
-                                  <td className="py-3 text-slate-800 font-bold">{req.targetName}</td>
-                                  <td className="py-3 text-slate-600">{req.item}</td>
-                                  <td className="py-3 text-center text-slate-850 font-bold">{req.qty}</td>
-                                  <td className="py-3 font-mono text-slate-500">{req.date}</td>
-                                  <td className="py-3">
-                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                <tr key={req.id} className="hover:bg-slate-50/50 hover:translate-x-[2px] transition-all duration-150">
+                                  <td className="py-3.5 px-4 font-mono text-slate-400">{req.id}</td>
+                                  <td className="py-3.5 px-4 text-slate-800 font-bold">{req.targetName}</td>
+                                  <td className="py-3.5 px-4 text-slate-600">{req.item}</td>
+                                  <td className="py-3.5 px-4 text-center text-slate-850 font-bold">{req.qty}</td>
+                                  <td className="py-3.5 px-4 font-mono text-slate-500">{req.date}</td>
+                                  <td className="py-3.5 px-4">
+                                    <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${
                                       req.status === "Đã cấp phát" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
                                     }`}>
                                       {req.status}
                                     </span>
                                   </td>
-                                  <td className="py-3 text-center">
+                                  <td className="py-3.5 px-4 text-center">
                                     {req.status === "Chờ duyệt" ? (
                                       <button
                                         onClick={() => handleApproveRequest(req.id)}
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all active:scale-95 shadow-sm"
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm"
                                       >
                                         Duyệt & Cấp phát
                                       </button>
@@ -1766,7 +1791,7 @@ export default function AdministrationPage() {
 
                   {/* Sub-tab 3: Ban Điều Hành Project Allocation */}
                   {vppSubTab === "duan" && (
-                    <div className="glass bg-white rounded-2xl p-5 border border-slate-200/50 shadow-premium space-y-4">
+                    <div className="glass bg-white rounded-2xl p-5 border border-slate-200/50 shadow-premium space-y-4 animate-in fade-in-40 duration-200">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-3">
                         <div>
                           <h4 className="font-heading font-bold text-slate-800 text-xs">VPP cấp phát cho Ban Điều Hành các Dự án</h4>
@@ -1774,7 +1799,7 @@ export default function AdministrationPage() {
                         </div>
                         
                         <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs">
+                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Dự án:</span>
                             <select
                               value={selectedProjectFilter}
@@ -1796,48 +1821,48 @@ export default function AdministrationPage() {
                               setNewPYCQty(1);
                               setShowNewPYCModal(true);
                             }}
-                            className="flex items-center gap-1 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm transition-all"
+                            className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
                           >
-                            <Plus size={13} /> Tạo yêu cầu cấp
+                            <Plus size={14} /> Tạo yêu cầu cấp
                           </button>
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto rounded-xl border border-slate-100">
                         <table className="w-full text-xs text-left">
                           <thead>
-                            <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px] pb-2">
-                              <th className="pb-2">Mã PYC</th>
-                              <th className="pb-2">Dự án</th>
-                              <th className="pb-2">Vật tư yêu cầu</th>
-                              <th className="pb-2 text-center">Số lượng</th>
-                              <th className="pb-2">Ngày yêu cầu</th>
-                              <th className="pb-2">Trạng thái</th>
-                              <th className="pb-2 text-center">Thao tác</th>
+                            <tr className="bg-slate-50/75 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                              <th className="py-3 px-4">Mã PYC</th>
+                              <th className="py-3 px-4">Dự án</th>
+                              <th className="py-3 px-4">Vật tư yêu cầu</th>
+                              <th className="py-3 px-4 text-center">Số lượng</th>
+                              <th className="py-3 px-4">Ngày yêu cầu</th>
+                              <th className="py-3 px-4">Trạng thái</th>
+                              <th className="py-3 px-4 text-center">Thao tác</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
                             {deptRequests
                               .filter(r => r.target === "duan" && (selectedProjectFilter === "Tất cả" || r.targetName === selectedProjectFilter))
                               .map((req) => (
-                                <tr key={req.id} className="hover:bg-slate-50/50">
-                                  <td className="py-3 font-mono text-slate-400">{req.id}</td>
-                                  <td className="py-3 text-slate-800 font-bold">{req.dept}</td>
-                                  <td className="py-3 text-slate-600">{req.item}</td>
-                                  <td className="py-3 text-center text-slate-850 font-bold">{req.qty}</td>
-                                  <td className="py-3 font-mono text-slate-500">{req.date}</td>
-                                  <td className="py-3">
-                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                <tr key={req.id} className="hover:bg-slate-50/50 hover:translate-x-[2px] transition-all duration-150">
+                                  <td className="py-3.5 px-4 font-mono text-slate-400">{req.id}</td>
+                                  <td className="py-3.5 px-4 text-slate-800 font-bold">{req.dept}</td>
+                                  <td className="py-3.5 px-4 text-slate-600">{req.item}</td>
+                                  <td className="py-3.5 px-4 text-center text-slate-850 font-bold">{req.qty}</td>
+                                  <td className="py-3.5 px-4 font-mono text-slate-500">{req.date}</td>
+                                  <td className="py-3.5 px-4">
+                                    <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${
                                       req.status === "Đã cấp phát" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
                                     }`}>
                                       {req.status}
                                     </span>
                                   </td>
-                                  <td className="py-3 text-center">
+                                  <td className="py-3.5 px-4 text-center">
                                     {req.status === "Chờ duyệt" ? (
                                       <button
                                         onClick={() => handleApproveRequest(req.id)}
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all active:scale-95 shadow-sm"
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm"
                                       >
                                         Duyệt & Cấp phát
                                       </button>
@@ -1862,8 +1887,8 @@ export default function AdministrationPage() {
 
                   {/* Create New PYC Modal */}
                   {showNewPYCModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-                      <div className="bg-white rounded-2xl max-w-md w-full p-6 border border-slate-100 shadow-2xl relative space-y-4">
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                      <div className="bg-white rounded-2xl max-w-md w-full p-6 border border-slate-100 shadow-2xl relative space-y-4 animate-in zoom-in-95 duration-200">
                         <button
                           onClick={() => setShowNewPYCModal(false)}
                           className="absolute right-4 top-4 p-1 text-slate-400 hover:bg-slate-50 rounded-lg transition-all"
@@ -1887,9 +1912,9 @@ export default function AdministrationPage() {
                                   setNewPYCTarget("phongban");
                                   setNewPYCTargetName(DEPARTMENTS[0]);
                                 }}
-                                className={`py-2 px-3 border rounded-xl font-bold transition-all text-center ${
+                                className={`py-2.5 px-3 border rounded-xl font-bold transition-all text-center active:scale-[0.98] ${
                                   newPYCTarget === "phongban"
-                                    ? "border-[#005BAC] bg-blue-50/40 text-[#005BAC] shadow-sm"
+                                    ? "border-[#005BAC] bg-blue-50/45 text-[#005BAC] shadow-sm"
                                     : "border-slate-200 text-slate-500 hover:bg-slate-50/50"
                                 }`}
                               >
@@ -1901,9 +1926,9 @@ export default function AdministrationPage() {
                                   setNewPYCTarget("duan");
                                   setNewPYCTargetName(PROJECTS[0]);
                                 }}
-                                className={`py-2 px-3 border rounded-xl font-bold transition-all text-center ${
+                                className={`py-2.5 px-3 border rounded-xl font-bold transition-all text-center active:scale-[0.98] ${
                                   newPYCTarget === "duan"
-                                    ? "border-[#005BAC] bg-blue-50/40 text-[#005BAC] shadow-sm"
+                                    ? "border-[#005BAC] bg-blue-50/45 text-[#005BAC] shadow-sm"
                                     : "border-slate-200 text-slate-500 hover:bg-slate-50/50"
                                 }`}
                               >
@@ -1920,7 +1945,7 @@ export default function AdministrationPage() {
                             <select
                               value={newPYCTargetName}
                               onChange={(e) => setNewPYCTargetName(e.target.value)}
-                              className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-700 focus:border-blue-500 focus:outline-none mt-1"
+                              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg bg-white font-semibold text-slate-700 focus:border-blue-500 focus:outline-none mt-1 cursor-pointer"
                             >
                               {newPYCTarget === "phongban"
                                 ? DEPARTMENTS.map((dept, i) => (
@@ -1938,7 +1963,7 @@ export default function AdministrationPage() {
                             <select
                               value={newPYCItem}
                               onChange={(e) => setNewPYCItem(e.target.value)}
-                              className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-700 focus:border-blue-500 focus:outline-none mt-1"
+                              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg bg-white font-semibold text-slate-700 focus:border-blue-500 focus:outline-none mt-1 cursor-pointer"
                               required
                             >
                               {supplies.length === 0 ? (
@@ -1961,7 +1986,7 @@ export default function AdministrationPage() {
                               min={1}
                               value={newPYCQty}
                               onChange={(e) => setNewPYCQty(Number(e.target.value))}
-                              className="w-full px-3 py-2 border border-slate-200 rounded-lg font-semibold text-slate-700 focus:border-blue-500 focus:outline-none mt-1"
+                              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg font-semibold text-slate-700 focus:border-blue-500 focus:outline-none mt-1 bg-white"
                               required
                             />
                           </div>
@@ -1971,14 +1996,14 @@ export default function AdministrationPage() {
                             <button
                               type="button"
                               onClick={() => setShowNewPYCModal(false)}
-                              className="px-4 py-2 border border-slate-200 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-all"
+                              className="px-4 py-2 border border-slate-200 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-all active:scale-95"
                             >
-                              Hủy bộ
+                              Hủy bỏ
                             </button>
                             <button
                               type="submit"
                               disabled={supplies.length === 0}
-                              className="px-4 py-2 bg-[#005BAC] disabled:bg-slate-300 hover:bg-blue-700 text-white rounded-xl font-bold shadow-sm transition-all"
+                              className="px-4 py-2 bg-[#005BAC] disabled:bg-slate-300 hover:bg-blue-700 text-white rounded-xl font-bold shadow-sm transition-all active:scale-95"
                             >
                               Tạo phiếu yêu cầu
                             </button>

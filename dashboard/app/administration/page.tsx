@@ -253,6 +253,7 @@ export default function AdministrationPage() {
   const [isTableMissing, setIsTableMissing] = useState(false);
   const [editingPayment, setEditingPayment] = useState<SupplierPayment | null>(null);
   const [uploadingPaymentId, setUploadingPaymentId] = useState<string | null>(null);
+  const [reportMonth, setReportMonth] = useState("06/2026");
 
   // Form metadata for document generation
   const [employeeName, setEmployeeName] = useState("Nguyễn Bích Như Quỳnh");
@@ -528,6 +529,136 @@ export default function AdministrationPage() {
     if (idx !== -1) {
       setSelectedRecurringPreviewIdx(idx);
       setShowRecurringPreviewModal(true);
+    }
+  };
+
+  // Helper classification function
+  const getCategory = (desc: string) => {
+    const lower = (desc || "").toLowerCase();
+    if (lower.includes("văn phòng phẩm") || lower.includes("vpp") || lower.includes("giấy") || lower.includes("bút") || lower.includes("in ấn")) {
+      return "Văn phòng phẩm";
+    }
+    if (lower.includes("điện") || lower.includes("nước") || lower.includes("evn") || lower.includes("sawaco") || lower.includes("điện nước")) {
+      return "Điện nước văn phòng";
+    }
+    if (lower.includes("internet") || lower.includes("cáp quang") || lower.includes("viettel") || lower.includes("fpt") || lower.includes("vnpt") || lower.includes("wifi")) {
+      return "Cáp quang Internet";
+    }
+    if (lower.includes("tiếp khách") || lower.includes("ăn uống") || lower.includes("entertainment") || lower.includes("cafe") || lower.includes("nhà hàng") || lower.includes("hoa quả") || lower.includes("tiệc")) {
+      return "Chi phí mua đồ tiếp khách";
+    }
+    return "Chi phí khác";
+  };
+
+  const getReportData = (monthStr: string) => {
+    const parts = monthStr.split("/");
+    let yyyyMM = "";
+    if (parts.length === 2) {
+      yyyyMM = `${parts[1]}-${parts[0].padStart(2, "0")}`;
+    }
+
+    const filteredInvoices = invoices.filter(inv => {
+      if (!inv.date) return false;
+      return inv.date.startsWith(yyyyMM);
+    });
+
+    const filteredPayments = pendingPayments.filter(p => {
+      return p.month === monthStr;
+    });
+
+    const combinedItems = [
+      ...filteredInvoices.map(inv => ({
+        id: inv.id,
+        type: "Hóa đơn",
+        code: inv.number || "N/A",
+        date: inv.date || "",
+        beneficiary: inv.beneficiary_name || "N/A",
+        desc: inv.desc || "",
+        amount: inv.amount || 0,
+        category: getCategory(inv.desc || "")
+      })),
+      ...filteredPayments.map(p => ({
+        id: p.id,
+        type: "Thanh toán định kỳ",
+        code: p.supplierId || "N/A",
+        date: p.month || "",
+        beneficiary: p.supplierName || "N/A",
+        desc: p.content || "",
+        amount: p.amount || 0,
+        category: getCategory(p.content || p.service || "")
+      }))
+    ];
+
+    const totalAmount = combinedItems.reduce((sum, item) => sum + item.amount, 0);
+    const invoiceCount = filteredInvoices.length;
+    const recurringCount = filteredPayments.length;
+
+    const categoriesMap: Record<string, number> = {
+      "Văn phòng phẩm": 0,
+      "Điện nước văn phòng": 0,
+      "Cáp quang Internet": 0,
+      "Chi phí mua đồ tiếp khách": 0,
+      "Chi phí khác": 0,
+    };
+
+    combinedItems.forEach(item => {
+      const cat = item.category;
+      if (categoriesMap[cat] !== undefined) {
+        categoriesMap[cat] += item.amount;
+      } else {
+        categoriesMap["Chi phí khác"] += item.amount;
+      }
+    });
+
+    return {
+      combinedItems,
+      totalAmount,
+      invoiceCount,
+      recurringCount,
+      categoriesMap
+    };
+  };
+
+  const handleExportReportExcel = (monthStr: string) => {
+    try {
+      const { combinedItems, totalAmount, invoiceCount, recurringCount, categoriesMap } = getReportData(monthStr);
+
+      let csvContent = "\uFEFF"; // UTF-8 BOM for Excel
+
+      csvContent += `"BÁO CÁO TỔNG HỢP CHI PHÍ THÁNG ${monthStr.toUpperCase()}"\n`;
+      csvContent += `"Ngày xuất báo cáo:","${new Date().toLocaleDateString("vi-VN")}"\n`;
+      csvContent += `"Tổng chi phí:","${totalAmount}","VNĐ"\n`;
+      csvContent += `"Số lượng hóa đơn:","${invoiceCount}","hồ sơ"\n`;
+      csvContent += `"Số lượng thanh toán định kỳ:","${recurringCount}","hồ sơ"\n\n`;
+
+      csvContent += `"CƠ CẤU CHI PHÍ THÀNH PHẦN"\n`;
+      csvContent += `"Hạng mục","Số tiền (VNĐ)","Tỷ lệ (%)"\n`;
+      Object.entries(categoriesMap).forEach(([cat, amount]) => {
+        const pct = totalAmount > 0 ? ((amount / totalAmount) * 100).toFixed(1) : "0.0";
+        csvContent += `"${cat}","${amount}","${pct}%"\n`;
+      });
+      csvContent += `\n`;
+
+      csvContent += `"DANH SÁCH CHI TIẾT CÁC KHOẢN CHI"\n`;
+      csvContent += `"STT","Loại chứng từ","Số hóa đơn/Mã","Ngày/Tháng","Đơn vị thụ hưởng","Nội dung","Số tiền (VNĐ)","Phân loại"\n`;
+      
+      combinedItems.forEach((item, index) => {
+        const beneficiary = (item.beneficiary || "").replace(/"/g, '""');
+        const desc = (item.desc || "").replace(/"/g, '""');
+        csvContent += `"${index + 1}","${item.type}","${item.code}","${item.date}","${beneficiary}","${desc}","${item.amount}","${item.category}"\n`;
+      });
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Bao_cao_chi_phi_thang_${monthStr.replace("/", "_")}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert("Lỗi khi kết xuất báo cáo: " + err.message);
     }
   };
 
@@ -2270,72 +2401,221 @@ export default function AdministrationPage() {
             </div>
           )}
 
-              {/* ─── TAB 5: Báo cáo chi phí cuối tháng ─── */}
-              {activeTab === "report" && (
-                <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-6">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                    <div>
-                      <h3 className="font-heading font-bold text-slate-800 text-sm">Báo cáo tổng hợp chi phí cuối tháng</h3>
-                      <p className="text-slate-400 text-[10px] font-semibold mt-1">Tổng hợp và kết xuất báo cáo toàn bộ hồ sơ thanh toán đã lập trong tháng</p>
-                    </div>
-                    <button
-                      onClick={() => alert("Đang kết xuất báo cáo Excel tổng hợp chi phí...")}
-                      className="flex items-center gap-1 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-all active:scale-95"
-                    >
-                      <FileSpreadsheet size={14} /> Kết xuất Excel Báo cáo
-                    </button>
-                  </div>
+              {/* ─── TAB 4: Báo cáo chi phí tháng ─── */}
+              {activeTab === "report" && (() => {
+                const { combinedItems, totalAmount, invoiceCount, recurringCount, categoriesMap } = getReportData(reportMonth);
+                
+                return (
+                  <div className="space-y-6">
+                    {/* Header Controls */}
+                    <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                          <h3 className="font-heading font-bold text-slate-800 text-sm">Báo cáo tổng hợp chi phí tháng</h3>
+                          <p className="text-slate-400 text-[10px] font-semibold mt-1">Tổng hợp tự động toàn bộ hóa đơn và các khoản thanh toán định kỳ trong tháng</p>
+                        </div>
+                        
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-1.5">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tháng báo cáo:</span>
+                            <input
+                              type="text"
+                              value={reportMonth}
+                              onChange={(e) => setReportMonth(e.target.value)}
+                              placeholder="MM/YYYY"
+                              className="w-20 bg-transparent text-xs font-bold text-[#005BAC] focus:outline-none text-center"
+                            />
+                          </div>
 
-                  {/* Summary Expenses */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="border border-slate-150 rounded-2xl p-5 space-y-4">
-                      <h4 className="font-heading font-bold text-slate-800 text-xs">Cơ cấu chi phí Hành chính (Q2)</h4>
-                      
-                      {/* CSS Bar Chart */}
-                      <div className="space-y-3 pt-2">
-                        {[
-                          { label: "Văn phòng phẩm", amount: 5200000, pct: "18%" },
-                          { label: "Điện nước văn phòng", amount: 15700000, pct: "55%" },
-                          { label: "Cáp quang Internet", amount: 3500000, pct: "12%" },
-                          { label: "Chi phí mua đồ tiếp khách", amount: 4300000, pct: "15%" }
-                        ].map((cost, idx) => (
-                          <div key={idx} className="space-y-1">
-                            <div className="flex justify-between text-[10px] font-bold text-slate-600">
-                              <span>{cost.label} ({cost.pct})</span>
-                              <span className="text-[#005BAC]">{cost.amount.toLocaleString("vi-VN")} đ</span>
+                          <button
+                            onClick={() => handleExportReportExcel(reportMonth)}
+                            className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-all active:scale-95"
+                          >
+                            <FileSpreadsheet size={14} /> Tải xuống báo cáo (Excel)
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* KPI Summary Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* Total cost card */}
+                      <div className="glass bg-gradient-to-br from-blue-50/50 to-indigo-50/20 rounded-2xl p-5 border border-blue-100/60 shadow-premium flex items-center justify-between">
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Tổng chi phí tháng</span>
+                          <h3 className="text-xl font-black text-[#005BAC] tracking-tight">{totalAmount.toLocaleString("vi-VN")} đ</h3>
+                          <p className="text-[10px] text-slate-400 font-semibold">Tự động tổng hợp thời gian thực</p>
+                        </div>
+                        <div className="bg-blue-500/10 text-[#005BAC] p-3.5 rounded-2xl">
+                          <Receipt size={24} />
+                        </div>
+                      </div>
+
+                      {/* Invoices Count */}
+                      <div className="glass bg-gradient-to-br from-emerald-50/50 to-teal-50/20 rounded-2xl p-5 border border-emerald-100/60 shadow-premium flex items-center justify-between">
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Hồ sơ hóa đơn xử lý</span>
+                          <h3 className="text-xl font-black text-emerald-600 tracking-tight">{invoiceCount} Hồ sơ</h3>
+                          <p className="text-[10px] text-slate-400 font-semibold">Trích xuất thành công từ hóa đơn AI</p>
+                        </div>
+                        <div className="bg-emerald-500/10 text-emerald-600 p-3.5 rounded-2xl">
+                          <FileText size={24} />
+                        </div>
+                      </div>
+
+                      {/* Recurring Payments Count */}
+                      <div className="glass bg-gradient-to-br from-purple-50/50 to-pink-50/20 rounded-2xl p-5 border border-purple-100/60 shadow-premium flex items-center justify-between">
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Thanh toán định kỳ</span>
+                          <h3 className="text-xl font-black text-purple-600 tracking-tight">{recurringCount} Hồ sơ</h3>
+                          <p className="text-[10px] text-slate-400 font-semibold">Các khoản chi định kỳ tháng</p>
+                        </div>
+                        <div className="bg-purple-500/10 text-purple-600 p-3.5 rounded-2xl">
+                          <RefreshCw size={24} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Cost structure breakdown & Process flow */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* Cost breakdown progress bars */}
+                      <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-4">
+                        <div className="border-b border-slate-100 pb-3">
+                          <h4 className="font-heading font-bold text-slate-800 text-xs">Cơ cấu chi phí thực tế</h4>
+                          <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Phân loại tự động dựa trên hóa đơn và phiếu chi</p>
+                        </div>
+
+                        <div className="space-y-4 pt-1">
+                          {[
+                            { label: "Văn phòng phẩm", key: "Văn phòng phẩm", color: "bg-blue-500" },
+                            { label: "Điện nước văn phòng", key: "Điện nước văn phòng", color: "bg-[#005BAC]" },
+                            { label: "Cáp quang Internet", key: "Cáp quang Internet", color: "bg-indigo-500" },
+                            { label: "Chi phí mua đồ tiếp khách", key: "Chi phí mua đồ tiếp khách", color: "bg-purple-500" },
+                            { label: "Chi phí khác", key: "Chi phí khác", color: "bg-slate-400" },
+                          ].map((cost, idx) => {
+                            const amount = categoriesMap[cost.key as keyof typeof categoriesMap] || 0;
+                            const pct = totalAmount > 0 ? (amount / totalAmount) * 100 : 0;
+                            
+                            return (
+                              <div key={idx} className="space-y-1.5">
+                                <div className="flex justify-between text-[10px] font-bold text-slate-600">
+                                  <span>{cost.label} ({pct.toFixed(1)}%)</span>
+                                  <span className="text-slate-700 font-extrabold">{amount.toLocaleString("vi-VN")} đ</span>
+                                </div>
+                                <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                                  <div 
+                                    className={`${cost.color} h-full rounded-full transition-all duration-500`}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Process info and totals summary */}
+                      <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium flex flex-col justify-between space-y-4">
+                        <div className="space-y-3">
+                          <div className="border-b border-slate-100 pb-3">
+                            <h4 className="font-heading font-bold text-slate-800 text-xs">Tổng hợp và quy trình kiểm tra</h4>
+                            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Thông tin đối soát dữ liệu phòng HCNS</p>
+                          </div>
+
+                          <div className="space-y-2 text-[10.5px] font-semibold text-slate-500 pt-1">
+                            <div className="flex justify-between border-b border-slate-50 pb-1.5">
+                              <span>Tháng đối soát:</span>
+                              <span className="text-slate-800 font-bold">Tháng {reportMonth}</span>
                             </div>
-                            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                              <div 
-                                className="bg-[#005BAC] h-full rounded-full transition-all"
-                                style={{ width: cost.pct }}
-                              />
+                            <div className="flex justify-between border-b border-slate-50 pb-1.5">
+                              <span>Tổng chứng từ tổng hợp:</span>
+                              <span className="text-slate-800 font-bold">{combinedItems.length} hồ sơ chứng từ</span>
+                            </div>
+                            <div className="flex justify-between pb-1">
+                              <span>Ngày chốt số liệu dự kiến:</span>
+                              <span className="text-slate-800 font-bold">Ngày cuối tháng</span>
                             </div>
                           </div>
-                        ))}
+                        </div>
+
+                        <div className="bg-blue-50/40 border border-blue-100 rounded-2xl p-4 text-[10px] text-slate-500 leading-relaxed font-semibold">
+                          <div className="flex items-center gap-1.5 text-[#005BAC] font-bold mb-1.5">
+                            <AlertTriangle size={13} />
+                            <span className="text-[11px] uppercase tracking-wider">Quy trình chốt tháng:</span>
+                          </div>
+                          Nhân viên Hành chính kiểm tra trạng thái tất cả các hồ sơ thanh toán trong tháng, kết xuất file excel báo cáo chi phí tổng hợp, trình ký bản cứng đính kèm hóa đơn/phiếu thanh toán để chuyển phòng Kế toán đối soát trước ngày 05 tháng sau.
+                        </div>
                       </div>
                     </div>
 
-                    <div className="border border-slate-150 rounded-2xl p-5 space-y-3 flex flex-col justify-between">
-                      <div className="space-y-2">
-                        <h4 className="font-heading font-bold text-slate-800 text-xs">Thông tin báo cáo</h4>
-                        <div className="space-y-1.5 text-[10px] font-semibold text-slate-500 pt-1">
-                          <p>Tổng chi phí tháng này: <strong className="text-slate-800 text-sm font-bold text-[#005BAC]">28.700.000 đ</strong></p>
-                          <p>Hồ sơ đã xử lý: <strong className="text-slate-700">6 Hồ sơ (5 hóa đơn + 1 định kỳ)</strong></p>
-                          <p>Ngày chốt báo cáo: <strong className="text-slate-700">Chốt ngày cuối tháng (Hàng tháng)</strong></p>
+                    {/* Detail Inspection Table */}
+                    <div className="glass bg-white rounded-2xl border border-slate-200/50 shadow-premium overflow-hidden">
+                      <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/40 flex justify-between items-center">
+                        <div>
+                          <h4 className="font-heading font-bold text-slate-800 text-xs">Bảng đối soát chi tiết các khoản chi</h4>
+                          <p className="text-slate-400 text-[10px] font-semibold mt-0.5">Hiển thị toàn bộ hóa đơn trích xuất và khoản thanh toán định kỳ</p>
                         </div>
+                        <span className="bg-slate-100 text-slate-600 text-[9px] font-extrabold px-2.5 py-1 rounded-full border border-slate-200/50">
+                          {combinedItems.length} Bản ghi
+                        </span>
                       </div>
 
-                      <div className="bg-blue-50/40 border border-blue-100 rounded-xl p-3.5 text-[10px] text-slate-500 leading-relaxed font-semibold">
-                        <div className="flex items-center gap-1 text-[#005BAC] font-bold mb-1">
-                          <AlertTriangle size={12} />
-                          <span>Quy trình chốt tháng:</span>
-                        </div>
-                        Nhân viên Hành chính kiểm tra trạng thái tất cả các hồ sơ thanh toán trong tháng, kết xuất excel, trình ký bản cứng đính kèm hóa đơn chuyển phòng Kế toán đối soát trước ngày 05 tháng sau.
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 bg-slate-50/20">
+                              <th className="py-3 px-4 w-12 text-center">STT</th>
+                              <th className="py-3 px-4 w-36">Loại chứng từ</th>
+                              <th className="py-3 px-4 w-32">Số hóa đơn/Mã</th>
+                              <th className="py-3 px-4 w-28">Ngày nhận</th>
+                              <th className="py-3 px-4">Đơn vị thụ hưởng</th>
+                              <th className="py-3 px-4">Nội dung</th>
+                              <th className="py-3 px-4">Phân loại</th>
+                              <th className="py-3 px-4 text-right w-36">Số tiền</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100/50 text-[11px] font-semibold text-slate-600">
+                            {combinedItems.map((item, index) => (
+                              <tr key={item.id} className="hover:bg-slate-50/30 transition-all">
+                                <td className="py-3 px-4 text-center text-slate-400">{index + 1}</td>
+                                <td className="py-3 px-4">
+                                  {item.type === "Hóa đơn" ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                      <FileText size={10} /> Hóa đơn
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-purple-50 text-purple-700 border border-purple-100">
+                                      <RefreshCw size={10} /> Định kỳ
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-4 font-mono text-slate-500 font-bold">{item.code}</td>
+                                <td className="py-3 px-4 text-slate-400">{item.date}</td>
+                                <td className="py-3 px-4 font-bold text-slate-700 max-w-[180px] truncate">{item.beneficiary}</td>
+                                <td className="py-3 px-4 max-w-[240px] truncate" title={item.desc}>{item.desc}</td>
+                                <td className="py-3 px-4">
+                                  <span className="bg-slate-100 text-slate-600 text-[9px] font-extrabold px-2 py-0.5 rounded-full">
+                                    {item.category}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 text-right font-extrabold text-slate-800">{item.amount.toLocaleString("vi-VN")} đ</td>
+                              </tr>
+                            ))}
+
+                            {combinedItems.length === 0 && (
+                              <tr>
+                                <td colSpan={8} className="py-12 text-center text-slate-400 italic">
+                                  Không có dữ liệu chi phí nào cho tháng {reportMonth}.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
             </div>
           </div>

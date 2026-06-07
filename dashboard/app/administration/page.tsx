@@ -242,6 +242,7 @@ export default function AdministrationPage() {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showRecurringPreviewModal, setShowRecurringPreviewModal] = useState(false);
   const [selectedRecurringPreviewIdx, setSelectedRecurringPreviewIdx] = useState(0);
+  const [activePreviewPayment, setActivePreviewPayment] = useState<SupplierPayment | null>(null);
 
   // States for viewing original files in popups
   const [previewFileUrl, setPreviewFileUrl] = useState<string>("");
@@ -395,10 +396,34 @@ export default function AdministrationPage() {
         .select();
       if (error) throw error;
       if (data && data[0]) {
+        const savedInv: Invoice = {
+          id: data[0].id,
+          number: data[0].number,
+          date: data[0].date,
+          desc: data[0].description || "",
+          amount: Number(data[0].amount),
+          file_url: data[0].file_url || "",
+          beneficiary_name: data[0].beneficiary_name || "",
+          bank_account: data[0].bank_account || "",
+          bank_name_branch: data[0].bank_name_branch || ""
+        };
+        setInvoices(prev => [savedInv, ...prev]);
         alert("Đã thêm khoản thanh toán và đồng bộ thành công lên Supabase!");
       }
     } catch (err: any) {
       console.warn("Could not sync to Supabase (saving locally):", err.message || err);
+      // Create local fallback invoice
+      const newInv: Invoice = {
+        id: newPayment.id,
+        number: `HD-DK-${Date.now().toString().slice(-4)}`,
+        date: new Date().toISOString().slice(0, 10),
+        desc: newPayment.content,
+        amount: newPayment.amount,
+        beneficiary_name: newPayment.supplierName,
+        bank_account: newPayment.account,
+        bank_name_branch: newPayment.bank
+      };
+      setInvoices(prev => [newInv, ...prev]);
       alert("Đã lưu khoản thanh toán thành công (lưu tạm thời trên trình duyệt do lỗi kết nối Supabase)!");
     }
 
@@ -789,19 +814,17 @@ export default function AdministrationPage() {
       if (error) throw error;
       
       if (data) {
-        const loadedInvs: Invoice[] = data
-          .filter((row: any) => !row.number?.startsWith("HD-DK-"))
-          .map((row: any) => ({
-            id: row.id,
-            number: row.number,
-            date: row.date,
-            desc: row.description || "",
-            amount: Number(row.amount),
-            file_url: row.file_url || "",
-            beneficiary_name: row.beneficiary_name || "",
-            bank_account: row.bank_account || "",
-            bank_name_branch: row.bank_name_branch || ""
-          }));
+        const loadedInvs: Invoice[] = data.map((row: any) => ({
+          id: row.id,
+          number: row.number,
+          date: row.date,
+          desc: row.description || "",
+          amount: Number(row.amount),
+          file_url: row.file_url || "",
+          beneficiary_name: row.beneficiary_name || "",
+          bank_account: row.bank_account || "",
+          bank_name_branch: row.bank_name_branch || ""
+        }));
         setInvoices(loadedInvs);
         setIsTableMissing(false);
       }
@@ -1697,7 +1720,7 @@ export default function AdministrationPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
-                          {invoices.map((inv) => (
+                          {invoices.filter(inv => !inv.number?.startsWith("HD-DK-")).map((inv) => (
                             <tr key={inv.id} className="hover:bg-slate-50/50 bg-white">
                               <td className="p-3 font-mono text-slate-800 font-bold">{inv.number}</td>
                               <td className="p-3 text-slate-500">{inv.date}</td>
@@ -2084,6 +2107,83 @@ export default function AdministrationPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Processed list for recurring payments */}
+                  <div className="space-y-3.5 pt-4">
+                    <h4 className="font-heading font-extrabold text-slate-800 text-xs">Danh sách thanh toán định kỳ đã xử lý</h4>
+                    <div className="overflow-x-auto border border-slate-150 rounded-xl bg-slate-50/20">
+                      <table className="w-full text-xs text-left">
+                        <thead>
+                          <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[9px] p-3">
+                            <th className="p-3">Số chứng từ</th>
+                            <th className="p-3">Ngày lập</th>
+                            <th className="p-3">Nội dung thanh toán</th>
+                            <th className="p-3 text-right">Số tiền</th>
+                            <th className="p-3 text-center">Trạng thái</th>
+                            <th className="p-3 text-center">Xem trước</th>
+                            <th className="p-3 text-center">Thao tác</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
+                          {invoices.filter(inv => inv.number?.startsWith("HD-DK-")).map((inv) => (
+                            <tr key={inv.id} className="hover:bg-slate-50/50 bg-white">
+                              <td className="p-3 font-mono text-slate-800 font-bold">{inv.number}</td>
+                              <td className="p-3 text-slate-500">{inv.date}</td>
+                              <td className="p-3 text-slate-600 max-w-xs truncate">{inv.desc}</td>
+                              <td className="p-3 text-right text-[#005BAC] font-mono font-bold">
+                                {inv.amount.toLocaleString("vi-VN")} đ
+                              </td>
+                              <td className="p-3 text-center">
+                                <span className="inline-flex items-center justify-center bg-blue-50 text-blue-600 text-[9px] font-bold px-2 py-0.5 rounded-lg border border-blue-100">
+                                  Đã đồng bộ
+                                </span>
+                              </td>
+                              <td className="p-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const mockPayment: SupplierPayment = {
+                                      id: inv.id,
+                                      supplierId: "",
+                                      supplierName: inv.beneficiary_name || "",
+                                      account: inv.bank_account || "",
+                                      bank: inv.bank_name_branch || "",
+                                      service: "",
+                                      amount: inv.amount,
+                                      content: inv.desc,
+                                      month: payMonth
+                                    };
+                                    setActivePreviewPayment(mockPayment);
+                                    setShowRecurringPreviewModal(true);
+                                  }}
+                                  className="text-blue-600 hover:text-blue-800 transition-colors p-1.5 rounded-lg hover:bg-blue-50 cursor-pointer inline-flex items-center justify-center bg-transparent border-none"
+                                  title="Xem trước tài liệu"
+                                >
+                                  <Eye size={14} />
+                                </button>
+                              </td>
+                              <td className="p-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteInvoice(inv.id)}
+                                  className="text-slate-400 hover:text-rose-500 transition-colors p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+                                  title="Xóa hóa đơn"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {invoices.filter(inv => inv.number?.startsWith("HD-DK-")).length === 0 && (
+                            <tr>
+                              <td colSpan={7} className="py-8 text-center text-slate-400 italic">Không có thanh toán định kỳ nào đã đồng bộ.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
                 </div>
               )}
 
@@ -2581,7 +2681,7 @@ CREATE POLICY "Allow public delete for invoices" ON public.invoices FOR DELETE U
       {/* Recurring Preview Modal */}
       {showRecurringPreviewModal && (() => {
         const currentMonthPayments = pendingPayments.filter(p => p.month === payMonth);
-        const p = currentMonthPayments[selectedRecurringPreviewIdx];
+        const p = activePreviewPayment || currentMonthPayments[selectedRecurringPreviewIdx];
         if (!p) return null;
 
         const totalAmountVal = p.amount;
@@ -2593,7 +2693,10 @@ CREATE POLICY "Allow public delete for invoices" ON public.invoices FOR DELETE U
               
               {/* Close Button */}
               <button
-                onClick={() => setShowRecurringPreviewModal(false)}
+                onClick={() => {
+                  setShowRecurringPreviewModal(false);
+                  setActivePreviewPayment(null);
+                }}
                 className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors p-1.5 hover:bg-slate-100 rounded-full cursor-pointer"
               >
                 <X size={16} />
@@ -2616,7 +2719,7 @@ CREATE POLICY "Allow public delete for invoices" ON public.invoices FOR DELETE U
                 </div>
 
                 {/* Dropdown to switch between payments */}
-                {currentMonthPayments.length > 1 && (
+                {!activePreviewPayment && currentMonthPayments.length > 1 && (
                   <div className="flex items-center gap-2 pr-8">
                     <span className="text-[10px] font-bold text-slate-400 uppercase">Chọn Nhà Cung Cấp:</span>
                     <select
@@ -2755,7 +2858,10 @@ CREATE POLICY "Allow public delete for invoices" ON public.invoices FOR DELETE U
               {/* Modal Actions */}
               <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
                 <button
-                  onClick={() => setShowRecurringPreviewModal(false)}
+                  onClick={() => {
+                    setShowRecurringPreviewModal(false);
+                    setActivePreviewPayment(null);
+                  }}
                   className="px-4 py-2 border border-slate-200 text-slate-500 font-bold rounded-xl text-xs hover:bg-slate-50 transition-all cursor-pointer"
                 >
                   Đóng lại
@@ -2763,6 +2869,7 @@ CREATE POLICY "Allow public delete for invoices" ON public.invoices FOR DELETE U
                 <button
                   onClick={async () => {
                     setShowRecurringPreviewModal(false);
+                    setActivePreviewPayment(null);
                     await exportSingleRecurringPayment(p);
                   }}
                   disabled={exportLoading}

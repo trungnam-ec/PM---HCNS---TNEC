@@ -105,7 +105,7 @@ export default function DashboardPage() {
 
       // 6. Map Team Performance from real employees
       if (emps && emps.length > 0) {
-        const mappedTeam = emps.slice(0, 4).map((emp: any) => {
+        const mappedTeam = emps.map((emp: any) => {
           // Count completed/pending tasks assigned to this employee name
           const empTasks = taskList ? taskList.filter((t: any) => t.assignee === emp.name) : [];
           const completed = empTasks.filter((t: any) => t.status === "completed").length;
@@ -117,7 +117,7 @@ export default function DashboardPage() {
             completed: completed || emp.completed_tasks || 0,
             pending: pending || emp.pending_tasks || 0,
             leave: emp.status === "Nghỉ phép" ? "Nghỉ phép" : "Đang làm việc",
-            avatar: emp.avatar || emp.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
+            avatar: emp.avatar || (emp.name ? emp.name.split(" ").filter(Boolean).map((n: string) => n[0]).join("").slice(0, 2).toUpperCase() : "NV")
           };
         });
         setTeam(mappedTeam);
@@ -200,7 +200,7 @@ export default function DashboardPage() {
                     </a>
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-h-[390px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
                     {team.map((emp) => (
                       <div key={emp.name} className="glass rounded-2xl p-5 bg-white/75 flex gap-4 hover-elevate">
                         {/* Avatar */}

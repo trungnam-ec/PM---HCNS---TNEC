@@ -32,23 +32,23 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-60 min-h-screen flex flex-col fixed left-0 top-0 z-40 bg-slate-900 border-r border-slate-800">
+    <aside className="w-60 min-h-screen flex flex-col fixed left-0 top-0 z-40 bg-white border-r border-slate-200/60 shadow-sm">
       {/* Brand Logo & Header */}
-      <div className="px-6 py-6 border-b border-slate-800">
+      <div className="px-6 py-6 border-b border-slate-200/60">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center font-heading font-extrabold text-white text-sm shadow-md">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center font-heading font-extrabold text-white text-xs shadow-md shadow-blue-500/25">
             TN
           </div>
           <div>
-            <h1 className="text-white font-heading font-bold text-sm tracking-tight leading-tight">PM - HCNS - TNEC</h1>
-            <p className="text-slate-400 text-[10px] uppercase font-semibold tracking-wider mt-0.5">Hệ thống HCNS</p>
+            <h1 className="text-[#1D1D1F] font-heading font-bold text-sm tracking-tight leading-tight">PM - HCNS - TNEC</h1>
+            <p className="text-slate-450 text-[10px] uppercase font-bold tracking-wider mt-0.5">Hệ thống HCNS</p>
           </div>
         </div>
       </div>
 
       {/* Navigation Links */}
-      <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
-        <div className="px-3 mb-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+      <nav className="flex-1 px-4 py-6 space-y-2.5 overflow-y-auto">
+        <div className="px-3 mb-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
           Chức năng chính
         </div>
         {NAV_ITEMS.map((item) => {
@@ -59,13 +59,13 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+              className={`flex items-center gap-3 px-5 py-2.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-[0.97] hover:translate-x-1 border ${
                 isActive
-                  ? "bg-blue-600 text-white shadow-md shadow-blue-600/10 font-semibold"
-                  : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-100"
+                  ? "bg-[#1D1D1F] border-[#1D1D1F] text-white shadow-sm"
+                  : "bg-[#EBEBEB]/70 border-slate-200/40 text-[#1D1D1F] hover:bg-slate-200/90"
               }`}
             >
-              <Icon size={18} className={isActive ? "text-white" : "text-slate-400 group-hover:text-slate-200"} />
+              <Icon size={15} className={isActive ? "text-white" : "text-slate-500"} />
               <span>{item.label}</span>
             </Link>
           );

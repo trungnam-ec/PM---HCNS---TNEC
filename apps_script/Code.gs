@@ -38,13 +38,14 @@ var HEADER_BASE = [
   "Khu vực", "Phòng Ban",
   "Vị trí", "Trạng thái", "Nguồn", "Người đánh giá"
 ];
-var HEADER_VONG1 = HEADER_BASE.concat(["Kết quả V1"]);
-var HEADER_VONG2 = HEADER_BASE.concat(["Kết quả V1", "Kết quả V2"]);
+var HEADER_TONGHOP = HEADER_BASE.concat(["Ghi chú"]);
+var HEADER_VONG1 = HEADER_BASE.concat(["Kết quả V1", "Ghi chú"]);
+var HEADER_VONG2 = HEADER_BASE.concat(["Kết quả V1", "Kết quả V2", "Ghi chú"]);
 var HEADER_THUVIEC = [
   "STT", "Ngày", "Tên ứng viên", "Email", "SĐT",
   "Bằng cấp", "Chuyên ngành", "Kinh nghiệm", "Chức danh gần nhất", "Công ty gần nhất",
   "Khu vực", "Phòng Ban", "Vị trí",
-  "Kết quả V2", "Kết quả nhận việc", "HĐ Chính thức"
+  "Kết quả V2", "Kết quả nhận việc", "HĐ Chính thức", "Ghi chú"
 ];
 
 
@@ -149,7 +150,13 @@ function doPost(e) {
       var rowData = body.row;
       if (!rowData || rowData.length < 10) return response({ success: false, error: "Dữ liệu thiếu" });
       
-      var ws = _getOrCreateSheet(ss, body.sheet || TAB_TONGHOP, HEADER_BASE);
+      var sheetName = body.sheet || TAB_TONGHOP;
+      var headers = HEADER_TONGHOP;
+      if (sheetName === TAB_VONG1) headers = HEADER_VONG1;
+      else if (sheetName === TAB_VONG2) headers = HEADER_VONG2;
+      else if (sheetName === TAB_THUVIEC) headers = HEADER_THUVIEC;
+      
+      var ws = _getOrCreateSheet(ss, sheetName, headers);
       var nextStt = ws.getLastRow();
       var finalRow = [nextStt].concat(rowData);
       ws.appendRow(finalRow);
@@ -237,21 +244,27 @@ function onEdit(e) {
     // Tổng Hợp (K) -> Vòng 1
     if (name.toLowerCase() === TAB_TONGHOP.toLowerCase() && c === COL_TRANGTHAI) {
       if (val === PASS_VALUE.toUpperCase()) {
-        var data = s.getRange(row, 1, 1, HEADER_BASE.length).getValues()[0];
-        if (!_existsInSheet(ss, TAB_VONG1, data)) _copyToSheet(ss, data, TAB_VONG1, HEADER_VONG1);
+        var data = s.getRange(row, 1, 1, 17).getValues()[0]; // 17 columns (STT to Ghi chú)
+        var dataV1 = data.slice(0, 16);
+        dataV1.push("Chờ đánh giá");
+        dataV1.push(data[16] || "");
+        if (!_existsInSheet(ss, TAB_VONG1, data)) _copyToSheet(ss, dataV1, TAB_VONG1, HEADER_VONG1);
       }
     }
     // Vòng 1 (N) -> Vòng 2
     if (name.toLowerCase() === TAB_VONG1.toLowerCase() && c === COL_KETQUA_V1) {
       if (val === DAT_VALUE.toUpperCase()) {
-        var d1 = s.getRange(row, 1, 1, HEADER_VONG1.length).getValues()[0];
-        if (!_existsInSheet(ss, TAB_VONG2, d1)) _copyToSheet(ss, d1, TAB_VONG2, HEADER_VONG2);
+        var d1 = s.getRange(row, 1, 1, 18).getValues()[0]; // 18 columns (STT to Ghi chú)
+        var dataV2 = d1.slice(0, 17);
+        dataV2.push("Chờ đánh giá");
+        dataV2.push(d1[17] || "");
+        if (!_existsInSheet(ss, TAB_VONG2, d1)) _copyToSheet(ss, dataV2, TAB_VONG2, HEADER_VONG2);
       }
     }
     // Vòng 2 (O) -> Thử việc
     if (name.toLowerCase() === TAB_VONG2.toLowerCase() && c === COL_KETQUA_V2) {
       if (val === DAT_VALUE.toUpperCase()) {
-        var d2 = s.getRange(row, 1, 1, HEADER_VONG2.length).getValues()[0];
+        var d2 = s.getRange(row, 1, 1, 19).getValues()[0]; // 19 columns (STT to Ghi chú)
         if (!_existsInSheet(ss, TAB_THUVIEC, d2)) _copyToThuViec(ss, d2);
       }
     }
@@ -320,7 +333,16 @@ function _copyToSheet(ss, rowData, destName, destHeader) {
 
 function _copyToThuViec(ss, rowData) {
   var d = _getOrCreateSheet(ss, TAB_THUVIEC, HEADER_THUVIEC);
-  d.appendRow([d.getLastRow(), rowData[1], rowData[2], rowData[3], rowData[4], rowData[5], rowData[6], rowData[7], rowData[8], rowData[9], rowData[10], rowData[11], rowData[12], rowData[17] || DAT_VALUE, "", ""]);
+  d.appendRow([
+    d.getLastRow(), 
+    rowData[1], rowData[2], rowData[3], rowData[4], 
+    rowData[5], rowData[6], rowData[7], rowData[8], rowData[9], 
+    rowData[10], rowData[11], rowData[12], 
+    rowData[17] || DAT_VALUE, 
+    "", 
+    "",
+    rowData[18] || ""
+  ]);
 }
 
 function _syncByColumn(ss, src, col, val, destName, destHeader) {
@@ -330,7 +352,19 @@ function _syncByColumn(ss, src, col, val, destName, destHeader) {
   for (var i = 1; i < data.length; i++) {
     var v = String(data[i][col-1]).trim().toUpperCase();
     if (v === val.toUpperCase() && !_existsInSheet(ss, destName, data[i])) {
-      _copyToSheet(ss, data[i], destName, destHeader); count++;
+      var row;
+      if (destName === TAB_VONG1) {
+        row = data[i].slice(0, 16);
+        row.push("Chờ đánh giá");
+        row.push(data[i][16] || "");
+      } else if (destName === TAB_VONG2) {
+        row = data[i].slice(0, 17);
+        row.push("Chờ đánh giá");
+        row.push(data[i][17] || "");
+      } else {
+        row = data[i];
+      }
+      _copyToSheet(ss, row, destName, destHeader); count++;
     }
   }
   return count;

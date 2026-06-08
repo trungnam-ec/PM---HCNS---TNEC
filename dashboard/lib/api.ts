@@ -22,6 +22,7 @@ export type Candidate = {
   "Trạng thái": string;
   "Nguồn": string;
   "Người đánh giá": string;
+  "Ghi chú"?: string;
   [key: string]: unknown;
 };
 
@@ -90,7 +91,8 @@ export async function fetchCandidates(sheet = "Tổng Hợp"): Promise<Candidate
     "Hết hạn TV": c.probation_end_date || "",
     "Mức lương \nTV": c.probation_salary || "",
     "MỨC lương\nCT": c.official_salary || "",
-    "Kết quả nhận việc": c.probation_result || ""
+    "Kết quả nhận việc": c.probation_result || "",
+    "Ghi chú": c.notes || ""
   }));
 }
 
@@ -197,6 +199,7 @@ export async function updateCandidate(
   if (updates["Vị trí"] !== undefined) mappedUpdates.role = updates["Vị trí"];
   if (updates["Nguồn"] !== undefined) mappedUpdates.source = updates["Nguồn"];
   if (updates["Người đánh giá"] !== undefined) mappedUpdates.reviewer = updates["Người đánh giá"];
+  if (updates["Ghi chú"] !== undefined) mappedUpdates.notes = updates["Ghi chú"];
 
   if (updates["Trạng thái"] !== undefined) {
     const val = String(updates["Trạng thái"]).toUpperCase();

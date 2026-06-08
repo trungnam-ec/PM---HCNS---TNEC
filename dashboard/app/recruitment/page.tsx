@@ -522,7 +522,8 @@ const getColumnsForTab = (tab: string) => {
       { key: "role", label: "Vị trí", width: "140px" },
       { key: "status", label: "Trạng thái", width: "120px", type: "status" },
       { key: "source", label: "Nguồn", width: "110px" },
-      { key: "reviewer", label: "Người đánh giá", width: "130px" }
+      { key: "reviewer", label: "Người đánh giá", width: "130px" },
+      { key: "notes", label: "Ghi chú", width: "180px" }
     ];
   }
   if (tab === "vong_1") {
@@ -539,7 +540,8 @@ const getColumnsForTab = (tab: string) => {
       { key: "role", label: "Vị trí", width: "140px" },
       { key: "source", label: "Nguồn", width: "110px" },
       { key: "v1_interviewer", label: "Người PV V1", width: "130px" },
-      { key: "v1_result", label: "Kết quả V1", width: "120px", type: "v1_result" }
+      { key: "v1_result", label: "Kết quả V1", width: "120px", type: "v1_result" },
+      { key: "notes", label: "Ghi chú", width: "180px" }
     ];
   }
   if (tab === "vong_2") {
@@ -557,7 +559,8 @@ const getColumnsForTab = (tab: string) => {
       { key: "v1_result", label: "KQ Vòng 1", width: "110px", type: "v1_result_readonly" },
       { key: "source", label: "Nguồn", width: "110px" },
       { key: "v2_interviewer", label: "Người PV V2", width: "130px" },
-      { key: "v2_result", label: "Kết quả V2", width: "120px", type: "v2_result" }
+      { key: "v2_result", label: "Kết quả V2", width: "120px", type: "v2_result" },
+      { key: "notes", label: "Ghi chú", width: "180px" }
     ];
   }
   // Thử việc
@@ -580,7 +583,8 @@ const getColumnsForTab = (tab: string) => {
     { key: "onboard_date", label: "ONBOARD", width: "110px" },
     { key: "probation_end_date", label: "Hết hạn TV", width: "110px" },
     { key: "probation_salary", label: "Mức lương TV", width: "120px" },
-    { key: "official_salary", label: "MỨC lương CT", width: "120px" }
+    { key: "official_salary", label: "MỨC lương CT", width: "120px" },
+    { key: "notes", label: "Ghi chú", width: "180px" }
   ];
 };
 

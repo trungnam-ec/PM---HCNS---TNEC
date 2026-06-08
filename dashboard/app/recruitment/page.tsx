@@ -729,7 +729,7 @@ export default function RecruitmentPage() {
       await handleUpdateCandidateFields(candidateId, updates);
     } else if (type === "probation_result") {
       const updates: any = { probation_result: value };
-      if (value === "ĐẠT") {
+      if (value === "NHẬN" || value === "ĐẠT") {
         updates.status = "hired";
       } else if (value === "TC") {
         updates.status = "rejected";
@@ -1772,7 +1772,7 @@ export default function RecruitmentPage() {
                                         onChange={(e) => handleDropdownChange(candidate.id, "probation_result", e.target.value)}
                                         disabled={!canManage}
                                         className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border-none outline-none ${
-                                          displayRes === "ĐẠT"
+                                          displayRes === "NHẬN" || displayRes === "ĐẠT"
                                             ? "bg-emerald-100 text-emerald-700"
                                             : displayRes === "TC"
                                             ? "bg-rose-600 text-white font-bold"
@@ -1780,7 +1780,7 @@ export default function RecruitmentPage() {
                                         } ${canManage ? "cursor-pointer" : "cursor-default opacity-85"}`}
                                       >
                                         <option value="Chờ nhận việc">Chờ nhận việc</option>
-                                        <option value="ĐẠT">ĐẠT</option>
+                                        <option value="NHẬN">NHẬN</option>
                                         <option value="TC">TC</option>
                                       </select>
                                     </td>

@@ -124,7 +124,7 @@ export async function fetchStats(): Promise<Stats> {
   const vong1 = data.filter(c => c.v1_result || ["screening", "interview", "offer", "hired"].includes(c.status)).length;
   const vong2 = data.filter(c => c.v2_result || ["interview", "offer", "hired"].includes(c.status)).length;
   const thuviec = data.filter(c => c.onboard_date || c.status === "hired").length;
-  const hd = data.filter(c => c.probation_result === "Đạt" || c.probation_result === "ĐẠT").length;
+  const hd = data.filter(c => c.probation_result === "Đạt" || c.probation_result === "ĐẠT" || c.probation_result === "Nhận" || c.probation_result === "NHẬN").length;
 
   const by_department: Record<string, number> = {};
   const by_month: Record<string, number> = {};

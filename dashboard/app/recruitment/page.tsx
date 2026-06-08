@@ -1440,29 +1440,55 @@ export default function RecruitmentPage() {
                       </div>
                     </div>
 
-                    <div className="h-56 relative flex items-center justify-center">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={funnelChartData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={0}
-                            outerRadius={100}
-                            paddingAngle={hasFunnelData ? 1 : 0}
-                            dataKey="value"
-                            stroke="none"
-                          >
-                            {funnelChartData.map((entry, index) => (
-                              <Cell
-                                key={`cell-${index}`}
-                                fill={hasFunnelData ? entry.color : PLACEHOLDER_COLOR}
-                              />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(value, name) => [hasFunnelData ? `${value} hồ sơ` : "0 hồ sơ", name]} />
-                        </PieChart>
-                      </ResponsiveContainer>
+                    <div className="flex flex-col sm:flex-row items-center gap-6">
+                      {/* Pie Chart (Pizza shape) */}
+                      <div className="w-full sm:w-1/2 h-48 relative flex items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={funnelChartData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={0}
+                              outerRadius={75}
+                              paddingAngle={hasFunnelData ? 1 : 0}
+                              dataKey="value"
+                            >
+                              {funnelChartData.map((entry, index) => (
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={hasFunnelData ? entry.color : PLACEHOLDER_COLOR}
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value, name) => [hasFunnelData ? `${value} hồ sơ` : "0 hồ sơ", name]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Legend & Detail List */}
+                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5 w-full">
+                        {funnelPieData.map((item) => {
+                          const hasData = item.value > 0;
+                          return (
+                            <div key={item.name} className="flex items-center justify-between text-xs font-semibold p-1.5 rounded-xl hover:bg-slate-50 transition-colors">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: item.color }}
+                                />
+                                <span className="text-slate-700 truncate">{item.name}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${hasData ? item.textClass : "text-slate-400 bg-slate-50"}`}>
+                                  {item.value} HS
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-medium w-8 text-right">{item.pct}%</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
 
@@ -1478,29 +1504,58 @@ export default function RecruitmentPage() {
                       </span>
                     </div>
 
-                    <div className="h-56 relative flex items-center justify-center">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={monthChartData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={0}
-                            outerRadius={100}
-                            paddingAngle={hasMonthData ? 1 : 0}
-                            dataKey="value"
-                            stroke="none"
-                          >
-                            {monthChartData.map((entry, index) => (
-                              <Cell
-                                key={`cell-${index}`}
-                                fill={hasMonthData ? entry.color : PLACEHOLDER_COLOR}
-                              />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(value, name) => [hasMonthData ? `${value} hồ sơ` : "0 hồ sơ", name]} />
-                        </PieChart>
-                      </ResponsiveContainer>
+                    <div className="flex flex-col sm:flex-row lg:flex-col items-center gap-6">
+                      {/* Pie Chart (Pizza shape) */}
+                      <div className="w-full sm:w-1/2 lg:w-full h-48 relative flex items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={monthChartData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={0}
+                              outerRadius={75}
+                              paddingAngle={hasMonthData ? 1 : 0}
+                              dataKey="value"
+                            >
+                              {monthChartData.map((entry, index) => (
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={hasMonthData ? entry.color : PLACEHOLDER_COLOR}
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value, name) => [hasMonthData ? `${value} hồ sơ` : "0 hồ sơ", name]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Legend & Detail List */}
+                      <div className="flex-1 lg:w-full space-y-2 w-full max-h-48 overflow-y-auto pr-1">
+                        {monthPieData.map((item) => {
+                          const hasData = item.value > 0;
+                          return (
+                            <div key={item.name} className="flex items-center justify-between text-xs font-semibold p-1 rounded-xl hover:bg-slate-50 transition-colors">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: item.color }}
+                                />
+                                <span className="text-slate-700 truncate">{item.name}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${hasData ? "text-blue-600 bg-blue-50" : "text-slate-400 bg-slate-50"}`}>
+                                  {item.value} HS
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-medium w-8 text-right">{item.pct}%</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {monthPieData.length === 0 && (
+                          <p className="text-slate-400 text-xs italic text-center py-4">Không có dữ liệu</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1519,29 +1574,60 @@ export default function RecruitmentPage() {
                       </span>
                     </div>
 
-                    <div className="h-56 relative flex items-center justify-center">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={officePieData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={0}
-                            outerRadius={100}
-                            paddingAngle={officeTotalHired > 0 ? 1 : 0}
-                            dataKey="value"
-                            stroke="none"
-                          >
-                            {officePieData.map((entry, index) => (
-                              <Cell
-                                key={`cell-${index}`}
-                                fill={officeTotalHired > 0 ? CHART_COLORS[index % CHART_COLORS.length] : PLACEHOLDER_COLOR}
-                              />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(value, name) => [officeTotalHired > 0 ? `${value} đã tuyển` : "0 nhân sự", name]} />
-                        </PieChart>
-                      </ResponsiveContainer>
+                    <div className="flex flex-col sm:flex-row items-center gap-6">
+                      {/* Pie Chart (Pizza shape) */}
+                      <div className="w-full sm:w-1/2 h-48 relative flex items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={officePieData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={0}
+                              outerRadius={75}
+                              paddingAngle={officeTotalHired > 0 ? 1 : 0}
+                              dataKey="value"
+                            >
+                              {officePieData.map((entry, index) => (
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={officeTotalHired > 0 ? CHART_COLORS[index % CHART_COLORS.length] : PLACEHOLDER_COLOR}
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value, name) => [officeTotalHired > 0 ? `${value} đã tuyển` : "0 nhân sự", name]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Legend & Detail List */}
+                      <div className="flex-1 space-y-2.5 w-full max-h-48 overflow-y-auto pr-1">
+                        {officeEntries.map(([dept, stats]) => {
+                          const hasHired = stats.hired > 0;
+                          const mappedIndex = officeChartData.findIndex(x => x.name === dept);
+                          const color = hasHired ? CHART_COLORS[mappedIndex % CHART_COLORS.length] : "#94A3B8";
+                          return (
+                            <div key={dept} className="flex items-center justify-between text-xs font-semibold">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span 
+                                  className="w-2.5 h-2.5 rounded-full shrink-0" 
+                                  style={{ backgroundColor: color }} 
+                                />
+                                <span className="text-slate-700 truncate">{dept}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${hasHired ? "text-emerald-600 bg-emerald-50" : "text-slate-400 bg-slate-50"}`}>
+                                  ✅ {stats.hired} đã tuyển
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-medium">({stats.total} HS)</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {officeEntries.length === 0 && (
+                          <p className="text-slate-400 text-xs italic text-center py-8">Không có dữ liệu phòng ban</p>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -1557,29 +1643,60 @@ export default function RecruitmentPage() {
                       </span>
                     </div>
 
-                    <div className="h-56 relative flex items-center justify-center">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={projectPieData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={0}
-                            outerRadius={100}
-                            paddingAngle={projectTotalHired > 0 ? 1 : 0}
-                            dataKey="value"
-                            stroke="none"
-                          >
-                            {projectPieData.map((entry, index) => (
-                              <Cell
-                                key={`cell-${index}`}
-                                fill={projectTotalHired > 0 ? CHART_COLORS[index % CHART_COLORS.length] : PLACEHOLDER_COLOR}
-                              />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(value, name) => [projectTotalHired > 0 ? `${value} đã tuyển` : "0 nhân sự", name]} />
-                        </PieChart>
-                      </ResponsiveContainer>
+                    <div className="flex flex-col sm:flex-row items-center gap-6">
+                      {/* Pie Chart (Pizza shape) */}
+                      <div className="w-full sm:w-1/2 h-48 relative flex items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={projectPieData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={0}
+                              outerRadius={75}
+                              paddingAngle={projectTotalHired > 0 ? 1 : 0}
+                              dataKey="value"
+                            >
+                              {projectPieData.map((entry, index) => (
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={projectTotalHired > 0 ? CHART_COLORS[index % CHART_COLORS.length] : PLACEHOLDER_COLOR}
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value, name) => [projectTotalHired > 0 ? `${value} đã tuyển` : "0 nhân sự", name]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Legend & Detail List */}
+                      <div className="flex-1 space-y-2.5 w-full max-h-48 overflow-y-auto pr-1">
+                        {projectEntries.map(([dept, stats]) => {
+                          const hasHired = stats.hired > 0;
+                          const mappedIndex = projectChartData.findIndex(x => x.name === dept);
+                          const color = hasHired ? CHART_COLORS[mappedIndex % CHART_COLORS.length] : "#94A3B8";
+                          return (
+                            <div key={dept} className="flex items-center justify-between text-xs font-semibold">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span 
+                                  className="w-2.5 h-2.5 rounded-full shrink-0" 
+                                  style={{ backgroundColor: color }} 
+                                />
+                                <span className="text-slate-700 truncate">{dept}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${hasHired ? "text-emerald-600 bg-emerald-50" : "text-slate-400 bg-slate-50"}`}>
+                                  ✅ {stats.hired} đã tuyển
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-medium">({stats.total} HS)</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {projectEntries.length === 0 && (
+                          <p className="text-slate-400 text-xs italic text-center py-8">Không có dữ liệu dự án</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

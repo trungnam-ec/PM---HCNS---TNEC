@@ -618,7 +618,6 @@ const getColumnsForTab = (tab: string) => {
 export default function RecruitmentPage() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "table_view" | "scorer" | "settings">("dashboard");
   const [tableSubTab, setTableSubTab] = useState<"tong_hop" | "vong_1" | "vong_2" | "thu_viec">("tong_hop");
-  const [deptTab, setDeptTab] = useState<"office" | "project">("office");
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -1292,8 +1291,8 @@ export default function RecruitmentPage() {
             const deptEntries = Object.entries(byDept).sort((a, b) => b[1].total - a[1].total);
             const officeEntries = deptEntries.filter(([dept]) => !isProjectBlock(dept));
             const projectEntries = deptEntries.filter(([dept]) => isProjectBlock(dept));
-            const activeDeptEntries = deptTab === "office" ? officeEntries : projectEntries;
-            const maxDeptTotal = Math.max(...activeDeptEntries.map(([, v]) => v.total), 1);
+            const maxOfficeTotal = Math.max(...officeEntries.map(([, v]) => v.total), 1);
+            const maxProjectTotal = Math.max(...projectEntries.map(([, v]) => v.total), 1);
 
             const bySource: Record<string, number> = {};
             candidates.forEach(c => {
@@ -1428,76 +1427,94 @@ export default function RecruitmentPage() {
                   </div>
                 </div>
 
-                {/* By Department + By Source */}
+                {/* Row 2: Office Block vs Project Block side-by-side */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Left: Office Block */}
                   <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div>
-                        <h3 className="font-heading font-bold text-slate-800 text-sm">Theo Phòng Ban</h3>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Số lượng ứng viên & tỉ lệ tuyển dụng</p>
-                      </div>
-                      
-                      {/* Tabs for Office / Project */}
-                      <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 w-fit shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setDeptTab("office")}
-                          className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
-                            deptTab === "office"
-                              ? "bg-white text-[#005BAC] shadow-sm"
-                              : "text-slate-500 hover:text-slate-800"
-                          }`}
-                        >
-                          Khối Văn Phòng ({officeEntries.reduce((sum, [, v]) => sum + v.total, 0)})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeptTab("project")}
-                          className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
-                            deptTab === "project"
-                              ? "bg-white text-[#005BAC] shadow-sm"
-                              : "text-slate-500 hover:text-slate-800"
-                          }`}
-                        >
-                          Khối Dự án ({projectEntries.reduce((sum, [, v]) => sum + v.total, 0)})
-                        </button>
-                      </div>
+                    <div>
+                      <h3 className="font-heading font-bold text-slate-800 text-sm">Khối Văn Phòng</h3>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Phân tích tuyển dụng các phòng ban văn phòng</p>
                     </div>
 
-                    <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
-                      {activeDeptEntries.map(([dept, stats]) => (
-                        <div key={dept} className="space-y-1">
+                    <div className="space-y-3.5 max-h-80 overflow-y-auto pr-1">
+                      {officeEntries.map(([dept, stats]) => (
+                        <div key={dept} className="space-y-1.5">
                           <div className="flex items-center justify-between text-xs">
                             <span className="font-bold text-slate-700">{dept}</span>
-                            <div className="flex items-center gap-3">
-                              <span className="text-slate-400">{stats.total} UV</span>
-                              <span className="text-emerald-600 font-bold">✅ {stats.hired}</span>
-                              <span className="text-blue-500 font-bold">🎯 {stats.interview}</span>
-                              <span className="text-rose-400 font-bold">❌ {stats.rejected}</span>
+                            <div className="flex items-center gap-2 text-[10px] font-bold">
+                              <span className="text-slate-400">{stats.total} hồ sơ</span>
+                              <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">✅ {stats.hired} đã tuyển</span>
+                              <span className="text-blue-500 bg-blue-50 px-2 py-0.5 rounded-md">🎯 {stats.interview} PV</span>
+                              {stats.rejected > 0 && <span className="text-rose-500 bg-rose-50 px-2 py-0.5 rounded-md">❌ {stats.rejected}</span>}
                             </div>
                           </div>
                           <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden flex gap-0.5">
-                            <div className="h-full bg-emerald-400 transition-all rounded-l-full" style={{ width: `${Math.round((stats.hired / maxDeptTotal) * 100)}%` }} />
-                            <div className="h-full bg-blue-400 transition-all" style={{ width: `${Math.round((stats.interview / maxDeptTotal) * 100)}%` }} />
-                            <div className="h-full bg-slate-200 transition-all" style={{ width: `${Math.round(((stats.total - stats.hired - stats.interview - stats.rejected) / maxDeptTotal) * 100)}%` }} />
-                            <div className="h-full bg-rose-300 transition-all rounded-r-full" style={{ width: `${Math.round((stats.rejected / maxDeptTotal) * 100)}%` }} />
+                            <div className="h-full bg-emerald-400 transition-all rounded-l-full" style={{ width: `${Math.round((stats.hired / maxOfficeTotal) * 100)}%` }} />
+                            <div className="h-full bg-blue-400 transition-all" style={{ width: `${Math.round((stats.interview / maxOfficeTotal) * 100)}%` }} />
+                            <div className="h-full bg-slate-200 transition-all" style={{ width: `${Math.round(((stats.total - stats.hired - stats.interview - stats.rejected) / maxOfficeTotal) * 100)}%` }} />
+                            <div className="h-full bg-rose-300 transition-all rounded-r-full" style={{ width: `${Math.round((stats.rejected / maxOfficeTotal) * 100)}%` }} />
                           </div>
                         </div>
                       ))}
-                      {activeDeptEntries.length === 0 && (
-                        <p className="text-slate-400 text-xs italic text-center py-8">Không có dữ liệu phòng ban nào</p>
+                      {officeEntries.length === 0 && (
+                        <p className="text-slate-400 text-xs italic text-center py-8">Không có dữ liệu phòng ban</p>
                       )}
                     </div>
 
                     {/* Legend */}
-                    <div className="flex items-center gap-4 text-xs font-semibold pt-2 border-t border-slate-100">
-                      <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-400 inline-block" /> Đã tuyển</span>
-                      <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-400 inline-block" /> Phỏng vấn</span>
-                      <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-slate-200 inline-block" /> Đang xét</span>
-                      <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-rose-300 inline-block" /> Từ chối</span>
+                    <div className="flex items-center gap-4 text-[10px] font-bold pt-2 border-t border-slate-100/60 text-slate-500">
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" /> Đã tuyển</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-400 inline-block" /> Phỏng vấn</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-slate-200 inline-block" /> Đang xét</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-rose-300 inline-block" /> Từ chối</span>
                     </div>
                   </div>
 
+                  {/* Right: Project Block */}
+                  <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
+                    <div>
+                      <h3 className="font-heading font-bold text-slate-800 text-sm">Khối Dự Án</h3>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Phân tích tuyển dụng các ban quản lý dự án & công trường</p>
+                    </div>
+
+                    <div className="space-y-3.5 max-h-80 overflow-y-auto pr-1">
+                      {projectEntries.map(([dept, stats]) => (
+                        <div key={dept} className="space-y-1.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-bold text-slate-700">{dept}</span>
+                            <div className="flex items-center gap-2 text-[10px] font-bold">
+                              <span className="text-slate-400">{stats.total} hồ sơ</span>
+                              <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">✅ {stats.hired} đã tuyển</span>
+                              <span className="text-blue-500 bg-blue-50 px-2 py-0.5 rounded-md">🎯 {stats.interview} PV</span>
+                              {stats.rejected > 0 && <span className="text-rose-500 bg-rose-50 px-2 py-0.5 rounded-md">❌ {stats.rejected}</span>}
+                            </div>
+                          </div>
+                          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden flex gap-0.5">
+                            <div className="h-full bg-emerald-400 transition-all rounded-l-full" style={{ width: `${Math.round((stats.hired / maxProjectTotal) * 100)}%` }} />
+                            <div className="h-full bg-blue-400 transition-all" style={{ width: `${Math.round((stats.interview / maxProjectTotal) * 100)}%` }} />
+                            <div className="h-full bg-slate-200 transition-all" style={{ width: `${Math.round(((stats.total - stats.hired - stats.interview - stats.rejected) / maxProjectTotal) * 100)}%` }} />
+                            <div className="h-full bg-rose-300 transition-all rounded-r-full" style={{ width: `${Math.round((stats.rejected / maxProjectTotal) * 100)}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                      {projectEntries.length === 0 && (
+                        <p className="text-slate-400 text-xs italic text-center py-8">Không có dữ liệu dự án</p>
+                      )}
+                    </div>
+
+                    {/* Legend */}
+                    <div className="flex items-center gap-4 text-[10px] font-bold pt-2 border-t border-slate-100/60 text-slate-500">
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" /> Đã tuyển</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-400 inline-block" /> Phỏng vấn</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-slate-200 inline-block" /> Đang xét</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-rose-300 inline-block" /> Từ chối</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Row 3: Candidate Source & Highlight Spotlight Units */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Left: By Candidate Source */}
                   <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
                     <div>
                       <h3 className="font-heading font-bold text-slate-800 text-sm">Theo Nguồn Ứng Viên</h3>
@@ -1534,19 +1551,28 @@ export default function RecruitmentPage() {
                         );
                       })}
                     </div>
-                    {/* Highlight boxes - larger text */}
-                    <div className="pt-3 border-t border-slate-100 grid grid-cols-2 gap-3">
-                      <div className="bg-blue-50 rounded-xl p-4 text-center">
-                        <p className="text-xs font-semibold text-blue-500 uppercase">Phòng nhiều UV nhất</p>
-                        <p className="text-base font-extrabold text-blue-700 mt-1 leading-tight">{deptEntries[0]?.[0] || "—"}</p>
-                        <p className="text-xs text-blue-500 mt-0.5">{deptEntries[0]?.[1].total || 0} ứng viên</p>
+                  </div>
+
+                  {/* Right: Spotlight Units */}
+                  <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4 flex flex-col justify-between">
+                    <div>
+                      <h3 className="font-heading font-bold text-slate-800 text-sm">Đơn vị & Bộ phận nổi bật</h3>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Các điểm sáng trong công tác thu hút nhân tài</p>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4 flex-1 items-center">
+                      <div className="bg-blue-50/60 border border-blue-100 rounded-2xl p-5 text-center shadow-sm">
+                        <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Phòng nhiều UV nhất</p>
+                        <p className="text-sm font-extrabold text-blue-800 mt-2 leading-snug">{deptEntries[0]?.[0] || "—"}</p>
+                        <p className="text-[11px] text-blue-550 font-bold mt-1">{deptEntries[0]?.[1].total || 0} ứng viên</p>
                       </div>
-                      <div className="bg-emerald-50 rounded-xl p-4 text-center">
-                        <p className="text-xs font-semibold text-emerald-500 uppercase">Phòng tuyển được nhiều</p>
-                        <p className="text-base font-extrabold text-emerald-700 mt-1 leading-tight">
+                      
+                      <div className="bg-emerald-50/60 border border-emerald-100 rounded-2xl p-5 text-center shadow-sm">
+                        <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Phòng tuyển được nhiều</p>
+                        <p className="text-sm font-extrabold text-emerald-800 mt-2 leading-snug">
                           {[...deptEntries].sort((a, b) => b[1].hired - a[1].hired)[0]?.[0] || "—"}
                         </p>
-                        <p className="text-xs text-emerald-500 mt-0.5">{[...deptEntries].sort((a, b) => b[1].hired - a[1].hired)[0]?.[1].hired || 0} đã tuyển</p>
+                        <p className="text-[11px] text-emerald-550 font-bold mt-1">{[...deptEntries].sort((a, b) => b[1].hired - a[1].hired)[0]?.[1].hired || 0} đã tuyển</p>
                       </div>
                     </div>
                   </div>

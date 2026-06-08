@@ -526,7 +526,28 @@ const normalizeDepartment = (dept: string): string => {
 
 const isProjectBlock = (deptName: string): boolean => {
   const name = (deptName || "").trim().toUpperCase();
-  return name.startsWith("DA.") || name.startsWith("DA ") || name.startsWith("DỰ ÁN") || name.startsWith("DA");
+  
+  // Direct project indicators (DA., DA , DỰ ÁN, DA)
+  if (
+    name.startsWith("DA.") || 
+    name.startsWith("DA ") || 
+    name.startsWith("DỰ ÁN") || 
+    name.startsWith("DA") ||
+    name.includes("DỰ ÁN") ||
+    name.includes("CÔNG TRƯỜNG") ||
+    name.includes("BAN ĐIỀU HÀNH") ||
+    name.includes("BDH")
+  ) {
+    return true;
+  }
+  
+  // Specific project keywords/names (RXT, Vàm Lẽo, Mã Đà, Trà Vinh, Thường Phước, Tỉnh Lộ 8, Chống Hạn, Tây Ninh, ĐMT)
+  const projectKeywords = [
+    "VÀM LẼO", "RXT", "RẠCH XUYÊN TÂM", "MÃ ĐÀ", "TRÀ VINH", 
+    "THƯỜNG PHƯỚC", "TỈNH LỘ", "CHỐNG HẠN", "TÂY NINH", "ĐMT"
+  ];
+  
+  return projectKeywords.some(keyword => name.includes(keyword));
 };
 
 

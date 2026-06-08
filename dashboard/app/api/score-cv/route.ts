@@ -131,21 +131,32 @@ Khi JD hoặc vị trí ứng tuyển liên quan đến "Trợ lý Giám đốc"
 ━━━ QUY TẮC CHẤM ĐIỂM (score) ━━━
 Bước 1: Phân tích JD → xác định đây có phải vị trí "Trợ lý Giám đốc ngành xây dựng" không.
   - Nếu CÓ → áp dụng bộ tiêu chí ĐẶC THÙ NGÀNH ở trên.
-  - Nếu KHÔNG → dùng Top 5 Hard Skills bắt buộc từ JD như thông thường.
-Bước 2: Quét toàn bộ CV (không chỉ phần "Kỹ năng") để tìm bằng chứng kỹ năng thực tế.
-  - Ưu tiên kỹ năng được chứng minh qua kinh nghiệm làm việc.
-Bước 3: Tính điểm (cho vị trí Trợ lý GĐ ngành xây dựng):
-  - Kỹ năng văn phòng & tổng hợp (Tối đa 30 điểm)
-  - Hiểu biết & kinh nghiệm ngành xây dựng (Tối đa 25 điểm)
-  - Kinh nghiệm trợ lý / thư ký (Tối đa 25 điểm)
-  - Soft skills & ưu tiên (Tối đa 20 điểm)
-Bước 4: Phạt điểm:
-  - -20 nếu không có bằng CĐ/ĐH
-  - -15 nếu không có kinh nghiệm văn phòng hoặc tổng hợp báo cáo
-  - -10 nếu chưa từng làm trong môi trường doanh nghiệp (mới ra trường hoàn toàn, không có KN liên quan)
+  - Nếu KHÔNG → áp dụng bộ tiêu chí CHUNG cho các vị trí khác (Hành chính, Nhân sự, Kế toán, Kỹ sư, v.v.) dựa trên yêu cầu trong JD.
+Bước 2: Quét toàn bộ CV (không chỉ phần "Kỹ năng") để tìm bằng chứng kỹ năng và kinh nghiệm thực tế.
+  - Ưu tiên các kỹ năng được chứng minh qua lịch sử kinh nghiệm làm việc thực tế, không chỉ liệt kê từ khóa.
+Bước 3: Tính điểm:
+  * Trường hợp 1: Nếu là vị trí Trợ lý GĐ ngành xây dựng:
+    - Kỹ năng văn phòng & tổng hợp (Max 30): Word/Excel/PPT + báo cáo + điều phối.
+    - Hiểu biết & kinh nghiệm ngành xây dựng (Max 25): từng làm ở DN xây dựng / quen quy trình dự án.
+    - Kinh nghiệm trợ lý / thư ký (Max 25): số năm & vị trí phù hợp.
+    - Soft skills & ưu tiên (Max 20): giới tính, tuổi, tiếng Anh, công tác, AI tools.
+  * Trường hợp 2: Đối với các vị trí tuyển dụng thông thường khác (như Hành chính, Nhân sự, Kế toán, Kỹ sư...):
+    - Kinh nghiệm làm việc liên quan (Max 40): Số năm làm việc và độ tương thích với vị trí trong JD (Ví dụ: ứng viên có trên 3 năm kinh nghiệm làm hành chính/nhân sự đúng như JD yêu cầu sẽ nhận 35-40 điểm).
+    - Kỹ năng chuyên môn / Hard Skills (Max 25): Mức độ tương thích giữa kỹ năng trong CV với các yêu cầu kỹ thuật/nghiệp vụ cụ thể trong JD (Ví dụ: đặt vé, quản lý thiết bị văn phòng, điều phối xe, lưu trữ hồ sơ, xử lý chứng từ thanh toán).
+    - Học vấn / Bằng cấp (Max 15): Trình độ bằng cấp và chuyên ngành có phù hợp với vị trí ứng tuyển.
+    - Kỹ năng mềm & Công cụ văn phòng (Max 20): Word, Excel, PowerPoint, giao tiếp, ngoại ngữ, công cụ AI.
+Bước 4: Phạt điểm (áp dụng chung):
+  - -20 nếu không đạt yêu cầu bằng cấp tối thiểu ghi trong JD.
+  - -15 nếu không có kỹ năng làm việc hoặc kinh nghiệm liên quan cơ bản nào.
+  - -10 nếu là sinh viên mới ra trường ứng tuyển vào vị trí yêu cầu kinh nghiệm.
 
-ĐIỂM CUỐI CÙNG = (Kỹ năng văn phòng & tổng hợp) + (Hiểu biết & kinh nghiệm xây dựng) + (Kinh nghiệm trợ lý/thư ký) + (Soft skills & ưu tiên) - Phạt (Không âm).
+ĐIỂM CUỐI CÙNG = (Kinh nghiệm) + (Kỹ năng) + (Học vấn) + (Soft skills) - Phạt (Không âm).
 Nếu score >= 70 → Trạng thái = "PASS CV", ngược lại = "FAIL".
+
+━━━ TÍNH NHẤT QUÁN & ĐỊNH HÌNH ĐIỂM SỐ (Consistency & Determinism) ━━━
+- Quá trình chấm điểm phải tuyệt đối KHÁCH QUAN, ĐỒNG NHẤT và KHÔNG ĐƯỢC phép thay đổi kết quả ngẫu nhiên giữa các lần chấm.
+- Với cùng một hồ sơ CV và mô tả công việc JD, bạn bắt buộc phải tính toán ra số điểm giống nhau 100% trong mọi lần chạy (ví dụ chấm 10 lần đều phải ra cùng một số điểm).
+- Thực hiện cộng/trừ điểm một cách cơ học và toán học chuẩn xác theo đúng khung tiêu chí đã quy định, không được tự ý nâng/hạ điểm số dựa trên cảm tính.
 
 ━━━ ĐỐI CHIẾU CHI TIẾT JD VS CV (YÊU CẦU BẮT BUỘC) ━━━
 Trích xuất song song yêu cầu tiêu chuẩn tuyển dụng từ JD và bằng chứng tìm thấy trong CV để phục vụ đối chiếu chi tiết:
@@ -193,22 +204,22 @@ Trả về duy nhất định dạng JSON sau (không kèm lời dẫn, không b
   "score_breakdown": {
     "kinh_nghiem": {
       "diem": 0,
-      "toi_da": 25,
-      "ly_do": "Kinh nghiệm làm trợ lý/thư ký: X/25đ. [Trích dẫn: \\\"...\\\"]"
+      "toi_da": 25, // Điền 25 nếu là Trường hợp 1 (Trợ lý GĐ), hoặc 40 nếu là Trường hợp 2 (vị trí khác)
+      "ly_do": "Kinh nghiệm làm việc: X/25đ hoặc X/40đ. [Trích dẫn: \\\"...\\\"]"
     },
     "ky_nang": {
       "diem": 0,
-      "toi_da": 30,
-      "ly_do": "Kỹ năng văn phòng & tổng hợp: X/30đ. [Trích dẫn: \\\"...\\\"]"
+      "toi_da": 30, // Điền 30 nếu là Trường hợp 1 (Trợ lý GĐ), hoặc 25 nếu là Trường hợp 2 (vị trí khác)
+      "ly_do": "Kỹ năng chuyên môn/văn phòng: X/30đ hoặc X/25đ. [Trích dẫn: \\\"...\\\"]"
     },
     "hoc_van": {
       "diem": 0,
-      "toi_da": 25,
-      "ly_do": "Hiểu biết & kinh nghiệm ngành xây dựng: X/25đ. [Trích dẫn: \\\"...\\\"]"
+      "toi_da": 25, // Điền 25 nếu là Trường hợp 1 (Trợ lý GĐ), hoặc 15 nếu là Trường hợp 2 (vị trí khác)
+      "ly_do": "Học vấn / hiểu biết ngành: X/25đ hoặc X/15đ. [Trích dẫn: \\\"...\\\"]"
     },
     "soft_skill": {
       "diem": 0,
-      "toi_da": 20,
+      "toi_da": 20, // Điền 20 cho cả hai trường hợp
       "ly_do": "Soft skills & ưu tiên: X/20đ. [Trích dẫn: \\\"...\\\"]"
     },
     "phat": {
@@ -304,6 +315,7 @@ export async function POST(req: NextRequest) {
             ],
           }],
           text: { format: { type: "json_object" } },
+          temperature: 0,
         });
         const rawJson = response.output_text || "{}";
         const data = JSON.parse(rawJson);
@@ -366,6 +378,7 @@ export async function POST(req: NextRequest) {
       model,
       messages,
       temperature: 0,
+      seed: 42,
       response_format: { type: "json_object" },
     });
 

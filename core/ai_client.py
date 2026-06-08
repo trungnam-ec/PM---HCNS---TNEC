@@ -180,6 +180,11 @@ Bước 4: Phạt điểm (áp dụng chung):
   - -10 nếu là sinh viên mới ra trường ứng tuyển vào vị trí yêu cầu kinh nghiệm.
 Bước 5: Nếu score >= 70 → Trạng thái = "PASS CV", ngược lại = "FAIL".
 
+━━━ TÍNH NHẤT QUÁN & ĐỊNH HÌNH ĐIỂM SỐ (Consistency & Determinism) ━━━
+- Quá trình chấm điểm phải tuyệt đối KHÁCH QUAN, ĐỒNG NHẤT và KHÔNG ĐƯỢC phép thay đổi kết quả ngẫu nhiên giữa các lần chấm.
+- Với cùng một hồ sơ CV và mô tả công việc JD, bạn bắt buộc phải tính toán ra số điểm giống nhau 100% trong mọi lần chạy (ví dụ chấm 10 lần đều phải ra cùng một số điểm).
+- Thực hiện cộng/trừ điểm một cách cơ học và toán học chuẩn xác theo đúng khung tiêu chí đã quy định, không được tự ý nâng/hạ điểm số dựa trên cảm tính.
+
 ━━━ OUTPUT FORMAT (JSON ONLY) ━━━
 {{
   "extracted_info": {{

@@ -8,7 +8,6 @@ import {
   Calculator,
   Building2,
   FileText,
-  TrendingUp,
   Settings,
   Briefcase,
   Users,
@@ -24,7 +23,6 @@ const NAV_ITEMS = [
   { label: "Lương & Phúc lợi (C&B)", href: "/cb", icon: Calculator },
   { label: "Hành chính & Tài sản", href: "/administration", icon: Building2 },
   { label: "Văn Thư", href: "/document-control", icon: FileText },
-  { label: "Báo cáo & Phân tích", href: "/reports", icon: TrendingUp },
   { label: "Cài đặt hệ thống", href: "/settings", icon: Settings },
 ];
 

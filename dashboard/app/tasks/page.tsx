@@ -37,6 +37,47 @@ const COLUMNS = [
   { id: "completed", title: "Đã hoàn thành", color: "border-t-emerald-500" },
 ];
 
+const getCardStyles = (status: string) => {
+  switch (status) {
+    case "planning":
+      return {
+        bg: "bg-gradient-to-br from-slate-50/90 to-slate-100/40 border-slate-200/60 border-l-4 border-l-slate-400",
+        title: "text-slate-800",
+        shadow: "shadow-sm hover:shadow-md hover:shadow-slate-200/40",
+      };
+    case "in_progress":
+      return {
+        bg: "bg-gradient-to-br from-blue-50/60 to-sky-50/20 border-blue-200/45 border-l-4 border-l-blue-500",
+        title: "text-blue-950",
+        shadow: "shadow-sm shadow-blue-500/5 hover:shadow-md hover:shadow-blue-500/10",
+      };
+    case "pending_approval":
+      return {
+        bg: "bg-gradient-to-br from-purple-50/60 to-fuchsia-50/20 border-purple-200/45 border-l-4 border-l-purple-500",
+        title: "text-purple-950",
+        shadow: "shadow-sm shadow-purple-500/5 hover:shadow-md hover:shadow-purple-500/10",
+      };
+    case "need_revision":
+      return {
+        bg: "bg-gradient-to-br from-rose-50/65 to-pink-50/20 border-rose-200/45 border-l-4 border-l-rose-500",
+        title: "text-rose-950",
+        shadow: "shadow-sm shadow-rose-500/5 hover:shadow-md hover:shadow-rose-500/10",
+      };
+    case "completed":
+      return {
+        bg: "bg-gradient-to-br from-emerald-50/60 to-teal-50/20 border-emerald-200/45 border-l-4 border-l-emerald-500",
+        title: "text-emerald-950",
+        shadow: "shadow-sm shadow-emerald-500/5 hover:shadow-md hover:shadow-emerald-500/10",
+      };
+    default:
+      return {
+        bg: "bg-white border-slate-200/40 border-l-4 border-l-slate-400",
+        title: "text-slate-800",
+        shadow: "shadow-sm",
+      };
+  }
+};
+
 export default function TaskManagementPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -460,53 +501,59 @@ export default function TaskManagementPage() {
 
                     {/* Task Cards */}
                     <div className="space-y-3 flex-1">
-                      {colTasks.map((task) => (
-                        <div
-                          key={task.id}
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, task.id)}
-                          className="glass rounded-xl p-4 bg-white hover-elevate border border-slate-200/40 flex flex-col justify-between h-36 cursor-grab active:cursor-grabbing relative group"
-                        >
-                          <div className="space-y-1.5">
-                            <div className="flex items-center justify-between">
-                              <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md ${
-                                task.priority === "Cao" ? "bg-rose-100 text-rose-700" :
-                                task.priority === "Trung bình" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
-                              }`}>
-                                {task.priority}
-                              </span>
-                              {(canManageTasks || (currentUser && (task.assignee.toLowerCase().includes(currentUser.name.toLowerCase()) || currentUser.name.toLowerCase().includes(task.assignee.toLowerCase())))) && (
-                                <button 
-                                  onClick={() => handleDeleteTask(task.id)}
-                                  className="text-slate-350 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  <X size={12} />
-                                </button>
-                              )}
-                            </div>
-                            <p className="text-slate-800 font-heading font-semibold text-xs leading-snug line-clamp-2">{task.title}</p>
-                          </div>
-
-                          <div className="space-y-2 pt-2 border-t border-slate-100">
-                            {/* Assignee & Progress */}
-                            <div className="flex items-center justify-between text-[9px] text-slate-400">
-                              <span className="flex items-center gap-1 font-semibold text-slate-500"><User size={10} /> {task.assignee}</span>
-                              <span className="font-bold text-blue-600">{task.progress}%</span>
+                      {colTasks.map((task) => {
+                        const cardStyle = getCardStyles(task.status);
+                        return (
+                          <div
+                            key={task.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, task.id)}
+                            className={`rounded-xl p-4 transition-all duration-300 hover:scale-[1.015] hover:-translate-y-0.5 border flex flex-col justify-between h-36 cursor-grab active:cursor-grabbing relative group ${cardStyle.bg} ${cardStyle.shadow}`}
+                          >
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className={`text-[8px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                                  task.priority === "Cao" ? "bg-rose-600 text-white shadow-sm shadow-rose-500/20" :
+                                  task.priority === "Trung bình" ? "bg-amber-500 text-white shadow-sm shadow-amber-500/20" : 
+                                  "bg-blue-500 text-white shadow-sm shadow-blue-500/20"
+                                }`}>
+                                  {task.priority}
+                                </span>
+                                {(canManageTasks || (currentUser && (task.assignee.toLowerCase().includes(currentUser.name.toLowerCase()) || currentUser.name.toLowerCase().includes(task.assignee.toLowerCase())))) && (
+                                  <button 
+                                    onClick={() => handleDeleteTask(task.id)}
+                                    className="text-slate-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity bg-white/60 p-0.5 rounded-full shadow-sm hover:scale-105 active:scale-95 transition-all"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                )}
+                              </div>
+                              <p className={`font-heading font-bold text-xs leading-snug line-clamp-2 ${cardStyle.title}`}>{task.title}</p>
                             </div>
 
-                            {/* Footer Info */}
-                            <div className="flex items-center justify-between text-[9px] text-slate-400 font-semibold">
-                              <span className="flex items-center gap-0.5">
-                                <Calendar size={10} /> {task.due_date ? new Date(task.due_date).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit' }) : "Không hạn"}
-                              </span>
-                              <div className="flex items-center gap-1.5">
-                                {task.attachments > 0 && <span className="flex items-center gap-0.5"><Paperclip size={10} /> {task.attachments}</span>}
-                                {task.comments > 0 && <span className="flex items-center gap-0.5"><MessageSquare size={10} /> {task.comments}</span>}
+                            <div className="space-y-2 pt-2 border-t border-slate-200/40">
+                              {/* Assignee & Progress */}
+                              <div className="flex items-center justify-between text-[9px]">
+                                <span className="flex items-center gap-1 font-extrabold text-slate-700">
+                                  <User size={10} className="opacity-70" /> {task.assignee}
+                                </span>
+                                <span className="font-extrabold text-slate-800">{task.progress}%</span>
+                              </div>
+
+                              {/* Footer Info */}
+                              <div className="flex items-center justify-between text-[9px] text-slate-500 font-bold">
+                                <span className="flex items-center gap-0.5">
+                                  <Calendar size={10} className="opacity-75" /> {task.due_date ? new Date(task.due_date).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit' }) : "Không hạn"}
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  {task.attachments > 0 && <span className="flex items-center gap-0.5"><Paperclip size={10} /> {task.attachments}</span>}
+                                  {task.comments > 0 && <span className="flex items-center gap-0.5"><MessageSquare size={10} /> {task.comments}</span>}
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                       {colTasks.length === 0 && (
                         <div className="h-32 border-2 border-dashed border-slate-200/50 rounded-xl flex items-center justify-center text-slate-300 text-xs italic">
                           Kéo thả vào đây

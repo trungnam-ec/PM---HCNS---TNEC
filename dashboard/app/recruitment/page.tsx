@@ -73,7 +73,7 @@ type FileItem = { file: File; id: string };
 const NGUON_OPTIONS = ["TopCV", "LinkedIn", "Email", "Referral", "Nội bộ", "Khác"];
 
 const DEPT_OPTIONS = [
-  "P. HCNS",
+  "Phòng Hành Chính Nhân Sự",
   "P. TÀI CHÍNH KẾ TOÁN",
   "P. VẬT TƯ THIẾT BỊ",
   "P. THỊ TRƯỜNG",

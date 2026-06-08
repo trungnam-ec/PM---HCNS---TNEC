@@ -1121,6 +1121,66 @@ export default function RecruitmentPage() {
     }
   };
 
+  // Add Blank Candidate Row (Dòng điền tay)
+  const handleAddBlankRow = async () => {
+    if (!canManage) {
+      alert("Bạn không có quyền thực hiện thao tác này.");
+      return;
+    }
+    
+    // Calculate next STT
+    const maxStt = candidates.reduce((max, c) => ((c.stt || 0) > max ? (c.stt || 0) : max), 0);
+    const nextStt = maxStt + 1;
+    
+    // Determine initial values based on current table sub-tab
+    let initialStatus = "new";
+    let initialV1Result = null;
+    let initialV2Result = null;
+    let initialOnboardDate = null;
+    let initialV1Date = null;
+    
+    if (tableSubTab === "vong_1") {
+      initialStatus = "screening";
+      initialV1Date = new Date().toLocaleDateString('sv-SE');
+    } else if (tableSubTab === "vong_2") {
+      initialStatus = "interview";
+      initialV1Result = "ĐẠT";
+      initialV1Date = new Date().toLocaleDateString('sv-SE');
+    } else if (tableSubTab === "thu_viec") {
+      initialStatus = "hired";
+      initialV1Result = "ĐẠT";
+      initialV2Result = "ĐẠT";
+      initialV1Date = new Date().toLocaleDateString('sv-SE');
+      initialOnboardDate = new Date().toLocaleDateString('sv-SE');
+    }
+    
+    try {
+      const { error } = await supabase
+        .from("candidates")
+        .insert([{
+          stt: nextStt,
+          name: "Nhập tên...",
+          role: "Nhập vị trí...",
+          status: initialStatus,
+          v1_result: initialV1Result,
+          v2_result: initialV2Result,
+          onboard_date: initialOnboardDate,
+          created_at: new Date().toISOString(),
+          v1_date: initialV1Date,
+          ai_score: 0,
+          reviewer: "Tự tạo"
+        }]);
+        
+      if (error) throw error;
+      
+      // Refresh candidates list
+      await fetchCandidates();
+    } catch (err) {
+      console.error("Error inserting blank row:", err);
+      alert("Lỗi khi thêm dòng trống!");
+    }
+  };
+
   // Delete Candidate
   const handleDeleteCandidate = async (id: string) => {
     if (!canManage) {
@@ -1622,12 +1682,20 @@ export default function RecruitmentPage() {
                     Tải lại
                   </button>
                   {canManage && (
-                    <button 
-                      onClick={() => setIsAddOpen(true)}
-                      className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 shadow"
-                    >
-                      <Plus size={14} /> Thêm ứng viên
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => setIsAddOpen(true)}
+                        className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 shadow"
+                      >
+                        <Plus size={14} /> Thêm ứng viên
+                      </button>
+                      <button 
+                        onClick={handleAddBlankRow}
+                        className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 border border-slate-200/80 shadow-sm"
+                      >
+                        <Plus size={14} /> Thêm dòng trống
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

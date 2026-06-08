@@ -12,6 +12,8 @@ function onOpen() {
     .addItem('Đồng bộ PASS CV ➔ Vòng 1', 'syncPassCvToVong1')
     .addItem('Đồng bộ Đạt V1 ➔ Vòng 2', 'syncDatToVong2')
     .addItem('Đồng bộ Đạt V2 ➔ Thử việc', 'syncDatToThuViec')
+    .addSeparator()
+    .addItem('🧹 Xóa sạch dữ liệu 4 sheet', 'uiClearAllSheetsData')
     .addToUi();
 }
 
@@ -203,6 +205,20 @@ function doPost(e) {
         }
       }
       return response({ success: false });
+    }
+
+    if (action === "clear_all") {
+      var wsTH = _getSheet(ss, TAB_TONGHOP);
+      var wsV1 = _getSheet(ss, TAB_VONG1);
+      var wsV2 = _getSheet(ss, TAB_VONG2);
+      var wsTV = _getSheet(ss, TAB_THUVIEC);
+
+      if (wsTH) _clearSheet(wsTH, HEADER_TONGHOP);
+      if (wsV1) _clearSheet(wsV1, HEADER_VONG1);
+      if (wsV2) _clearSheet(wsV2, HEADER_VONG2);
+      if (wsTV) _clearSheet(wsTV, HEADER_THUVIEC);
+
+      return response({ success: true, message: "Đã xóa sạch dữ liệu 4 sheet" });
     }
 
     if (action === "sync_pass") {
@@ -478,4 +494,35 @@ function _buildVanThuStats(ss) {
     cong_van_hdqt: hdqt,
     tong_cong_van: den + di1 + di2 + hdqt
   };
+}
+
+function clearAllSheetsData() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var tongHopSheet = _getSheet(ss, TAB_TONGHOP);
+  var vong1Sheet = _getSheet(ss, TAB_VONG1);
+  var vong2Sheet = _getSheet(ss, TAB_VONG2);
+  var thuViecSheet = _getSheet(ss, TAB_THUVIEC);
+  
+  if (tongHopSheet) _clearSheet(tongHopSheet, HEADER_TONGHOP);
+  if (vong1Sheet) _clearSheet(vong1Sheet, HEADER_VONG1);
+  if (vong2Sheet) _clearSheet(vong2Sheet, HEADER_VONG2);
+  if (thuViecSheet) _clearSheet(thuViecSheet, HEADER_THUVIEC);
+}
+
+function uiClearAllSheetsData() {
+  var ui = SpreadsheetApp.getUi();
+  var response = ui.alert('CẢNH BÁO', 'Bạn có chắc chắn muốn xóa sạch toàn bộ dữ liệu ứng viên ở cả 4 sheet?\nHành động này không thể hoàn tác.', ui.ButtonSet.YES_NO);
+  if (response == ui.Button.YES) {
+    clearAllSheetsData();
+    ui.alert('Thành công', 'Đã xóa sạch dữ liệu ở cả 4 sheet.', ui.ButtonSet.OK);
+  }
+}
+
+function _clearSheet(sheet, headers) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.deleteRows(2, lastRow - 1);
+  }
+  // Reset headers to make sure they are correct
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
 }

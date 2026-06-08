@@ -1441,7 +1441,7 @@ export default function RecruitmentPage() {
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-center gap-6">
-                      {/* Donut Chart */}
+                      {/* Pie Chart (Pizza shape) */}
                       <div className="w-full sm:w-1/2 h-48 relative flex items-center justify-center">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
@@ -1449,9 +1449,9 @@ export default function RecruitmentPage() {
                               data={funnelChartData}
                               cx="50%"
                               cy="50%"
-                              innerRadius={55}
+                              innerRadius={0}
                               outerRadius={75}
-                              paddingAngle={hasFunnelData ? 3 : 0}
+                              paddingAngle={hasFunnelData ? 1 : 0}
                               dataKey="value"
                             >
                               {funnelChartData.map((entry, index) => (
@@ -1464,12 +1464,6 @@ export default function RecruitmentPage() {
                             <Tooltip formatter={(value, name) => [hasFunnelData ? `${value} hồ sơ` : "0 hồ sơ", name]} />
                           </PieChart>
                         </ResponsiveContainer>
-
-                        {/* Absolute center text */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                          <span className="text-2xl font-extrabold text-slate-800 leading-none">{total}</span>
-                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-1">Ứng viên</span>
-                        </div>
                       </div>
 
                       {/* Legend & Detail List */}
@@ -1500,13 +1494,18 @@ export default function RecruitmentPage() {
 
                   {/* Right: Ứng viên theo tháng */}
                   <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
-                    <div>
-                      <h3 className="font-heading font-bold text-slate-800 text-sm">Ứng viên theo tháng</h3>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Tỉ lệ phân bổ ứng viên trong 6 tháng gần nhất</p>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-heading font-bold text-slate-800 text-sm">Ứng viên theo tháng</h3>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Tỉ lệ phân bổ ứng viên trong 6 tháng gần nhất</p>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full shrink-0">
+                        Tổng: {monthTotalCount} HS
+                      </span>
                     </div>
 
                     <div className="flex flex-col sm:flex-row lg:flex-col items-center gap-6">
-                      {/* Donut Chart */}
+                      {/* Pie Chart (Pizza shape) */}
                       <div className="w-full sm:w-1/2 lg:w-full h-48 relative flex items-center justify-center">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
@@ -1514,9 +1513,9 @@ export default function RecruitmentPage() {
                               data={monthChartData}
                               cx="50%"
                               cy="50%"
-                              innerRadius={55}
+                              innerRadius={0}
                               outerRadius={75}
-                              paddingAngle={hasMonthData ? 3 : 0}
+                              paddingAngle={hasMonthData ? 1 : 0}
                               dataKey="value"
                             >
                               {monthChartData.map((entry, index) => (
@@ -1529,12 +1528,6 @@ export default function RecruitmentPage() {
                             <Tooltip formatter={(value, name) => [hasMonthData ? `${value} hồ sơ` : "0 hồ sơ", name]} />
                           </PieChart>
                         </ResponsiveContainer>
-
-                        {/* Absolute center text */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                          <span className="text-2xl font-extrabold text-slate-800 leading-none">{monthTotalCount}</span>
-                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-1">6 tháng qua</span>
-                        </div>
                       </div>
 
                       {/* Legend & Detail List */}
@@ -1571,13 +1564,18 @@ export default function RecruitmentPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Left: Office Block */}
                   <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
-                    <div>
-                      <h3 className="font-heading font-bold text-slate-800 text-sm">Khối Văn Phòng</h3>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Cơ cấu tuyển dụng nhân sự các phòng ban văn phòng</p>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-heading font-bold text-slate-800 text-sm">Khối Văn Phòng</h3>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Cơ cấu tuyển dụng nhân sự các phòng ban văn phòng</p>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full shrink-0">
+                        Đã tuyển: {officeTotalHired}
+                      </span>
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-center gap-6">
-                      {/* Donut Chart */}
+                      {/* Pie Chart (Pizza shape) */}
                       <div className="w-full sm:w-1/2 h-48 relative flex items-center justify-center">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
@@ -1585,9 +1583,9 @@ export default function RecruitmentPage() {
                               data={officePieData}
                               cx="50%"
                               cy="50%"
-                              innerRadius={55}
+                              innerRadius={0}
                               outerRadius={75}
-                              paddingAngle={officeTotalHired > 0 ? 3 : 0}
+                              paddingAngle={officeTotalHired > 0 ? 1 : 0}
                               dataKey="value"
                             >
                               {officePieData.map((entry, index) => (
@@ -1600,12 +1598,6 @@ export default function RecruitmentPage() {
                             <Tooltip formatter={(value, name) => [officeTotalHired > 0 ? `${value} đã tuyển` : "0 nhân sự", name]} />
                           </PieChart>
                         </ResponsiveContainer>
-                        
-                        {/* Absolute center text */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                          <span className="text-2xl font-extrabold text-slate-800 leading-none">{officeTotalHired}</span>
-                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-1">Đã tuyển</span>
-                        </div>
                       </div>
 
                       {/* Legend & Detail List */}
@@ -1641,13 +1633,18 @@ export default function RecruitmentPage() {
 
                   {/* Right: Project Block */}
                   <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
-                    <div>
-                      <h3 className="font-heading font-bold text-slate-800 text-sm">Khối Dự Án</h3>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Cơ cấu tuyển dụng nhân sự các dự án & công trường</p>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-heading font-bold text-slate-800 text-sm">Khối Dự Án</h3>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Cơ cấu tuyển dụng nhân sự các dự án & công trường</p>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full shrink-0">
+                        Đã tuyển: {projectTotalHired}
+                      </span>
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-center gap-6">
-                      {/* Donut Chart */}
+                      {/* Pie Chart (Pizza shape) */}
                       <div className="w-full sm:w-1/2 h-48 relative flex items-center justify-center">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
@@ -1655,9 +1652,9 @@ export default function RecruitmentPage() {
                               data={projectPieData}
                               cx="50%"
                               cy="50%"
-                              innerRadius={55}
+                              innerRadius={0}
                               outerRadius={75}
-                              paddingAngle={projectTotalHired > 0 ? 3 : 0}
+                              paddingAngle={projectTotalHired > 0 ? 1 : 0}
                               dataKey="value"
                             >
                               {projectPieData.map((entry, index) => (
@@ -1670,12 +1667,6 @@ export default function RecruitmentPage() {
                             <Tooltip formatter={(value, name) => [projectTotalHired > 0 ? `${value} đã tuyển` : "0 nhân sự", name]} />
                           </PieChart>
                         </ResponsiveContainer>
-                        
-                        {/* Absolute center text */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                          <span className="text-2xl font-extrabold text-slate-800 leading-none">{projectTotalHired}</span>
-                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-1">Đã tuyển</span>
-                        </div>
                       </div>
 
                       {/* Legend & Detail List */}

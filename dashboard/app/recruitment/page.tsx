@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import {
   Search,
   Plus,
@@ -1346,8 +1347,17 @@ export default function RecruitmentPage() {
             const deptEntries = Object.entries(byDept).sort((a, b) => b[1].total - a[1].total);
             const officeEntries = deptEntries.filter(([dept]) => !isProjectBlock(dept));
             const projectEntries = deptEntries.filter(([dept]) => isProjectBlock(dept));
-            const maxOfficeTotal = Math.max(...officeEntries.map(([, v]) => v.total), 1);
-            const maxProjectTotal = Math.max(...projectEntries.map(([, v]) => v.total), 1);
+            
+            const officeChartData = officeEntries.filter(([, v]) => v.hired > 0).map(([name, v]) => ({ name, value: v.hired }));
+            const officeTotalHired = officeEntries.reduce((sum, [, v]) => sum + v.hired, 0);
+            const officePieData = officeChartData.length > 0 ? officeChartData : [{ name: "Chưa có nhân sự", value: 1 }];
+            
+            const projectChartData = projectEntries.filter(([, v]) => v.hired > 0).map(([name, v]) => ({ name, value: v.hired }));
+            const projectTotalHired = projectEntries.reduce((sum, [, v]) => sum + v.hired, 0);
+            const projectPieData = projectChartData.length > 0 ? projectChartData : [{ name: "Chưa có nhân sự", value: 1 }];
+            
+            const CHART_COLORS = ["#10B981", "#3B82F6", "#8B5CF6", "#F59E0B", "#06B6D4", "#EC4899", "#34D399", "#A78BFA", "#F472B6"];
+            const PLACEHOLDER_COLOR = "#E2E8F0";
 
             const bySource: Record<string, number> = {};
             candidates.forEach(c => {
@@ -1482,46 +1492,75 @@ export default function RecruitmentPage() {
                   </div>
                 </div>
 
-                {/* Row 2: Office Block vs Project Block side-by-side */}
+                {/* Row 2: Office Block vs Project Block side-by-side circular donut charts */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Left: Office Block */}
                   <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
                     <div>
                       <h3 className="font-heading font-bold text-slate-800 text-sm">Khối Văn Phòng</h3>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Phân tích tuyển dụng các phòng ban văn phòng</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Cơ cấu tuyển dụng nhân sự các phòng ban văn phòng</p>
                     </div>
 
-                    <div className="space-y-3.5 max-h-80 overflow-y-auto pr-1">
-                      {officeEntries.map(([dept, stats]) => (
-                        <div key={dept} className="space-y-1.5">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-slate-700">{dept}</span>
-                            <div className="flex items-center gap-2 text-[10px] font-bold">
-                              <span className="text-slate-400">{stats.total} hồ sơ</span>
-                              <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">✅ {stats.hired} đã tuyển</span>
-                              <span className="text-blue-500 bg-blue-50 px-2 py-0.5 rounded-md">🎯 {stats.interview} PV</span>
-                              {stats.rejected > 0 && <span className="text-rose-500 bg-rose-50 px-2 py-0.5 rounded-md">❌ {stats.rejected}</span>}
-                            </div>
-                          </div>
-                          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden flex gap-0.5">
-                            <div className="h-full bg-emerald-400 transition-all rounded-l-full" style={{ width: `${Math.round((stats.hired / maxOfficeTotal) * 100)}%` }} />
-                            <div className="h-full bg-blue-400 transition-all" style={{ width: `${Math.round((stats.interview / maxOfficeTotal) * 100)}%` }} />
-                            <div className="h-full bg-slate-200 transition-all" style={{ width: `${Math.round(((stats.total - stats.hired - stats.interview - stats.rejected) / maxOfficeTotal) * 100)}%` }} />
-                            <div className="h-full bg-rose-300 transition-all rounded-r-full" style={{ width: `${Math.round((stats.rejected / maxOfficeTotal) * 100)}%` }} />
-                          </div>
+                    <div className="flex flex-col sm:flex-row items-center gap-6">
+                      {/* Donut Chart */}
+                      <div className="w-full sm:w-1/2 h-48 relative flex items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={officePieData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={55}
+                              outerRadius={75}
+                              paddingAngle={officeTotalHired > 0 ? 3 : 0}
+                              dataKey="value"
+                            >
+                              {officePieData.map((entry, index) => (
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={officeTotalHired > 0 ? CHART_COLORS[index % CHART_COLORS.length] : PLACEHOLDER_COLOR}
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value, name) => [officeTotalHired > 0 ? `${value} đã tuyển` : "0 nhân sự", name]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                        
+                        {/* Absolute center text */}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                          <span className="text-2xl font-extrabold text-slate-800 leading-none">{officeTotalHired}</span>
+                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-1">Đã tuyển</span>
                         </div>
-                      ))}
-                      {officeEntries.length === 0 && (
-                        <p className="text-slate-400 text-xs italic text-center py-8">Không có dữ liệu phòng ban</p>
-                      )}
-                    </div>
+                      </div>
 
-                    {/* Legend */}
-                    <div className="flex items-center gap-4 text-[10px] font-bold pt-2 border-t border-slate-100/60 text-slate-500">
-                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" /> Đã tuyển</span>
-                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-400 inline-block" /> Phỏng vấn</span>
-                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-slate-200 inline-block" /> Đang xét</span>
-                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-rose-300 inline-block" /> Từ chối</span>
+                      {/* Legend & Detail List */}
+                      <div className="flex-1 space-y-2.5 w-full max-h-48 overflow-y-auto pr-1">
+                        {officeEntries.map(([dept, stats]) => {
+                          const hasHired = stats.hired > 0;
+                          const mappedIndex = officeChartData.findIndex(x => x.name === dept);
+                          const color = hasHired ? CHART_COLORS[mappedIndex % CHART_COLORS.length] : "#94A3B8";
+                          return (
+                            <div key={dept} className="flex items-center justify-between text-xs font-semibold">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span 
+                                  className="w-2.5 h-2.5 rounded-full shrink-0" 
+                                  style={{ backgroundColor: color }} 
+                                />
+                                <span className="text-slate-700 truncate">{dept}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${hasHired ? "text-emerald-600 bg-emerald-50" : "text-slate-400 bg-slate-50"}`}>
+                                  ✅ {stats.hired} đã tuyển
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-medium">({stats.total} HS)</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {officeEntries.length === 0 && (
+                          <p className="text-slate-400 text-xs italic text-center py-8">Không có dữ liệu phòng ban</p>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -1529,40 +1568,69 @@ export default function RecruitmentPage() {
                   <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
                     <div>
                       <h3 className="font-heading font-bold text-slate-800 text-sm">Khối Dự Án</h3>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Phân tích tuyển dụng các ban quản lý dự án & công trường</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Cơ cấu tuyển dụng nhân sự các dự án & công trường</p>
                     </div>
 
-                    <div className="space-y-3.5 max-h-80 overflow-y-auto pr-1">
-                      {projectEntries.map(([dept, stats]) => (
-                        <div key={dept} className="space-y-1.5">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-slate-700">{dept}</span>
-                            <div className="flex items-center gap-2 text-[10px] font-bold">
-                              <span className="text-slate-400">{stats.total} hồ sơ</span>
-                              <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">✅ {stats.hired} đã tuyển</span>
-                              <span className="text-blue-500 bg-blue-50 px-2 py-0.5 rounded-md">🎯 {stats.interview} PV</span>
-                              {stats.rejected > 0 && <span className="text-rose-500 bg-rose-50 px-2 py-0.5 rounded-md">❌ {stats.rejected}</span>}
-                            </div>
-                          </div>
-                          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden flex gap-0.5">
-                            <div className="h-full bg-emerald-400 transition-all rounded-l-full" style={{ width: `${Math.round((stats.hired / maxProjectTotal) * 100)}%` }} />
-                            <div className="h-full bg-blue-400 transition-all" style={{ width: `${Math.round((stats.interview / maxProjectTotal) * 100)}%` }} />
-                            <div className="h-full bg-slate-200 transition-all" style={{ width: `${Math.round(((stats.total - stats.hired - stats.interview - stats.rejected) / maxProjectTotal) * 100)}%` }} />
-                            <div className="h-full bg-rose-300 transition-all rounded-r-full" style={{ width: `${Math.round((stats.rejected / maxProjectTotal) * 100)}%` }} />
-                          </div>
+                    <div className="flex flex-col sm:flex-row items-center gap-6">
+                      {/* Donut Chart */}
+                      <div className="w-full sm:w-1/2 h-48 relative flex items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={projectPieData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={55}
+                              outerRadius={75}
+                              paddingAngle={projectTotalHired > 0 ? 3 : 0}
+                              dataKey="value"
+                            >
+                              {projectPieData.map((entry, index) => (
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={projectTotalHired > 0 ? CHART_COLORS[index % CHART_COLORS.length] : PLACEHOLDER_COLOR}
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value, name) => [projectTotalHired > 0 ? `${value} đã tuyển` : "0 nhân sự", name]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                        
+                        {/* Absolute center text */}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                          <span className="text-2xl font-extrabold text-slate-800 leading-none">{projectTotalHired}</span>
+                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-1">Đã tuyển</span>
                         </div>
-                      ))}
-                      {projectEntries.length === 0 && (
-                        <p className="text-slate-400 text-xs italic text-center py-8">Không có dữ liệu dự án</p>
-                      )}
-                    </div>
+                      </div>
 
-                    {/* Legend */}
-                    <div className="flex items-center gap-4 text-[10px] font-bold pt-2 border-t border-slate-100/60 text-slate-500">
-                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" /> Đã tuyển</span>
-                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-400 inline-block" /> Phỏng vấn</span>
-                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-slate-200 inline-block" /> Đang xét</span>
-                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-rose-300 inline-block" /> Từ chối</span>
+                      {/* Legend & Detail List */}
+                      <div className="flex-1 space-y-2.5 w-full max-h-48 overflow-y-auto pr-1">
+                        {projectEntries.map(([dept, stats]) => {
+                          const hasHired = stats.hired > 0;
+                          const mappedIndex = projectChartData.findIndex(x => x.name === dept);
+                          const color = hasHired ? CHART_COLORS[mappedIndex % CHART_COLORS.length] : "#94A3B8";
+                          return (
+                            <div key={dept} className="flex items-center justify-between text-xs font-semibold">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span 
+                                  className="w-2.5 h-2.5 rounded-full shrink-0" 
+                                  style={{ backgroundColor: color }} 
+                                />
+                                <span className="text-slate-700 truncate">{dept}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${hasHired ? "text-emerald-600 bg-emerald-50" : "text-slate-400 bg-slate-50"}`}>
+                                  ✅ {stats.hired} đã tuyển
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-medium">({stats.total} HS)</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {projectEntries.length === 0 && (
+                          <p className="text-slate-400 text-xs italic text-center py-8">Không có dữ liệu dự án</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

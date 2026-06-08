@@ -980,7 +980,7 @@ export default function RecruitmentPage() {
           region: info.khu_vuc || null,
           department: info.phong_ban || null,
           role: info.vi_tri || null,
-          status: "new", // Starts in "new" column
+          status: (info.trang_thai === "PASS CV" || result.score >= 70) ? "screening" : "rejected",
           v1_date: new Date().toLocaleDateString('sv-SE'),
           source: nguon,
           reviewer: info.nguoi_danh_gia || "AI Auto",

@@ -77,10 +77,13 @@ export default function TongHopPage() {
                                             <td className="px-5 py-4 text-slate-500 whitespace-nowrap">{c["Phòng Ban"]}</td>
                                             <td className="px-5 py-4 text-slate-600 font-medium whitespace-nowrap">{c["Vị trí"]}</td>
                                             <td className="px-5 py-4">
-                                                {String(c["Trạng thái"]).toUpperCase() === "PASS CV" ?
-                                                    <span className="flex items-center gap-1 text-emerald-600 font-bold text-xs"><CheckCircle size={12} /> PASS CV</span> :
+                                                {String(c["Trạng thái"]).toUpperCase() === "PASS CV" ? (
+                                                    <span className="flex items-center gap-1 text-emerald-600 font-bold text-xs"><CheckCircle size={12} /> PASS CV</span>
+                                                ) : String(c["Trạng thái"]).toUpperCase() === "LƯU CV" ? (
+                                                    <span className="flex items-center gap-1 text-amber-500 font-bold text-xs"><CheckCircle size={12} className="text-amber-500" /> LƯU CV</span>
+                                                ) : (
                                                     <span className="flex items-center gap-1 text-red-400 font-bold text-xs"><XCircle size={12} /> FAIL</span>
-                                                }
+                                                )}
                                             </td>
                                             <td className="px-5 py-4 text-slate-400 text-xs italic">{c["Nguồn"]}</td>
                                             <td className="px-5 py-4">

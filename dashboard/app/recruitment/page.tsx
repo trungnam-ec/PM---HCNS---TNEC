@@ -709,7 +709,7 @@ export default function RecruitmentPage() {
   // Handle dropdown value changes for spreadsheet view
   const handleDropdownChange = async (candidateId: string, type: string, value: string) => {
     if (type === "status") {
-      const newStatus = value === "FAIL" ? "rejected" : "screening";
+      const newStatus = value === "FAIL" ? "rejected" : value === "LƯU CV" ? "new" : "screening";
       await handleUpdateCandidateField(candidateId, "status", newStatus);
     } else if (type === "v1_result") {
       const updates: any = { v1_result: value };
@@ -1694,7 +1694,7 @@ export default function RecruitmentPage() {
                                 }
 
                                 if (col.type === "status") {
-                                  const displayStatus = val === "rejected" ? "FAIL" : "PASS CV";
+                                  const displayStatus = val === "rejected" ? "FAIL" : val === "new" ? "LƯU CV" : "PASS CV";
                                   return (
                                     <td key={col.key} className="px-3 py-2 border border-slate-100 text-center">
                                       <select
@@ -1704,10 +1704,13 @@ export default function RecruitmentPage() {
                                         className={`text-[10px] font-bold px-2 py-0.5 rounded-full border-none outline-none ${
                                           displayStatus === "FAIL"
                                             ? "bg-rose-100 text-rose-700"
+                                            : displayStatus === "LƯU CV"
+                                            ? "bg-amber-100 text-amber-700"
                                             : "bg-emerald-100 text-emerald-700"
                                         } ${canManage ? "cursor-pointer" : "cursor-default opacity-85"}`}
                                       >
                                         <option value="PASS CV">PASS CV</option>
+                                        <option value="LƯU CV">LƯU CV</option>
                                         <option value="FAIL">FAIL</option>
                                       </select>
                                     </td>

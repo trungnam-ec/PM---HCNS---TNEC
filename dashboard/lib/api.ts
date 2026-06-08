@@ -79,7 +79,7 @@ export async function fetchCandidates(sheet = "Tổng Hợp"): Promise<Candidate
     "Khu vực": c.region || "",
     "Phòng Ban": c.department || "",
     "Vị trí": c.role || "",
-    "Trạng thái": c.status === "rejected" ? "FAIL" : "PASS CV",
+    "Trạng thái": c.status === "rejected" ? "FAIL" : c.status === "new" ? "LƯU CV" : "PASS CV",
     "Nguồn": c.source || "",
     "Người đánh giá": c.reviewer || "",
     "Kết quả V1": c.v1_result || "Chờ đánh giá",
@@ -203,7 +203,7 @@ export async function updateCandidate(
 
   if (updates["Trạng thái"] !== undefined) {
     const val = String(updates["Trạng thái"]).toUpperCase();
-    mappedUpdates.status = val === "FAIL" ? "rejected" : "new";
+    mappedUpdates.status = val === "FAIL" ? "rejected" : val === "LƯU CV" ? "new" : "screening";
   }
 
   // V1 Updates

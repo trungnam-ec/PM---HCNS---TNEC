@@ -160,19 +160,25 @@ Khi JD hoặc vị trí ứng tuyển liên quan đến "Trợ lý Giám đốc"
 ━━━ QUY TẮC CHẤM ĐIỂM (score) ━━━
 Bước 1: Phân tích JD → xác định đây có phải vị trí "Trợ lý Giám đốc ngành xây dựng" không.
   - Nếu CÓ → áp dụng bộ tiêu chí ĐẶC THÙ NGÀNH ở trên.
-  - Nếu KHÔNG → dùng Top 5 Hard Skills bắt buộc từ JD như thông thường.
-Bước 2: Quét toàn bộ CV (không chỉ phần "Kỹ năng") để tìm bằng chứng kỹ năng thực tế.
-  - Ưu tiên kỹ năng được chứng minh qua kinh nghiệm làm việc, không chỉ liệt kê trong mục "Kỹ năng".
-Bước 3: Tính điểm (cho vị trí Trợ lý GĐ ngành xây dựng):
-  - Kỹ năng văn phòng & tổng hợp (Max 30): Word/Excel/PPT + báo cáo + điều phối
-  - Hiểu biết & kinh nghiệm ngành xây dựng (Max 25): từng làm ở DN xây dựng / quen quy trình dự án
-  - Kinh nghiệm trợ lý / thư ký (Max 25): số năm & vị trí phù hợp
-  - Soft skills & ưu tiên (Max 20): giới tính, tuổi, tiếng Anh, công tác, AI tools
-Bước 4: Phạt điểm:
-  - -20 nếu không có bằng CĐ/ĐH
-  - -15 nếu không có kinh nghiệm văn phòng hoặc tổng hợp báo cáo
-  - -10 nếu chưa từng làm trong môi trường doanh nghiệp (mới ra trường hoàn toàn, không có KN liên quan)
-Bước 5: Nếu score >= 70 → Trạng thái = "PASS CV", ngược lại = "FAIL".
+  - Nếu KHÔNG → áp dụng bộ tiêu chí CHUNG cho các vị trí khác (Hành chính, Nhân sự, Kế toán, Kỹ sư, v.v.) dựa trên yêu cầu trong JD.
+Bước 2: Quét toàn bộ CV (không chỉ phần "Kỹ năng") để tìm bằng chứng kỹ năng và kinh nghiệm thực tế.
+  - Ưu tiên các kỹ năng được chứng minh qua lịch sử kinh nghiệm làm việc thực tế, không chỉ liệt kê từ khóa.
+Bước 3: Tính điểm:
+  * Trường hợp 1: Nếu là vị trí Trợ lý GĐ ngành xây dựng:
+    - Kỹ năng văn phòng & tổng hợp (Max 30): Word/Excel/PPT + báo cáo + điều phối.
+    - Hiểu biết & kinh nghiệm ngành xây dựng (Max 25): từng làm ở DN xây dựng / quen quy trình dự án.
+    - Kinh nghiệm trợ lý / thư ký (Max 25): số năm & vị trí phù hợp.
+    - Soft skills & ưu tiên (Max 20): giới tính, tuổi, tiếng Anh, công tác, AI tools.
+  * Trường hợp 2: Đối với các vị trí tuyển dụng thông thường khác (như Hành chính, Nhân sự, Kế toán, Kỹ sư...):
+    - Kinh nghiệm làm việc liên quan (Max 30): Số năm làm việc và độ tương thích với vị trí trong JD (Ví dụ: ứng viên có trên 3 năm kinh nghiệm làm hành chính/nhân sự đúng như JD yêu cầu sẽ nhận 25-30 điểm).
+    - Kỹ năng chuyên môn / Hard Skills (Max 30): Mức độ tương thích giữa kỹ năng trong CV với các yêu cầu kỹ thuật/nghiệp vụ cụ thể trong JD (Ví dụ: đặt vé, quản lý thiết bị văn phòng, điều phối xe, lưu trữ hồ sơ, xử lý chứng từ thanh toán).
+    - Học vấn / Bằng cấp (Max 20): Trình độ bằng cấp và chuyên ngành có phù hợp với vị trí ứng tuyển.
+    - Kỹ năng mềm & Công cụ văn phòng (Max 20): Word, Excel, PowerPoint, giao tiếp, ngoại ngữ, công cụ AI.
+Bước 4: Phạt điểm (áp dụng chung):
+  - -20 nếu không đạt yêu cầu bằng cấp tối thiểu ghi trong JD.
+  - -15 nếu không có kỹ năng làm việc hoặc kinh nghiệm liên quan cơ bản nào.
+  - -10 nếu là sinh viên mới ra trường ứng tuyển vào vị trí yêu cầu kinh nghiệm.
+Bước 5: Nếu score >= 60 → Trạng thái = "PASS CV", ngược lại = "FAIL".
 
 ━━━ OUTPUT FORMAT (JSON ONLY) ━━━
 {{

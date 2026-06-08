@@ -1007,7 +1007,7 @@ export default function RecruitmentPage() {
           region: info.khu_vuc || null,
           department: info.phong_ban || null,
           role: info.vi_tri || null,
-          status: (info.trang_thai === "PASS CV" || result.score >= 70) ? "screening" : "rejected",
+          status: (info.trang_thai === "PASS CV" || result.score >= 60) ? "screening" : "rejected",
           v1_date: new Date().toLocaleDateString('sv-SE'),
           source: nguon,
           reviewer: info.nguoi_danh_gia || "AI Auto",

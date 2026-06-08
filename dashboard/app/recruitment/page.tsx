@@ -678,6 +678,60 @@ export default function RecruitmentPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
+  // Manual recruitment needs state
+  const [officeManualNeeds, setOfficeManualNeeds] = useState<Record<string, number>>({
+    "HCNS": 2,
+    "Phòng QLDA": 1,
+    "Kế toán": 1
+  });
+  const [projectManualNeeds, setProjectManualNeeds] = useState<Record<string, number>>({
+    "Vàm Lẽo": 3,
+    "RXT": 2,
+    "Mã Đà": 1,
+    "ĐMT Trà Vinh": 2
+  });
+
+  const handleOfficeNeedChange = (dept: string, val: number) => {
+    if (val < 0) return;
+    setOfficeManualNeeds(prev => ({ ...prev, [dept]: val }));
+  };
+
+  const handleProjectNeedChange = (proj: string, val: number) => {
+    if (val < 0) return;
+    setProjectManualNeeds(prev => ({ ...prev, [proj]: val }));
+  };
+
+  const removeOfficeDept = (dept: string) => {
+    setOfficeManualNeeds(prev => {
+      const next = { ...prev };
+      delete next[dept];
+      return next;
+    });
+  };
+
+  const removeProjectDept = (proj: string) => {
+    setProjectManualNeeds(prev => {
+      const next = { ...prev };
+      delete next[proj];
+      return next;
+    });
+  };
+
+  const [newOfficeDept, setNewOfficeDept] = useState("");
+  const [newProjectDept, setNewProjectDept] = useState("");
+
+  const addOfficeDept = () => {
+    if (!newOfficeDept.trim()) return;
+    setOfficeManualNeeds(prev => ({ ...prev, [newOfficeDept.trim()]: 1 }));
+    setNewOfficeDept("");
+  };
+
+  const addProjectDept = () => {
+    if (!newProjectDept.trim()) return;
+    setProjectManualNeeds(prev => ({ ...prev, [newProjectDept.trim()]: 1 }));
+    setNewProjectDept("");
+  };
+
   // Current logged in user state
   const [currentUser, setCurrentUser] = useState<{
     email: string;
@@ -1356,6 +1410,12 @@ export default function RecruitmentPage() {
             const projectTotalHired = projectEntries.reduce((sum, [, v]) => sum + v.hired, 0);
             const projectPieData = projectChartData.length > 0 ? projectChartData : [{ name: "Chưa có nhân sự", value: 1 }];
             
+            const officeTotalNeed = Object.values(officeManualNeeds).reduce((a, b) => a + b, 0);
+            const officeToRecruit = Math.max(0, officeTotalNeed - officeTotalHired);
+            
+            const projectTotalNeed = Object.values(projectManualNeeds).reduce((a, b) => a + b, 0);
+            const projectToRecruit = Math.max(0, projectTotalNeed - projectTotalHired);
+            
             const CHART_COLORS = ["#10B981", "#3B82F6", "#8B5CF6", "#F59E0B", "#06B6D4", "#EC4899", "#34D399", "#A78BFA", "#F472B6"];
             const PLACEHOLDER_COLOR = "#E2E8F0";
 
@@ -1406,14 +1466,14 @@ export default function RecruitmentPage() {
                 {/* KPI Row */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                   {[
-                    { label: "Tổng ứng viên", value: total, icon: "👥", bg: "from-blue-500 to-blue-700", sub: "Toàn bộ hồ sơ" },
-                    { label: "Vòng 1 (Sàng lọc)", value: vong1Count, icon: "📋", bg: "from-cyan-500 to-cyan-700", sub: "Đạt sàng lọc hồ sơ" },
-                    { label: "Vòng 2 (Phỏng vấn)", value: vong2Count, icon: "🎯", bg: "from-purple-500 to-purple-700", sub: "Đạt phỏng vấn V1" },
-                    { label: "Thử việc / Nhận việc", value: thuViecCount, icon: "✅", bg: "from-emerald-500 to-emerald-700", sub: "Đạt phỏng vấn V2" },
-                    { label: "Từ chối / Loại", value: rejectedCount, icon: "❌", bg: "from-rose-500 to-rose-700", sub: `${total>0?Math.round((rejectedCount/total)*100):0}% tổng số` },
-                    { label: "Tỉ lệ Pass CV", value: `${passRate}%`, icon: "📊", bg: "from-amber-500 to-orange-600", sub: "Không bị loại" },
+                    { label: "Tổng ứng viên", value: total, icon: "👥", bgStyle: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)", shadow: "shadow-blue-500/10", sub: "Toàn bộ hồ sơ" },
+                    { label: "Vòng 1 (Sàng lọc)", value: vong1Count, icon: "📋", bgStyle: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)", shadow: "shadow-cyan-500/10", sub: "Đạt sàng lọc hồ sơ" },
+                    { label: "Vòng 2 (Phỏng vấn)", value: vong2Count, icon: "🎯", bgStyle: "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)", shadow: "shadow-purple-500/10", sub: "Đạt phỏng vấn V1" },
+                    { label: "Thử việc / Nhận việc", value: thuViecCount, icon: "✅", bgStyle: "linear-gradient(135deg, #10b981 0%, #059669 100%)", shadow: "shadow-emerald-500/10", sub: "Đạt phỏng vấn V2" },
+                    { label: "Từ chối / Loại", value: rejectedCount, icon: "❌", bgStyle: "linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)", shadow: "shadow-rose-500/10", sub: `${total>0?Math.round((rejectedCount/total)*100):0}% tổng số` },
+                    { label: "Tỉ lệ Pass CV", value: `${passRate}%`, icon: "📊", bgStyle: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)", shadow: "shadow-amber-500/10", sub: "Không bị loại" },
                   ].map((kpi, i) => (
-                    <div key={i} className={`bg-gradient-to-br ${kpi.bg} rounded-2xl p-4 text-white shadow-lg relative overflow-hidden`}>
+                    <div key={i} style={{ background: kpi.bgStyle }} className={`rounded-2xl p-4 text-white shadow-lg ${kpi.shadow} relative overflow-hidden`}>
                       <div className="absolute top-2 right-3 text-2xl opacity-20 select-none">{kpi.icon}</div>
                       <p className="text-[10px] font-semibold opacity-80 uppercase tracking-wider leading-tight">{kpi.label}</p>
                       <p className="text-3xl font-extrabold font-heading mt-1 leading-none">{kpi.value}</p>
@@ -1422,202 +1482,233 @@ export default function RecruitmentPage() {
                   ))}
                 </div>
 
-                {/* Funnel + Monthly Donut Charts */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Left: Phễu Tuyển Dụng */}
-                  <div className="lg:col-span-2 glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-heading font-bold text-slate-800 text-sm">Phễu Tuyển Dụng</h3>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Phân bố ứng viên qua các giai đoạn tuyển dụng</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wider">Tỉ lệ tuyển dụng</p>
-                        <p className="text-3xl font-extrabold text-emerald-600 font-heading leading-none mt-0.5">
-                          {total > 0 ? Math.round((thuViecCount/total)*100) : 0}%
-                        </p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">{thuViecCount}/{total} ứng viên</p>
-                      </div>
+                {/* Row 2: Nhu cầu tuyển dụng thực tế (Full-width) */}
+                <div className="glass bg-white/80 rounded-3xl p-6 shadow border border-slate-100 space-y-6 relative overflow-hidden">
+                  <div className="relative flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                    <div>
+                      <h3 className="font-heading font-black text-[#005BAC] text-sm flex items-center gap-2">
+                        <Layers className="text-[#005BAC]" size={16} />
+                        Nhu cầu tuyển dụng thực tế
+                      </h3>
+                      <p className="text-[10px] text-slate-500 font-bold mt-0.5">Số lượng nhân sự cần bổ sung theo từng khối bộ phận (nhập tay trực tiếp)</p>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row items-center gap-6">
-                      {/* Pie Chart (Pizza shape) */}
-                      <div className="w-full sm:w-1/2 h-48 relative flex items-center justify-center">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={funnelChartData}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={0}
-                              outerRadius={75}
-                              paddingAngle={hasFunnelData ? 1 : 0}
-                              dataKey="value"
-                            >
-                              {funnelChartData.map((entry, index) => (
-                                <Cell
-                                  key={`cell-${index}`}
-                                  fill={hasFunnelData ? entry.color : PLACEHOLDER_COLOR}
-                                />
-                              ))}
-                            </Pie>
-                            <Tooltip formatter={(value, name) => [hasFunnelData ? `${value} hồ sơ` : "0 hồ sơ", name]} />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-
-                      {/* Legend & Detail List */}
-                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5 w-full">
-                        {funnelPieData.map((item) => {
-                          const hasData = item.value > 0;
-                          return (
-                            <div key={item.name} className="flex items-center justify-between text-xs font-semibold p-1.5 rounded-xl hover:bg-slate-50 transition-colors">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span
-                                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                                  style={{ backgroundColor: item.color }}
-                                />
-                                <span className="text-slate-700 truncate">{item.name}</span>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${hasData ? item.textClass : "text-slate-400 bg-slate-50"}`}>
-                                  {item.value} HS
-                                </span>
-                                <span className="text-[10px] text-slate-400 font-medium w-8 text-right">{item.pct}%</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                    {/* Tỷ lệ tuyển dụng badge centered on page/card */}
+                    <div className="sm:absolute sm:left-1/2 sm:-translate-x-1/2 flex items-center gap-3 bg-emerald-50 border-2 border-emerald-200 px-6 py-2 rounded-3xl shadow-sm hover:shadow-md hover:bg-emerald-100/40 transition-all duration-300 shrink-0">
+                      <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                      <span className="text-lg font-black text-emerald-800 uppercase tracking-wider">Tỷ lệ tuyển dụng:</span>
+                      <span className="text-3xl font-black text-emerald-600 leading-none">
+                        {total > 0 ? Math.round((thuViecCount/total)*100) : 0}%
+                      </span>
                     </div>
                   </div>
 
-                  {/* Right: Ứng viên theo tháng */}
-                  <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="font-heading font-bold text-slate-800 text-sm">Ứng viên theo tháng</h3>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Tỉ lệ phân bổ ứng viên trong 6 tháng gần nhất</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+                    {/* Khối Văn Phòng */}
+                    <div className="bg-gradient-to-br from-amber-50/50 to-orange-50/30 border border-amber-200/60 rounded-2xl p-5 space-y-4 hover:border-amber-300 transition-all duration-300 shadow-sm">
+                      <div className="flex items-center justify-between border-b border-amber-200/50 pb-3">
+                        <span className="font-heading font-black text-sm text-amber-800 flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                          Khối Văn Phòng
+                        </span>
+                        <span className="text-xs font-black text-amber-900 bg-amber-100 border border-amber-200/80 px-3 py-1 rounded-xl">
+                          Cần tuyển: {Object.values(officeManualNeeds).reduce((a, b) => a + b, 0)} người
+                        </span>
                       </div>
-                      <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full shrink-0">
-                        Tổng: {monthTotalCount} HS
-                      </span>
+
+                      <div className="space-y-2 pr-1">
+                        {Object.entries(officeManualNeeds).map(([dept, qty]) => (
+                          <div key={dept} className="flex items-center justify-between text-sm bg-white hover:bg-amber-50/20 rounded-xl p-3 border border-slate-150 shadow-sm transition-all duration-200 group">
+                            <span className="font-bold text-slate-700 truncate max-w-[250px]">{dept}</span>
+                            <div className="flex items-center gap-3">
+                              {/* Quantity Counter */}
+                              <div className="flex items-center bg-amber-50/85 border border-amber-200 rounded-lg p-1">
+                                <button
+                                  onClick={() => handleOfficeNeedChange(dept, qty - 1)}
+                                  className="p-1 hover:bg-amber-200 rounded text-amber-700 hover:text-amber-900 transition-colors"
+                                >
+                                  <ChevronDown size={14} />
+                                </button>
+                                <span className="w-8 text-center text-sm font-black text-amber-900">{qty}</span>
+                                <button
+                                  onClick={() => handleOfficeNeedChange(dept, qty + 1)}
+                                  className="p-1 hover:bg-amber-200 rounded text-amber-700 hover:text-amber-900 transition-colors"
+                                >
+                                  <ChevronUp size={14} />
+                                </button>
+                              </div>
+                              {/* Delete button */}
+                              <button
+                                onClick={() => removeOfficeDept(dept)}
+                                className="text-slate-400 hover:text-rose-600 p-1 transition-colors"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        {Object.keys(officeManualNeeds).length === 0 && (
+                          <p className="text-xs text-slate-400 italic text-center py-4">Chưa có nhu cầu</p>
+                        )}
+                      </div>
+
+                      {/* Add new office form */}
+                      <div className="flex items-center gap-2 pt-2 border-t border-amber-200/30">
+                        <input
+                          type="text"
+                          value={newOfficeDept}
+                          onChange={(e) => setNewOfficeDept(e.target.value)}
+                          placeholder="Thêm bộ phận..."
+                          className="flex-1 bg-white border border-amber-200 rounded-xl px-4 py-2 text-sm outline-none text-slate-700 placeholder-slate-400 focus:ring-1 focus:ring-amber-500/20 focus:border-amber-400/60"
+                        />
+                        <button
+                          onClick={addOfficeDept}
+                          className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl p-2 shadow-md shadow-amber-500/10 active:scale-95 transition-all"
+                        >
+                          <Plus size={16} />
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row lg:flex-col items-center gap-6">
-                      {/* Pie Chart (Pizza shape) */}
-                      <div className="w-full sm:w-1/2 lg:w-full h-48 relative flex items-center justify-center">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={monthChartData}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={0}
-                              outerRadius={75}
-                              paddingAngle={hasMonthData ? 1 : 0}
-                              dataKey="value"
-                            >
-                              {monthChartData.map((entry, index) => (
-                                <Cell
-                                  key={`cell-${index}`}
-                                  fill={hasMonthData ? entry.color : PLACEHOLDER_COLOR}
-                                />
-                              ))}
-                            </Pie>
-                            <Tooltip formatter={(value, name) => [hasMonthData ? `${value} hồ sơ` : "0 hồ sơ", name]} />
-                          </PieChart>
-                        </ResponsiveContainer>
+                    {/* Khối Dự Án */}
+                    <div className="bg-gradient-to-br from-blue-50/50 to-indigo-50/30 border border-blue-200/60 rounded-2xl p-5 space-y-4 hover:border-blue-300 transition-all duration-300 shadow-sm">
+                      <div className="flex items-center justify-between border-b border-blue-200/50 pb-3">
+                        <span className="font-heading font-black text-sm text-blue-800 flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                          Khối Dự Án
+                        </span>
+                        <span className="text-xs font-black text-blue-900 bg-blue-100 border border-blue-200/80 px-3 py-1 rounded-xl">
+                          Cần tuyển: {Object.values(projectManualNeeds).reduce((a, b) => a + b, 0)} người
+                        </span>
                       </div>
 
-                      {/* Legend & Detail List */}
-                      <div className="flex-1 lg:w-full space-y-2 w-full max-h-48 overflow-y-auto pr-1">
-                        {monthPieData.map((item) => {
-                          const hasData = item.value > 0;
-                          return (
-                            <div key={item.name} className="flex items-center justify-between text-xs font-semibold p-1 rounded-xl hover:bg-slate-50 transition-colors">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span
-                                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                                  style={{ backgroundColor: item.color }}
-                                />
-                                <span className="text-slate-700 truncate">{item.name}</span>
+                      <div className="space-y-2 pr-1">
+                        {Object.entries(projectManualNeeds).map(([proj, qty]) => (
+                          <div key={proj} className="flex items-center justify-between text-sm bg-white hover:bg-blue-50/20 rounded-xl p-3 border border-slate-150 shadow-sm transition-all duration-200 group">
+                            <span className="font-bold text-slate-700 truncate max-w-[250px]">{proj}</span>
+                            <div className="flex items-center gap-3">
+                              {/* Quantity Counter */}
+                              <div className="flex items-center bg-blue-50/85 border border-blue-200 rounded-lg p-1">
+                                <button
+                                  onClick={() => handleProjectNeedChange(proj, qty - 1)}
+                                  className="p-1 hover:bg-blue-200 rounded text-blue-700 hover:text-blue-900 transition-colors"
+                                >
+                                  <ChevronDown size={14} />
+                                </button>
+                                <span className="w-8 text-center text-sm font-black text-blue-900">{qty}</span>
+                                <button
+                                  onClick={() => handleProjectNeedChange(proj, qty + 1)}
+                                  className="p-1 hover:bg-blue-200 rounded text-blue-700 hover:text-blue-900 transition-colors"
+                                >
+                                  <ChevronUp size={14} />
+                                </button>
                               </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${hasData ? "text-blue-600 bg-blue-50" : "text-slate-400 bg-slate-50"}`}>
-                                  {item.value} HS
-                                </span>
-                                <span className="text-[10px] text-slate-400 font-medium w-8 text-right">{item.pct}%</span>
-                              </div>
+                              {/* Delete button */}
+                              <button
+                                onClick={() => removeProjectDept(proj)}
+                                className="text-slate-400 hover:text-rose-600 p-1 transition-colors"
+                              >
+                                <X size={14} />
+                              </button>
                             </div>
-                          );
-                        })}
-                        {monthPieData.length === 0 && (
-                          <p className="text-slate-400 text-xs italic text-center py-4">Không có dữ liệu</p>
+                          </div>
+                        ))}
+                        {Object.keys(projectManualNeeds).length === 0 && (
+                          <p className="text-xs text-slate-400 italic text-center py-4">Chưa có nhu cầu</p>
                         )}
+                      </div>
+
+                      {/* Add new project form */}
+                      <div className="flex items-center gap-2 pt-2 border-t border-blue-200/30">
+                        <input
+                          type="text"
+                          value={newProjectDept}
+                          onChange={(e) => setNewProjectDept(e.target.value)}
+                          placeholder="Thêm dự án..."
+                          className="flex-1 bg-white border border-blue-200 rounded-xl px-4 py-2 text-sm outline-none text-slate-700 placeholder-slate-400 focus:ring-1 focus:ring-blue-500/20 focus:border-blue-400/60"
+                        />
+                        <button
+                          onClick={addProjectDept}
+                          className="bg-blue-500 hover:bg-blue-600 text-white rounded-xl p-2 shadow-md shadow-blue-500/10 active:scale-95 transition-all"
+                        >
+                          <Plus size={16} />
+                        </button>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Row 2: Office Block vs Project Block side-by-side circular donut charts */}
+                {/* Row 3: Office Block vs Project Block side-by-side circular donut charts */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Left: Office Block */}
                   <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
                     <div className="flex justify-between items-start">
                       <div>
-                        <h3 className="font-heading font-bold text-slate-800 text-sm">Khối Văn Phòng</h3>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Cơ cấu tuyển dụng nhân sự các phòng ban văn phòng</p>
+                        <h3 className="font-heading font-black text-slate-800 text-sm">Khối Văn Phòng</h3>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Số lượng nhân sự đã tuyển và tuyển thêm</p>
                       </div>
-                      <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full shrink-0">
-                        Đã tuyển: {officeTotalHired}
-                      </span>
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-center gap-6">
-                      {/* Pie Chart (Pizza shape) */}
-                      <div className="w-full sm:w-1/2 h-48 relative flex items-center justify-center">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={officePieData}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={0}
-                              outerRadius={75}
-                              paddingAngle={officeTotalHired > 0 ? 1 : 0}
-                              dataKey="value"
-                            >
-                              {officePieData.map((entry, index) => (
-                                <Cell
-                                  key={`cell-${index}`}
-                                  fill={officeTotalHired > 0 ? CHART_COLORS[index % CHART_COLORS.length] : PLACEHOLDER_COLOR}
-                                />
-                              ))}
-                            </Pie>
-                            <Tooltip formatter={(value, name) => [officeTotalHired > 0 ? `${value} đã tuyển` : "0 nhân sự", name]} />
-                          </PieChart>
-                        </ResponsiveContainer>
+                      {/* Stats Bubble + Donut Chart Cluster */}
+                      <div className="flex items-center gap-4 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-150 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] shrink-0 select-none">
+                        {/* Tuyển thêm bubble */}
+                        <div className={`w-24 h-24 rounded-full flex flex-col items-center justify-center shadow-lg transition-transform duration-300 hover:scale-105 shrink-0 border-2 ${
+                          officeToRecruit > 0 
+                            ? "bg-gradient-to-br from-rose-500 via-red-500 to-red-600 text-white shadow-red-500/25 border-red-400 ring-4 ring-red-500/10" 
+                            : "bg-gradient-to-br from-emerald-500 via-emerald-500 to-teal-600 text-white shadow-emerald-500/25 border-emerald-400 ring-4 ring-emerald-500/10"
+                        }`}>
+                          <span className="text-3xl font-black font-heading leading-none">{officeToRecruit}</span>
+                          <span className="text-[9px] font-black tracking-wider uppercase mt-1">Tuyển thêm</span>
+                        </div>
+
+                        {/* Donut Chart */}
+                        <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={officePieData}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={28}
+                                outerRadius={40}
+                                paddingAngle={officeTotalHired > 0 ? 2 : 0}
+                                dataKey="value"
+                              >
+                                {officePieData.map((entry, index) => (
+                                  <Cell 
+                                    key={`cell-${index}`} 
+                                    fill={officeTotalHired > 0 ? CHART_COLORS[index % CHART_COLORS.length] : PLACEHOLDER_COLOR} 
+                                  />
+                                ))}
+                              </Pie>
+                            </PieChart>
+                          </ResponsiveContainer>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                            <span className="text-xl font-black text-slate-800 leading-none">{officeTotalHired}</span>
+                            <span className="text-[8px] font-black text-slate-400 mt-0.5 uppercase tracking-wider">Đã tuyển</span>
+                          </div>
+                        </div>
                       </div>
 
                       {/* Legend & Detail List */}
-                      <div className="flex-1 space-y-2.5 w-full max-h-48 overflow-y-auto pr-1">
+                      <div className="flex-1 space-y-2.5 w-full pr-1">
                         {officeEntries.map(([dept, stats]) => {
                           const hasHired = stats.hired > 0;
                           const mappedIndex = officeChartData.findIndex(x => x.name === dept);
                           const color = hasHired ? CHART_COLORS[mappedIndex % CHART_COLORS.length] : "#94A3B8";
                           return (
-                            <div key={dept} className="flex items-center justify-between text-xs font-semibold">
+                            <div key={dept} className="flex items-center justify-between text-sm font-semibold">
                               <div className="flex items-center gap-2 min-w-0">
                                 <span 
                                   className="w-2.5 h-2.5 rounded-full shrink-0" 
                                   style={{ backgroundColor: color }} 
                                 />
-                                <span className="text-slate-700 truncate">{dept}</span>
+                                <span className="text-slate-700 break-words leading-tight">{dept}</span>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${hasHired ? "text-emerald-600 bg-emerald-50" : "text-slate-400 bg-slate-50"}`}>
-                                  ✅ {stats.hired} đã tuyển
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${hasHired ? "text-emerald-600 bg-emerald-50" : "text-slate-400 bg-slate-50"}`}>
+                                  {stats.hired} đã tuyển
                                 </span>
                                 <span className="text-[10px] text-slate-400 font-medium">({stats.total} HS)</span>
                               </div>
@@ -1635,58 +1726,71 @@ export default function RecruitmentPage() {
                   <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
                     <div className="flex justify-between items-start">
                       <div>
-                        <h3 className="font-heading font-bold text-slate-800 text-sm">Khối Dự Án</h3>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Cơ cấu tuyển dụng nhân sự các dự án & công trường</p>
+                        <h3 className="font-heading font-black text-slate-800 text-sm">Khối Dự Án</h3>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Số lượng nhân sự đã tuyển và tuyển thêm tại các dự án</p>
                       </div>
-                      <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full shrink-0">
-                        Đã tuyển: {projectTotalHired}
-                      </span>
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-center gap-6">
-                      {/* Pie Chart (Pizza shape) */}
-                      <div className="w-full sm:w-1/2 h-48 relative flex items-center justify-center">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={projectPieData}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={0}
-                              outerRadius={75}
-                              paddingAngle={projectTotalHired > 0 ? 1 : 0}
-                              dataKey="value"
-                            >
-                              {projectPieData.map((entry, index) => (
-                                <Cell
-                                  key={`cell-${index}`}
-                                  fill={projectTotalHired > 0 ? CHART_COLORS[index % CHART_COLORS.length] : PLACEHOLDER_COLOR}
-                                />
-                              ))}
-                            </Pie>
-                            <Tooltip formatter={(value, name) => [projectTotalHired > 0 ? `${value} đã tuyển` : "0 nhân sự", name]} />
-                          </PieChart>
-                        </ResponsiveContainer>
+                      {/* Stats Bubble + Donut Chart Cluster */}
+                      <div className="flex items-center gap-4 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-150 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] shrink-0 select-none">
+                        {/* Tuyển thêm bubble */}
+                        <div className={`w-24 h-24 rounded-full flex flex-col items-center justify-center shadow-lg transition-transform duration-300 hover:scale-105 shrink-0 border-2 ${
+                          projectToRecruit > 0 
+                            ? "bg-gradient-to-br from-rose-500 via-red-500 to-red-600 text-white shadow-red-500/25 border-red-400 ring-4 ring-red-500/10" 
+                            : "bg-gradient-to-br from-emerald-500 via-emerald-500 to-teal-600 text-white shadow-emerald-500/25 border-emerald-400 ring-4 ring-emerald-500/10"
+                        }`}>
+                          <span className="text-3xl font-black font-heading leading-none">{projectToRecruit}</span>
+                          <span className="text-[9px] font-black tracking-wider uppercase mt-1">Tuyển thêm</span>
+                        </div>
+
+                        {/* Donut Chart */}
+                        <div className="relative w-24 h-24 flex items-center justify-center shrink-0">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={projectPieData}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={28}
+                                outerRadius={40}
+                                paddingAngle={projectTotalHired > 0 ? 2 : 0}
+                                dataKey="value"
+                              >
+                                {projectPieData.map((entry, index) => (
+                                  <Cell 
+                                    key={`cell-${index}`} 
+                                    fill={projectTotalHired > 0 ? CHART_COLORS[index % CHART_COLORS.length] : PLACEHOLDER_COLOR} 
+                                  />
+                                ))}
+                              </Pie>
+                            </PieChart>
+                          </ResponsiveContainer>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                            <span className="text-xl font-black text-slate-800 leading-none">{projectTotalHired}</span>
+                            <span className="text-[8px] font-black text-slate-400 mt-0.5 uppercase tracking-wider">Đã tuyển</span>
+                          </div>
+                        </div>
                       </div>
 
                       {/* Legend & Detail List */}
-                      <div className="flex-1 space-y-2.5 w-full max-h-48 overflow-y-auto pr-1">
+                      <div className="flex-1 space-y-2.5 w-full pr-1">
                         {projectEntries.map(([dept, stats]) => {
                           const hasHired = stats.hired > 0;
                           const mappedIndex = projectChartData.findIndex(x => x.name === dept);
                           const color = hasHired ? CHART_COLORS[mappedIndex % CHART_COLORS.length] : "#94A3B8";
                           return (
-                            <div key={dept} className="flex items-center justify-between text-xs font-semibold">
+                            <div key={dept} className="flex items-center justify-between text-sm font-semibold">
                               <div className="flex items-center gap-2 min-w-0">
                                 <span 
                                   className="w-2.5 h-2.5 rounded-full shrink-0" 
                                   style={{ backgroundColor: color }} 
                                 />
-                                <span className="text-slate-700 truncate">{dept}</span>
+                                <span className="text-slate-700 break-words leading-tight">{dept}</span>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${hasHired ? "text-emerald-600 bg-emerald-50" : "text-slate-400 bg-slate-50"}`}>
-                                  ✅ {stats.hired} đã tuyển
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${hasHired ? "text-emerald-600 bg-emerald-50" : "text-slate-400 bg-slate-50"}`}>
+                                  {stats.hired} đã tuyển
                                 </span>
                                 <span className="text-[10px] text-slate-400 font-medium">({stats.total} HS)</span>
                               </div>
@@ -1701,7 +1805,7 @@ export default function RecruitmentPage() {
                   </div>
                 </div>
 
-                {/* Row 3: Candidate Source & Highlight Spotlight Units */}
+                {/* Row 4: Candidate Source & Highlight Spotlight Units */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Left: By Candidate Source */}
                   <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">

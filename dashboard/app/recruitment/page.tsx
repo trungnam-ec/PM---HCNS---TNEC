@@ -72,6 +72,26 @@ type FileItem = { file: File; id: string };
 
 const NGUON_OPTIONS = ["TopCV", "LinkedIn", "Email", "Referral", "Nội bộ", "Khác"];
 
+const DEPT_OPTIONS = [
+  "P. HCNS",
+  "P. TÀI CHÍNH KẾ TOÁN",
+  "P. VẬT TƯ THIẾT BỊ",
+  "P. THỊ TRƯỜNG",
+  "P. KẾ HOẠCH",
+  "P. ĐẤU THẦU",
+  "P. KỸ THUẬT",
+  "P. QUẢN LÍ DỰ ÁN",
+  "P. ATLĐ",
+  "DA. RẠCH XUYÊN TÂM - HCM",
+  "DA.ĐIỆN MẶT TRỜI TV GĐ 2",
+  "DA.TỈNH LỘ 8 - CỦ CHI",
+  "DA.THƯỜNG PHƯỚC",
+  "DA.CẦU MÃ ĐÀ - ĐỒNG NAI",
+  "DA.CỐNG VÀM LẼO - BẠC LIÊU",
+  "DA.CHỐNG HẠN - NINH THUẬN",
+  "DA.XỬ LÝ NƯỚC THẢI TÂY NINH"
+];
+
 // ─── SCORE COLOR HELPERS ─────────────────────────────────────────────────────
 function scoreColor(score: number) {
   if (score >= 75) return { text: "text-emerald-600", bg: "bg-emerald-500", bar: "bg-emerald-400" };
@@ -518,7 +538,7 @@ const getColumnsForTab = (tab: string) => {
       { key: "last_position", label: "Chức danh gần nhất", width: "160px" },
       { key: "last_company", label: "Công ty gần nhất", width: "160px" },
       { key: "region", label: "Khu vực", width: "100px" },
-      { key: "department", label: "Phòng Ban", width: "130px" },
+      { key: "department", label: "Phòng Ban", width: "180px", type: "department" },
       { key: "role", label: "Vị trí", width: "140px" },
       { key: "status", label: "Trạng thái", width: "120px", type: "status" },
       { key: "source", label: "Nguồn", width: "110px" },
@@ -536,7 +556,7 @@ const getColumnsForTab = (tab: string) => {
       { key: "education", label: "Bằng cấp", width: "100px" },
       { key: "major", label: "Chuyên ngành", width: "150px" },
       { key: "region", label: "Khu vực", width: "100px" },
-      { key: "department", label: "Phòng Ban", width: "130px" },
+      { key: "department", label: "Phòng Ban", width: "180px", type: "department" },
       { key: "role", label: "Vị trí", width: "140px" },
       { key: "source", label: "Nguồn", width: "110px" },
       { key: "v1_interviewer", label: "Người PV V1", width: "130px" },
@@ -554,7 +574,7 @@ const getColumnsForTab = (tab: string) => {
       { key: "education", label: "Bằng cấp", width: "100px" },
       { key: "major", label: "Chuyên ngành", width: "150px" },
       { key: "region", label: "Khu vực", width: "100px" },
-      { key: "department", label: "Phòng Ban", width: "130px" },
+      { key: "department", label: "Phòng Ban", width: "180px", type: "department" },
       { key: "role", label: "Vị trí", width: "140px" },
       { key: "v1_result", label: "KQ Vòng 1", width: "110px", type: "v1_result_readonly" },
       { key: "source", label: "Nguồn", width: "110px" },
@@ -573,7 +593,7 @@ const getColumnsForTab = (tab: string) => {
     { key: "education", label: "Bằng cấp", width: "100px" },
     { key: "major", label: "Chuyên ngành", width: "150px" },
     { key: "region", label: "Khu vực", width: "100px" },
-    { key: "department", label: "Phòng Ban", width: "130px" },
+    { key: "department", label: "Phòng Ban", width: "180px", type: "department" },
     { key: "role", label: "Vị trí", width: "140px" },
     { key: "v2_result", label: "KQ Vòng 2", width: "110px", type: "v2_result_readonly" },
     { key: "source", label: "Nguồn", width: "110px" },
@@ -1782,6 +1802,29 @@ export default function RecruitmentPage() {
                                         <option value="Chờ nhận việc">Chờ nhận việc</option>
                                         <option value="NHẬN">NHẬN</option>
                                         <option value="TC">TC</option>
+                                      </select>
+                                    </td>
+                                  );
+                                }
+
+                                if (col.type === "department") {
+                                  const displayDept = val || "Chưa xếp phòng";
+                                  const optionsList = [...DEPT_OPTIONS];
+                                  if (val && val !== "Chưa xếp phòng" && !optionsList.includes(val)) {
+                                    optionsList.push(val);
+                                  }
+                                  return (
+                                    <td key={col.key} className="px-1.5 py-1 border border-slate-100 text-center select-container-dept max-w-[180px]">
+                                      <select
+                                        value={displayDept}
+                                        onChange={(e) => handleUpdateCandidateField(candidate.id, "department", e.target.value)}
+                                        disabled={!canManage}
+                                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg border border-slate-200 outline-none w-full bg-white text-slate-700 max-h-[30px] line-clamp-1 truncate ${canManage ? "cursor-pointer" : "cursor-default opacity-85"}`}
+                                      >
+                                        <option value="Chưa xếp phòng">Chưa xếp phòng</option>
+                                        {optionsList.map((d) => (
+                                          <option key={d} value={d}>{d}</option>
+                                        ))}
                                       </select>
                                     </td>
                                   );

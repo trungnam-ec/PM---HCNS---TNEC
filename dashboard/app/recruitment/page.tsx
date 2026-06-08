@@ -1375,15 +1375,31 @@ export default function RecruitmentPage() {
               }
             });
             const monthEntries = Object.entries(byMonth).slice(-6);
-            const maxMonth = Math.max(...monthEntries.map(([, v]) => v), 1);
+            const monthTotalCount = monthEntries.reduce((sum, [, v]) => sum + v, 0);
 
-            const PIPELINE_STEPS = [
-              { id: "new", label: "CV Mới", count: newCount, color: "bg-slate-400", text: "text-slate-500", pct: total > 0 ? Math.round((newCount/total)*100) : 0 },
-              { id: "screening", label: "Sàng lọc", count: screeningCount, color: "bg-cyan-400", text: "text-cyan-600", pct: total > 0 ? Math.round((screeningCount/total)*100) : 0 },
-              { id: "interview", label: "Phỏng vấn", count: interviewCount, color: "bg-blue-500", text: "text-blue-600", pct: total > 0 ? Math.round((interviewCount/total)*100) : 0 },
-              { id: "offer", label: "Đề nghị", count: offerCount, color: "bg-purple-500", text: "text-purple-600", pct: total > 0 ? Math.round((offerCount/total)*100) : 0 },
-              { id: "hired", label: "Đã tuyển", count: hiredCount, color: "bg-emerald-500", text: "text-emerald-600", pct: total > 0 ? Math.round((hiredCount/total)*100) : 0 },
+            const funnelPieData = [
+              { name: "CV Mới", value: newCount, color: "#94A3B8", textClass: "text-slate-600 bg-slate-50", pct: total > 0 ? Math.round((newCount/total)*100) : 0 },
+              { name: "Sàng lọc", value: screeningCount, color: "#06B6D4", textClass: "text-cyan-600 bg-cyan-50", pct: total > 0 ? Math.round((screeningCount/total)*100) : 0 },
+              { name: "Phỏng vấn", value: interviewCount, color: "#3B82F6", textClass: "text-blue-600 bg-blue-50", pct: total > 0 ? Math.round((interviewCount/total)*100) : 0 },
+              { name: "Đề nghị", value: offerCount, color: "#8B5CF6", textClass: "text-purple-600 bg-purple-50", pct: total > 0 ? Math.round((offerCount/total)*100) : 0 },
+              { name: "Đã tuyển", value: hiredCount, color: "#10B981", textClass: "text-emerald-600 bg-emerald-50", pct: total > 0 ? Math.round((hiredCount/total)*100) : 0 },
+              { name: "Từ chối", value: rejectedCount, color: "#F43F5E", textClass: "text-rose-600 bg-rose-50", pct: total > 0 ? Math.round((rejectedCount/total)*100) : 0 },
             ];
+            const hasFunnelData = total > 0;
+            const funnelChartData = hasFunnelData
+              ? funnelPieData.filter(d => d.value > 0)
+              : [{ name: "Chưa có ứng viên", value: 1, color: "#E2E8F0", pct: 0, textClass: "" }];
+
+            const monthPieData = monthEntries.map(([month, count], index) => ({
+              name: month,
+              value: count,
+              color: CHART_COLORS[index % CHART_COLORS.length],
+              pct: monthTotalCount > 0 ? Math.round((count/monthTotalCount)*100) : 0
+            }));
+            const hasMonthData = monthTotalCount > 0;
+            const monthChartData = hasMonthData
+              ? monthPieData.filter(d => d.value > 0)
+              : [{ name: "Chưa có dữ liệu", value: 1, color: "#E2E8F0", pct: 0 }];
 
             return (
               <div className="space-y-6">
@@ -1406,88 +1422,147 @@ export default function RecruitmentPage() {
                   ))}
                 </div>
 
-                {/* Funnel + Monthly */}
+                {/* Funnel + Monthly Donut Charts */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Left: Phễu Tuyển Dụng */}
                   <div className="lg:col-span-2 glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="font-heading font-bold text-slate-800 text-sm">Phễu Tuyển Dụng</h3>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Tỉ lệ chuyển đổi qua từng giai đoạn</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Phân bố ứng viên qua các giai đoạn tuyển dụng</p>
                       </div>
                       <div className="text-right">
                         <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wider">Tỉ lệ tuyển dụng</p>
-                        <p className="text-4xl font-extrabold text-emerald-600 font-heading leading-none mt-0.5">
+                        <p className="text-3xl font-extrabold text-emerald-600 font-heading leading-none mt-0.5">
                           {total > 0 ? Math.round((thuViecCount/total)*100) : 0}%
                         </p>
                         <p className="text-[10px] text-slate-400 mt-0.5">{thuViecCount}/{total} ứng viên</p>
                       </div>
                     </div>
-                    <div className="space-y-3">
-                      {PIPELINE_STEPS.map((step) => (
-                        <div key={step.id} className="flex items-center gap-4">
-                          <div className="w-24 text-right">
-                            <span className="text-[10px] font-bold text-slate-500">{step.label}</span>
-                          </div>
-                          <div className="flex-1">
-                            <div className="h-8 bg-slate-100 rounded-lg overflow-hidden">
-                              <div
-                                className={`h-full ${step.color} rounded-lg transition-all duration-700 flex items-center justify-end pr-3`}
-                                style={{ width: `${Math.max(step.pct, 2)}%` }}
-                              >
-                                {step.count > 0 && (
-                                  <span className="text-white text-[10px] font-extrabold">{step.count}</span>
-                                )}
+
+                    <div className="flex flex-col sm:flex-row items-center gap-6">
+                      {/* Donut Chart */}
+                      <div className="w-full sm:w-1/2 h-48 relative flex items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={funnelChartData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={55}
+                              outerRadius={75}
+                              paddingAngle={hasFunnelData ? 3 : 0}
+                              dataKey="value"
+                            >
+                              {funnelChartData.map((entry, index) => (
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={hasFunnelData ? entry.color : PLACEHOLDER_COLOR}
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value, name) => [hasFunnelData ? `${value} hồ sơ` : "0 hồ sơ", name]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+
+                        {/* Absolute center text */}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                          <span className="text-2xl font-extrabold text-slate-800 leading-none">{total}</span>
+                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-1">Ứng viên</span>
+                        </div>
+                      </div>
+
+                      {/* Legend & Detail List */}
+                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5 w-full">
+                        {funnelPieData.map((item) => {
+                          const hasData = item.value > 0;
+                          return (
+                            <div key={item.name} className="flex items-center justify-between text-xs font-semibold p-1.5 rounded-xl hover:bg-slate-50 transition-colors">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: item.color }}
+                                />
+                                <span className="text-slate-700 truncate">{item.name}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${hasData ? item.textClass : "text-slate-400 bg-slate-50"}`}>
+                                  {item.value} HS
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-medium w-8 text-right">{item.pct}%</span>
                               </div>
                             </div>
-                          </div>
-                          <div className="w-14 text-right">
-                            <span className={`text-[10px] font-extrabold ${step.text}`}>{step.pct}%</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-4 pt-2 border-t border-dashed border-slate-200">
-                      <div className="w-24 text-right">
-                        <span className="text-[10px] font-bold text-rose-400">Từ chối</span>
-                      </div>
-                      <div className="flex-1">
-                        <div className="h-6 bg-rose-50 rounded-lg overflow-hidden border border-dashed border-rose-200">
-                          <div
-                            className="h-full bg-rose-300/60 rounded-lg flex items-center justify-end pr-3 transition-all"
-                            style={{ width: `${total > 0 ? Math.round((rejectedCount/total)*100) : 0}%` }}
-                          >
-                            {rejectedCount > 0 && <span className="text-rose-700 text-[10px] font-extrabold">{rejectedCount}</span>}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="w-14 text-right">
-                        <span className="text-[10px] font-extrabold text-rose-400">{total > 0 ? Math.round((rejectedCount/total)*100) : 0}%</span>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
 
+                  {/* Right: Ứng viên theo tháng */}
                   <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
                     <div>
                       <h3 className="font-heading font-bold text-slate-800 text-sm">Ứng viên theo tháng</h3>
-                      <p className="text-[10px] text-slate-400 mt-0.5">6 tháng gần nhất</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Tỉ lệ phân bổ ứng viên trong 6 tháng gần nhất</p>
                     </div>
-                    <div className="space-y-2.5">
-                      {monthEntries.map(([month, count]) => (
-                        <div key={month} className="flex items-center gap-3">
-                          <span className="text-[10px] font-bold text-slate-500 w-12 shrink-0">{month}</span>
-                          <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
-                            <div
-                              className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full flex items-center justify-end pr-2 transition-all duration-700"
-                              style={{ width: `${Math.round((count/maxMonth)*100)}%` }}
+
+                    <div className="flex flex-col sm:flex-row lg:flex-col items-center gap-6">
+                      {/* Donut Chart */}
+                      <div className="w-full sm:w-1/2 lg:w-full h-48 relative flex items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={monthChartData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={55}
+                              outerRadius={75}
+                              paddingAngle={hasMonthData ? 3 : 0}
+                              dataKey="value"
                             >
-                              <span className="text-white text-[9px] font-extrabold">{count}</span>
-                            </div>
-                          </div>
+                              {monthChartData.map((entry, index) => (
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={hasMonthData ? entry.color : PLACEHOLDER_COLOR}
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value, name) => [hasMonthData ? `${value} hồ sơ` : "0 hồ sơ", name]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+
+                        {/* Absolute center text */}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                          <span className="text-2xl font-extrabold text-slate-800 leading-none">{monthTotalCount}</span>
+                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-1">6 tháng qua</span>
                         </div>
-                      ))}
-                      {monthEntries.length === 0 && (
-                        <p className="text-slate-400 text-xs italic text-center py-4">Không có dữ liệu</p>
-                      )}
+                      </div>
+
+                      {/* Legend & Detail List */}
+                      <div className="flex-1 lg:w-full space-y-2 w-full max-h-48 overflow-y-auto pr-1">
+                        {monthPieData.map((item) => {
+                          const hasData = item.value > 0;
+                          return (
+                            <div key={item.name} className="flex items-center justify-between text-xs font-semibold p-1 rounded-xl hover:bg-slate-50 transition-colors">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: item.color }}
+                                />
+                                <span className="text-slate-700 truncate">{item.name}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${hasData ? "text-blue-600 bg-blue-50" : "text-slate-400 bg-slate-50"}`}>
+                                  {item.value} HS
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-medium w-8 text-right">{item.pct}%</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {monthPieData.length === 0 && (
+                          <p className="text-slate-400 text-xs italic text-center py-4">Không có dữ liệu</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

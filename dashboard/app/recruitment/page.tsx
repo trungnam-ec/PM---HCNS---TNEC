@@ -505,20 +505,54 @@ const normalizeDepartment = (dept: string): string => {
   const trim = dept.trim();
   const lower = trim.toLowerCase();
   
-  if (lower === "atld" || lower === "atlđ" || lower === "phòng atlđ") {
+  if (
+    lower === "atld" || 
+    lower === "atlđ" || 
+    lower.includes("atlđ") || 
+    lower.includes("atld") || 
+    lower.includes("an toàn")
+  ) {
     return "ATLĐ";
   }
-  if (lower === "kỹ thuật" || lower === "kỹ Thuật") {
+  if (lower === "kỹ thuật" || lower.includes("kỹ thuật")) {
     return "Kỹ thuật";
   }
-  if (lower === "phòng hành chính nhân sự" || lower === "hcns") {
+  if (
+    lower === "phòng hành chính nhân sự" || 
+    lower === "hcns" || 
+    lower === "phòng hcns" || 
+    lower.includes("hành chính") || 
+    lower.includes("nhân sự")
+  ) {
     return "HCNS";
   }
-  if (lower === "vt-tb" || lower === "vt_tb" || lower === "vật tư - thiết bị") {
+  if (
+    lower === "vt-tb" || 
+    lower === "vt_tb" || 
+    lower.includes("vật tư") || 
+    lower.includes("thiết bị")
+  ) {
     return "VT-TB";
   }
-  if (lower === "kế toán") {
+  if (lower === "kế toán" || lower.includes("kế toán") || lower.includes("tài chính")) {
     return "Kế toán";
+  }
+  if (lower === "kế hoạch" || lower.includes("kế hoạch")) {
+    return "Kế hoạch";
+  }
+  if (lower === "đấu thầu" || lower.includes("đấu thầu")) {
+    return "Đấu thầu";
+  }
+  if (lower === "thị trường" || lower.includes("thị trường")) {
+    return "Thị trường";
+  }
+  if (
+    lower === "quản lý dự án" || 
+    lower.includes("qlda") || 
+    lower.includes("quản lí dự án") || 
+    lower.includes("quản lý dự án")
+  ) {
+    return "Phòng QLDA";
   }
   
   return trim.charAt(0).toUpperCase() + trim.slice(1);

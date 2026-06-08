@@ -524,6 +524,12 @@ const normalizeDepartment = (dept: string): string => {
   return trim.charAt(0).toUpperCase() + trim.slice(1);
 };
 
+const isProjectBlock = (deptName: string): boolean => {
+  const name = (deptName || "").trim().toUpperCase();
+  return name.startsWith("DA.") || name.startsWith("DA ") || name.startsWith("DỰ ÁN") || name.startsWith("DA");
+};
+
+
 const getColumnsForTab = (tab: string) => {
   if (tab === "tong_hop") {
     return [
@@ -612,6 +618,7 @@ const getColumnsForTab = (tab: string) => {
 export default function RecruitmentPage() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "table_view" | "scorer" | "settings">("dashboard");
   const [tableSubTab, setTableSubTab] = useState<"tong_hop" | "vong_1" | "vong_2" | "thu_viec">("tong_hop");
+  const [deptTab, setDeptTab] = useState<"office" | "project">("office");
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -1264,20 +1271,29 @@ export default function RecruitmentPage() {
             const interviewCount = byStatus("interview");
             const offerCount = byStatus("offer");
             const hiredCount = byStatus("hired");
-            const rejectedCount = byStatus("rejected");
-            const passRate = total > 0 ? Math.round(((total - rejectedCount) / total) * 100) : 0;
+            const rejectedCount = candidates.filter(c => c.status === "rejected").length;
+            
+            // Counts aligned with the 4 detail sheets
+            const sortedCandidates = [...candidates].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+            const vong1Count = sortedCandidates.filter(c => c.status !== "rejected").length;
+            const vong2Count = sortedCandidates.filter(c => c.v1_result === "ĐẠT").length;
+            const thuViecCount = sortedCandidates.filter(c => c.v2_result === "ĐẠT").length;
+            const passRate = total > 0 ? Math.round((vong1Count / total) * 100) : 0;
 
             const byDept: Record<string, { total: number; hired: number; interview: number; rejected: number }> = {};
             candidates.forEach(c => {
               const dept = normalizeDepartment(c.department);
               if (!byDept[dept]) byDept[dept] = { total: 0, hired: 0, interview: 0, rejected: 0 };
               byDept[dept].total++;
-              if (c.status === "hired") byDept[dept].hired++;
-              if (c.status === "interview" || c.status === "offer") byDept[dept].interview++;
+              if (c.v2_result === "ĐẠT") byDept[dept].hired++;
+              else if (c.v1_result === "ĐẠT") byDept[dept].interview++;
               if (c.status === "rejected") byDept[dept].rejected++;
             });
             const deptEntries = Object.entries(byDept).sort((a, b) => b[1].total - a[1].total);
-            const maxDeptTotal = Math.max(...deptEntries.map(([, v]) => v.total), 1);
+            const officeEntries = deptEntries.filter(([dept]) => !isProjectBlock(dept));
+            const projectEntries = deptEntries.filter(([dept]) => isProjectBlock(dept));
+            const activeDeptEntries = deptTab === "office" ? officeEntries : projectEntries;
+            const maxDeptTotal = Math.max(...activeDeptEntries.map(([, v]) => v.total), 1);
 
             const bySource: Record<string, number> = {};
             candidates.forEach(c => {
@@ -1311,9 +1327,9 @@ export default function RecruitmentPage() {
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                   {[
                     { label: "Tổng ứng viên", value: total, icon: "👥", bg: "from-blue-500 to-blue-700", sub: "Toàn bộ hồ sơ" },
-                    { label: "Đã tuyển dụng", value: hiredCount, icon: "✅", bg: "from-emerald-500 to-emerald-700", sub: `${total>0?Math.round((hiredCount/total)*100):0}% tổng số` },
-                    { label: "Đang phỏng vấn", value: interviewCount + offerCount, icon: "🎯", bg: "from-purple-500 to-purple-700", sub: "V1 + V2 + Offer" },
-                    { label: "CV Mới chờ duyệt", value: newCount + screeningCount, icon: "📋", bg: "from-cyan-500 to-cyan-700", sub: "Chưa vào vòng PV" },
+                    { label: "Vòng 1 (Sàng lọc)", value: vong1Count, icon: "📋", bg: "from-cyan-500 to-cyan-700", sub: "Đạt sàng lọc hồ sơ" },
+                    { label: "Vòng 2 (Phỏng vấn)", value: vong2Count, icon: "🎯", bg: "from-purple-500 to-purple-700", sub: "Đạt phỏng vấn V1" },
+                    { label: "Thử việc / Nhận việc", value: thuViecCount, icon: "✅", bg: "from-emerald-500 to-emerald-700", sub: "Đạt phỏng vấn V2" },
                     { label: "Từ chối / Loại", value: rejectedCount, icon: "❌", bg: "from-rose-500 to-rose-700", sub: `${total>0?Math.round((rejectedCount/total)*100):0}% tổng số` },
                     { label: "Tỉ lệ Pass CV", value: `${passRate}%`, icon: "📊", bg: "from-amber-500 to-orange-600", sub: "Không bị loại" },
                   ].map((kpi, i) => (
@@ -1337,9 +1353,9 @@ export default function RecruitmentPage() {
                       <div className="text-right">
                         <p className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wider">Tỉ lệ tuyển dụng</p>
                         <p className="text-4xl font-extrabold text-emerald-600 font-heading leading-none mt-0.5">
-                          {total > 0 ? Math.round((hiredCount/total)*100) : 0}%
+                          {total > 0 ? Math.round((thuViecCount/total)*100) : 0}%
                         </p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">{hiredCount}/{total} ứng viên</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">{thuViecCount}/{total} ứng viên</p>
                       </div>
                     </div>
                     <div className="space-y-3">
@@ -1415,12 +1431,41 @@ export default function RecruitmentPage() {
                 {/* By Department + By Source */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="glass bg-white/80 rounded-2xl p-6 shadow border border-slate-100 space-y-4">
-                    <div>
-                      <h3 className="font-heading font-bold text-slate-800 text-sm">Theo Phòng Ban</h3>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Số lượng ứng viên & tỉ lệ tuyển dụng</p>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-heading font-bold text-slate-800 text-sm">Theo Phòng Ban</h3>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Số lượng ứng viên & tỉ lệ tuyển dụng</p>
+                      </div>
+                      
+                      {/* Tabs for Office / Project */}
+                      <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 w-fit shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setDeptTab("office")}
+                          className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                            deptTab === "office"
+                              ? "bg-white text-[#005BAC] shadow-sm"
+                              : "text-slate-500 hover:text-slate-800"
+                          }`}
+                        >
+                          Khối Văn Phòng ({officeEntries.reduce((sum, [, v]) => sum + v.total, 0)})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeptTab("project")}
+                          className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                            deptTab === "project"
+                              ? "bg-white text-[#005BAC] shadow-sm"
+                              : "text-slate-500 hover:text-slate-800"
+                          }`}
+                        >
+                          Khối Dự án ({projectEntries.reduce((sum, [, v]) => sum + v.total, 0)})
+                        </button>
+                      </div>
                     </div>
+
                     <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
-                      {deptEntries.map(([dept, stats]) => (
+                      {activeDeptEntries.map(([dept, stats]) => (
                         <div key={dept} className="space-y-1">
                           <div className="flex items-center justify-between text-xs">
                             <span className="font-bold text-slate-700">{dept}</span>
@@ -1439,8 +1484,12 @@ export default function RecruitmentPage() {
                           </div>
                         </div>
                       ))}
+                      {activeDeptEntries.length === 0 && (
+                        <p className="text-slate-400 text-xs italic text-center py-8">Không có dữ liệu phòng ban nào</p>
+                      )}
                     </div>
-                    {/* Legend - larger text */}
+
+                    {/* Legend */}
                     <div className="flex items-center gap-4 text-xs font-semibold pt-2 border-t border-slate-100">
                       <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-400 inline-block" /> Đã tuyển</span>
                       <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-400 inline-block" /> Phỏng vấn</span>

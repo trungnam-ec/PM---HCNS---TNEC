@@ -406,14 +406,18 @@ export default function TaskManagementPage() {
               </button>
             </div>
 
-            {canManageTasks && (
-              <button 
-                onClick={() => setIsModalOpen(true)}
-                className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 shadow-md shadow-blue-600/10 cursor-pointer"
-              >
-                <Plus size={14} /> Thêm công việc
-              </button>
-            )}
+            <button 
+              onClick={() => {
+                if (currentUser) {
+                  setNewAssignee(currentUser.name);
+                }
+                setNewStatus("planning");
+                setIsModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 shadow-md shadow-blue-600/10 cursor-pointer"
+            >
+              <Plus size={14} /> Thêm công việc
+            </button>
           </div>
 
           {loading ? (
@@ -441,9 +445,14 @@ export default function TaskManagementPage() {
                       </div>
                       <button 
                         onClick={() => {
+                          if (currentUser) {
+                            setNewAssignee(currentUser.name);
+                          }
+                          setNewStatus(col.id);
                           setIsModalOpen(true);
                         }}
                         className="text-slate-400 hover:text-slate-600"
+                        title={`Thêm công việc vào cột ${col.title}`}
                       >
                         <Plus size={13} />
                       </button>
@@ -466,7 +475,7 @@ export default function TaskManagementPage() {
                               }`}>
                                 {task.priority}
                               </span>
-                              {canManageTasks && (
+                              {(canManageTasks || (currentUser && (task.assignee.toLowerCase().includes(currentUser.name.toLowerCase()) || currentUser.name.toLowerCase().includes(task.assignee.toLowerCase())))) && (
                                 <button 
                                   onClick={() => handleDeleteTask(task.id)}
                                   className="text-slate-350 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"

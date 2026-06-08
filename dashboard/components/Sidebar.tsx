@@ -11,8 +11,10 @@ import {
   Settings,
   Briefcase,
   Users,
-  CalendarRange
+  CalendarRange,
+  X
 } from "lucide-react";
+import { useSidebar } from "./SidebarContext";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -28,21 +30,41 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { sidebarOpen, setSidebarOpen } = useSidebar();
 
   return (
-    <aside className="w-60 min-h-screen flex flex-col fixed left-0 top-0 z-40 bg-white border-r border-slate-200/60 shadow-sm">
-      {/* Brand Logo & Header */}
-      <div className="px-6 py-6 border-b border-slate-200/60">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center font-heading font-extrabold text-white text-xs shadow-md shadow-blue-500/25">
-            TN
+    <>
+      {/* Mobile Backdrop Overlay */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden transition-all duration-300"
+        />
+      )}
+
+      <aside className={`w-60 h-screen flex flex-col fixed left-0 top-0 z-40 bg-white border-r border-slate-200/60 shadow-sm transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        sidebarOpen ? "translate-x-0" : "-translate-x-full"
+      }`}>
+        {/* Brand Logo & Header */}
+        <div className="px-6 py-6 border-b border-slate-200/60 relative">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center font-heading font-extrabold text-white text-xs shadow-md shadow-blue-500/25">
+              TN
+            </div>
+            <div>
+              <h1 className="text-[#1D1D1F] font-heading font-bold text-sm tracking-tight leading-tight">PM - HCNS - TNEC</h1>
+              <p className="text-slate-450 text-[10px] uppercase font-bold tracking-wider mt-0.5">Hệ thống HCNS</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-[#1D1D1F] font-heading font-bold text-sm tracking-tight leading-tight">PM - HCNS - TNEC</h1>
-            <p className="text-slate-450 text-[10px] uppercase font-bold tracking-wider mt-0.5">Hệ thống HCNS</p>
-          </div>
+          {/* Mobile Close Button */}
+          <button 
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden absolute right-4 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+            title="Đóng menu"
+          >
+            <X size={18} />
+          </button>
         </div>
-      </div>
 
       {/* Navigation Links */}
       <nav className="flex-1 px-4 py-6 space-y-2.5 overflow-y-auto">
@@ -70,5 +92,6 @@ export default function Sidebar() {
         })}
       </nav>
     </aside>
+    </>
   );
 }

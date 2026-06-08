@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { Loader2, ShieldAlert } from "lucide-react";
+import { SidebarProvider } from "./SidebarContext";
 
 export default function AuthWrapper({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<any>(null);
@@ -241,5 +242,5 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
   }
 
   // 4. Logged in & Is Admin -> Render dashboard
-  return <>{children}</>;
+  return <SidebarProvider>{children}</SidebarProvider>;
 }

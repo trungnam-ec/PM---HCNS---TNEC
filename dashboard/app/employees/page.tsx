@@ -242,9 +242,9 @@ export default function EmployeeManagementPage() {
         <main className="flex-1 p-8 space-y-6 overflow-y-auto">
           {/* Action Bar */}
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
               {/* Search */}
-              <div className="relative w-64">
+              <div className="relative w-full sm:w-64">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input
                   type="text"
@@ -276,7 +276,7 @@ export default function EmployeeManagementPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end sm:justify-start">
               <button 
                 onClick={fetchEmployees}
                 className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-all shadow-sm"
@@ -413,7 +413,7 @@ export default function EmployeeManagementPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-slate-500">Phòng ban</label>
                   <select
@@ -452,7 +452,7 @@ export default function EmployeeManagementPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-slate-500">Số điện thoại</label>
                   <input

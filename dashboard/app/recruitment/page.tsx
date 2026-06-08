@@ -192,29 +192,31 @@ function ResultCard({
   return (
     <div className="glass rounded-2xl overflow-hidden border border-slate-200/40 hover:shadow-lg transition-all">
       {/* Header row */}
-      <div className="p-5 flex items-center gap-4">
-        {/* Score circle */}
-        <div className={`w-16 h-16 rounded-2xl ${c.bg} flex flex-col items-center justify-center shrink-0 shadow`}>
-          <span className="text-white font-bold text-xl leading-none">{result.score}</span>
-          <span className="text-white/70 text-xs">/100</span>
-        </div>
+      <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4 min-w-0 w-full sm:w-auto">
+          {/* Score circle */}
+          <div className={`w-16 h-16 rounded-2xl ${c.bg} flex flex-col items-center justify-center shrink-0 shadow`}>
+            <span className="text-white font-bold text-xl leading-none">{result.score}</span>
+            <span className="text-white/70 text-xs">/100</span>
+          </div>
 
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <p className="font-heading font-semibold text-[#005BAC] truncate">
-            {result.extracted_info?.ten_ung_vien || result.file_name}
-          </p>
-          <p className="text-slate-500 text-xs mt-0.5 truncate">
-            {result.extracted_info?.vi_tri || "N/A"} · {result.extracted_info?.kinh_nghiem || "N/A"} · {result.extracted_info?.khu_vuc || "N/A"}
-          </p>
-          {/* Progress bar */}
-          <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-            <div className={`h-full ${c.bar} rounded-full transition-all`} style={{ width: `${result.score}%` }} />
+          {/* Info */}
+          <div className="min-w-0 flex-1">
+            <p className="font-heading font-semibold text-[#005BAC] truncate">
+              {result.extracted_info?.ten_ung_vien || result.file_name}
+            </p>
+            <p className="text-slate-500 text-xs mt-0.5 truncate">
+              {result.extracted_info?.vi_tri || "N/A"} · {result.extracted_info?.kinh_nghiem || "N/A"} · {result.extracted_info?.khu_vuc || "N/A"}
+            </p>
+            {/* Progress bar */}
+            <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden w-full max-w-[200px]">
+              <div className={`h-full ${c.bar} rounded-full transition-all`} style={{ width: `${result.score}%` }} />
+            </div>
           </div>
         </div>
 
         {/* Status + buttons */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 sm:shrink-0 w-full sm:w-auto">
           {result.trang_thai === "PASS CV" ? (
             <span className="badge-pass px-3 py-1 rounded-full text-xs font-semibold">✓ PASS CV</span>
           ) : (
@@ -311,7 +313,7 @@ function ResultCard({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Left: skills */}
             <div className="space-y-3">
               <div>
@@ -1519,7 +1521,7 @@ export default function RecruitmentPage() {
                       <div className="space-y-2 pr-1">
                         {Object.entries(officeManualNeeds).map(([dept, qty]) => (
                           <div key={dept} className="flex items-center justify-between text-sm bg-white hover:bg-amber-50/20 rounded-xl p-3 border border-slate-150 shadow-sm transition-all duration-200 group">
-                            <span className="font-bold text-slate-700 truncate max-w-[250px]">{dept}</span>
+                            <span className="font-bold text-slate-700 truncate max-w-[120px] min-[380px]:max-w-[160px] min-[480px]:max-w-[200px] sm:max-w-[250px]">{dept}</span>
                             <div className="flex items-center gap-3">
                               {/* Quantity Counter */}
                               <div className="flex items-center bg-amber-50/85 border border-amber-200 rounded-lg p-1">
@@ -1585,7 +1587,7 @@ export default function RecruitmentPage() {
                       <div className="space-y-2 pr-1">
                         {Object.entries(projectManualNeeds).map(([proj, qty]) => (
                           <div key={proj} className="flex items-center justify-between text-sm bg-white hover:bg-blue-50/20 rounded-xl p-3 border border-slate-150 shadow-sm transition-all duration-200 group">
-                            <span className="font-bold text-slate-700 truncate max-w-[250px]">{proj}</span>
+                            <span className="font-bold text-slate-700 truncate max-w-[120px] min-[380px]:max-w-[160px] min-[480px]:max-w-[200px] sm:max-w-[250px]">{proj}</span>
                             <div className="flex items-center gap-3">
                               {/* Quantity Counter */}
                               <div className="flex items-center bg-blue-50/85 border border-blue-200 rounded-lg p-1">
@@ -1918,7 +1920,7 @@ export default function RecruitmentPage() {
                 </div>
               ) : (
                 /* Pipeline Board */
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-start overflow-x-auto pb-4">
+                <div className="flex overflow-x-auto pb-4 gap-4 items-start md:grid md:grid-cols-3 lg:grid-cols-6 md:overflow-x-visible">
                   {COLUMNS.map((col) => {
                     const colCandidates = filteredPipeline.filter(c => (c.status || "new") === col.id);
                     return (
@@ -1926,7 +1928,7 @@ export default function RecruitmentPage() {
                         key={col.id} 
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => handleDrop(e, col.id)}
-                        className="flex flex-col gap-4 min-w-[200px] bg-slate-100/40 p-3 rounded-2xl border border-slate-200/40 min-h-[450px]"
+                        className="flex flex-col gap-4 min-w-[200px] shrink-0 bg-slate-100/40 p-3 rounded-2xl border border-slate-200/40 min-h-[450px]"
                       >
                         {/* Column Header */}
                         <div className={`flex items-center justify-between border-t-2 ${col.color} pt-2`}>
@@ -2002,7 +2004,7 @@ export default function RecruitmentPage() {
               {/* Controls bar */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 {/* Sheets Subtabs */}
-                <div className="flex bg-slate-200/50 p-1 rounded-xl gap-1 w-fit border border-slate-200">
+                <div className="flex bg-slate-200/50 p-1 rounded-xl gap-1 w-fit border border-slate-200 max-w-full overflow-x-auto scrollbar-none shrink-0">
                   {[
                     { id: "tong_hop", label: "Tổng Hợp" },
                     { id: "vong_1", label: "Vòng 1" },
@@ -2032,8 +2034,8 @@ export default function RecruitmentPage() {
                 </div>
 
                 {/* Search & Refresh */}
-                <div className="flex items-center gap-3">
-                  <div className="relative w-64">
+                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                  <div className="relative w-full sm:w-64">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                     <input
                       type="text"
@@ -2577,7 +2579,7 @@ export default function RecruitmentPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-slate-500">Email</label>
                   <input

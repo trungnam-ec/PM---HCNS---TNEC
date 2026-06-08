@@ -426,10 +426,10 @@ export default function TaskManagementPage() {
 
         <main className="flex-1 p-8 space-y-6 overflow-y-auto">
           {/* Subheader Filters */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
               {/* Search */}
-              <div className="relative w-64">
+              <div className="relative w-full sm:w-64">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input
                   type="text"
@@ -468,7 +468,7 @@ export default function TaskManagementPage() {
             </div>
           ) : (
             /* Kanban Board Container */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5 items-start overflow-x-auto pb-4">
+            <div className="flex overflow-x-auto pb-4 gap-4 items-start md:grid md:grid-cols-2 lg:grid-cols-5 md:overflow-x-visible">
               {COLUMNS.map((col) => {
                 const colTasks = filteredTasks.filter(t => t.status === col.id);
                 return (
@@ -476,7 +476,7 @@ export default function TaskManagementPage() {
                     key={col.id} 
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => handleDrop(e, col.id)}
-                    className="flex flex-col gap-4 min-w-[220px] bg-slate-100/50 p-3 rounded-2xl border border-slate-200/50 min-h-[500px]"
+                    className="flex flex-col gap-4 min-w-[220px] shrink-0 bg-slate-100/50 p-3 rounded-2xl border border-slate-200/50 min-h-[500px]"
                   >
                     {/* Column Header */}
                     <div className={`flex items-center justify-between border-t-2 ${col.color} pt-2`}>
@@ -617,7 +617,7 @@ export default function TaskManagementPage() {
               </div>
 
               {/* Assignee & Status */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-slate-500">Người nhận <span className="text-rose-500">*</span></label>
                   <select
@@ -651,7 +651,7 @@ export default function TaskManagementPage() {
               </div>
 
               {/* Start Date & Deadline */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-slate-500">Ngày bắt đầu</label>
                   <input
@@ -700,7 +700,7 @@ export default function TaskManagementPage() {
               </div>
 
               {/* Attached link & Notes */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-slate-500">Link sản phẩm đính kèm</label>
                   <input

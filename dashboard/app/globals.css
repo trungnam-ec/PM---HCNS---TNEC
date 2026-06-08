@@ -136,3 +136,31 @@ body {
   color: #00AEEF;
   border-color: rgba(0, 174, 239, 0.15);
 }
+
+/* Responsive mobile layout offsets overrides */
+@media (max-width: 1023px) {
+  /* Override main content margin-left when sidebar is hidden/drawer */
+  div.ml-60 {
+    margin-left: 0 !important;
+  }
+
+  /* Scale down page paddings for tablet screens */
+  main.p-8, div.p-8 {
+    padding: 1.5rem !important;
+  }
+
+  .gap-8 {
+    gap: 1.5rem !important;
+  }
+}
+
+@media (max-width: 639px) {
+  /* Scale down page paddings for mobile screens */
+  main.p-8, main.p-6, div.p-8, div.p-6 {
+    padding: 1rem !important;
+  }
+
+  .gap-8 {
+    gap: 1rem !important;
+  }
+}

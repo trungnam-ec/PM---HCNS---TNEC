@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, Search, Globe, ChevronDown } from "lucide-react";
+import { Bell, Search, Globe, ChevronDown, Menu } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useSidebar } from "./SidebarContext";
 
 interface Props {
   title: string;
@@ -15,6 +16,7 @@ export default function Header({ title, subtitle }: Props) {
     role: "...",
     avatar: "HR"
   });
+  const { toggleSidebar } = useSidebar();
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -88,17 +90,26 @@ export default function Header({ title, subtitle }: Props) {
   }, []);
 
   return (
-    <header className="glass sticky top-0 z-30 flex items-center justify-between px-8 py-4">
-      {/* Page Title & Subtitle */}
-      <div>
-        <h1 className="font-heading font-extrabold text-slate-800 text-lg tracking-tight">{title}</h1>
-        {subtitle && <p className="text-slate-400 text-xs mt-0.5">{subtitle}</p>}
+    <header className="glass sticky top-0 z-30 flex items-center justify-between px-4 sm:px-8 py-4 gap-4">
+      {/* Mobile Toggle Button & Page Title */}
+      <div className="flex items-center gap-2 min-w-0">
+        <button
+          onClick={toggleSidebar}
+          className="p-2 -ml-2 hover:bg-slate-100 rounded-xl text-slate-500 lg:hidden transition-all shrink-0 active:scale-95"
+          title="Mở menu"
+        >
+          <Menu size={20} />
+        </button>
+        <div className="min-w-0">
+          <h1 className="font-heading font-extrabold text-slate-800 text-base sm:text-lg tracking-tight truncate">{title}</h1>
+          {subtitle && <p className="text-slate-400 text-[10px] sm:text-xs mt-0.5 truncate hidden sm:block">{subtitle}</p>}
+        </div>
       </div>
 
       {/* Search Bar & Actions */}
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-3 sm:gap-6 shrink-0">
         {/* Notion-like Search Bar */}
-        <div className="relative w-64">
+        <div className="relative w-48 lg:w-64 hidden md:block">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
           <input
             type="text"
@@ -108,7 +119,7 @@ export default function Header({ title, subtitle }: Props) {
         </div>
 
         {/* Global Notifications & Tools */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           {/* Company Site Link */}
           <button className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-all" title="Cổng thông tin Công ty">
             <Globe size={16} />
@@ -122,8 +133,8 @@ export default function Header({ title, subtitle }: Props) {
         </div>
 
         {/* User Info (Material 3 Profile Button) */}
-        <div className="flex items-center gap-2.5 pl-4 border-l border-slate-200/80">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center font-bold text-white text-xs shadow-sm uppercase">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 pl-2 sm:pl-4 border-l border-slate-200/80">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center font-bold text-white text-xs shadow-sm uppercase shrink-0">
             {profile.avatar}
           </div>
           <div className="hidden md:flex flex-col text-left max-w-[150px]">
@@ -134,7 +145,7 @@ export default function Header({ title, subtitle }: Props) {
               {profile.role}
             </span>
           </div>
-          <ChevronDown size={12} className="text-slate-400" />
+          <ChevronDown size={12} className="text-slate-400 shrink-0" />
         </div>
       </div>
     </header>

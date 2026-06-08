@@ -213,7 +213,20 @@ export default function AdministrationPage() {
   const [recurringSubTab, setRecurringSubTab] = useState<"suppliers" | "payments">("suppliers");
 
   // State Management
-  const [supplies, setSupplies] = useState<SupplyItem[]>(INITIAL_SUPPLIES);
+  const [supplies, setSupplies] = useState<SupplyItem[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("tnec_supplies");
+      if (saved) return JSON.parse(saved);
+    }
+    return INITIAL_SUPPLIES;
+  });
+  const [currentUser, setCurrentUser] = useState<{
+    email: string;
+    name: string;
+    role: string;
+    department: string;
+    isAdmin: boolean;
+  } | null>(null);
   const [deptRequests, setDeptRequests] = useState<DeptRequest[]>(INITIAL_DEPT_REQUESTS);
   const [checklist, setChecklist] = useState<ChecklistItem[]>(INITIAL_CHECKLIST);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -402,8 +415,72 @@ export default function AdministrationPage() {
       if (savedPayments) {
         setPendingPayments(JSON.parse(savedPayments));
       }
+
+      fetchUserRoleAndDept();
     }
   }, []);
+
+  const fetchUserRoleAndDept = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !session.user) return;
+
+      const user = session.user;
+      const email = user.email || "";
+
+      // 1. Check allowed_users
+      const { data: allowedData } = await supabase
+        .from("allowed_users")
+        .select("role")
+        .ilike("email", email)
+        .maybeSingle();
+
+      const isAdmin = allowedData?.role === "Admin";
+
+      // 2. Check employees
+      const { data: empData } = await supabase
+        .from("employees")
+        .select("name, role, department")
+        .ilike("email", email)
+        .maybeSingle();
+
+      const userInfo = {
+        email,
+        name: empData?.name || user.user_metadata?.full_name || user.user_metadata?.name || "Người dùng",
+        role: empData?.role || (isAdmin ? "Admin" : "Nhân viên"),
+        department: empData?.department || "Chưa xếp phòng",
+        isAdmin
+      };
+      
+      setCurrentUser(userInfo);
+    } catch (err) {
+      console.error("Error fetching user permissions in admin:", err);
+    }
+  };
+
+  const canDeleteSupplies = !!(currentUser && (
+    currentUser.isAdmin || 
+    currentUser.role.toLowerCase() === "admin" ||
+    currentUser.role.toLowerCase().includes("trưởng phòng") || 
+    currentUser.role.toLowerCase().includes("truong phong") ||
+    currentUser.role.toLowerCase().includes("phó phòng") || 
+    currentUser.role.toLowerCase().includes("pho phong") ||
+    currentUser.role.toLowerCase().includes("phó trưởng phòng") || 
+    currentUser.role.toLowerCase().includes("pho truong phong")
+  ));
+
+  // Sync supplies to localStorage when changed
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("tnec_supplies", JSON.stringify(supplies));
+    }
+  }, [supplies]);
+
+  // Delete Supply Handler
+  const handleDeleteSupply = (name: string) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa vật tư "${name}" khỏi danh mục kho không?`)) return;
+    setSupplies(prev => prev.filter(s => s.name !== name));
+  };
 
   const saveSettings = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1867,6 +1944,7 @@ export default function AdministrationPage() {
                               <th className="py-3 px-4">Số lượng tồn kho</th>
                               <th className="py-3 px-4">Đã cấp phát</th>
                               <th className="py-3 px-4">Trạng thái tồn kho</th>
+                              {canDeleteSupplies && <th className="py-3 px-4 w-16 text-center">Thao tác</th>}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
@@ -1923,6 +2001,18 @@ export default function AdministrationPage() {
                                       {item.stock < 15 ? "Cảnh báo" : "Bình thường"}
                                     </span>
                                   </td>
+                                  {canDeleteSupplies && (
+                                    <td className="py-3.5 px-4 text-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteSupply(item.name)}
+                                        className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                        title="Xóa vật tư"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </td>
+                                  )}
                                 </tr>
                               ))}
                           </tbody>

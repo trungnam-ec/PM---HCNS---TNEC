@@ -287,6 +287,84 @@ export default function CBPage() {
     );
   }, [employees, searchQuery]);
 
+  // --- HELPER FUNCTIONS FOR PREMIUM EMPLOYEE PROFILE VIEW ---
+  const calculateTenure = (emp: Employee) => {
+    let hash = 0;
+    for (let i = 0; i < emp.name.length; i++) {
+      hash = emp.name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const years = Math.abs(hash % 3) + 1; // 1 to 3 years
+    const months = Math.abs(hash % 12);
+    return `${years} năm ${months} tháng`;
+  };
+
+  const getKpiTrend = (emp: Employee) => {
+    let hash = 0;
+    for (let i = 0; i < emp.name.length; i++) {
+      hash = emp.name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const baseKpi = emp.kpi || 90;
+    return [
+      { month: "T1", KPI: Math.min(100, Math.max(70, baseKpi - 4 + Math.abs((hash + 1) % 8))) },
+      { month: "T2", KPI: Math.min(100, Math.max(70, baseKpi - 2 + Math.abs((hash + 2) % 6))) },
+      { month: "T3", KPI: Math.min(100, Math.max(70, baseKpi + Math.abs((hash + 3) % 7) - 3)) },
+      { month: "T4", KPI: Math.min(100, Math.max(70, baseKpi - 1 + Math.abs((hash + 4) % 5))) },
+      { month: "T5", KPI: Math.min(100, Math.max(70, baseKpi + Math.abs((hash + 5) % 6) - 1)) },
+      { month: "T6", KPI: baseKpi },
+    ];
+  };
+
+  const getCareerTimeline = (emp: Employee) => {
+    const joinDate = new Date(emp.created_at || "2024-01-15");
+    const formatDate = (d: Date) => d.toLocaleDateString("vi-VN");
+    return [
+      {
+        title: "Gia nhập Trung Nam EC",
+        description: `Bắt đầu công tác tại ${emp.department} với vị trí ${emp.role}.`,
+        date: formatDate(joinDate),
+        icon: UserCheck,
+        color: "bg-blue-500",
+      },
+      {
+        title: "Hoàn thành thử việc",
+        description: "Đánh giá thử việc xuất sắc, ký hợp đồng lao động chính thức.",
+        date: formatDate(new Date(joinDate.getTime() + 60 * 24 * 60 * 60 * 1000)),
+        icon: CheckCircle,
+        color: "bg-emerald-500",
+      },
+      {
+        title: "Đạt mốc KPI Xuất sắc",
+        description: `Hoàn thành dự án xuất sắc với KPI ghi nhận ${emp.kpi || 90}/100.`,
+        date: formatDate(new Date(joinDate.getTime() + 180 * 24 * 60 * 60 * 1000)),
+        icon: TrendingUp,
+        color: "bg-indigo-500",
+      },
+    ];
+  };
+
+  const getEmployeeSalary = (emp: Employee) => {
+    const found = MOCK_SALARY_INFO.find(s => s.name === emp.name);
+    if (found) return found;
+    
+    // Hash base salary calculation for fallback
+    let hash = 0;
+    for (let i = 0; i < emp.name.length; i++) {
+      hash = emp.name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    let base = 12000000 + (Math.abs(hash % 10) * 1000000);
+    if (emp.role.toLowerCase().includes("trưởng phòng") || emp.role.toLowerCase().includes("leader") || emp.role.toLowerCase().includes("phó phòng")) {
+      base = 18000000 + (Math.abs(hash % 8) * 1000000);
+    }
+    
+    const insurance = Math.floor(base * 0.3);
+    const phone = 300000;
+    const lunch = 730000;
+    const gas = 500000;
+    const total = base + phone + lunch + gas;
+    
+    return { id: emp.id, name: emp.name, base, insurance, phone, lunch, gas, total };
+  };
+
   return (
     <div className="flex min-h-screen bg-[#F7F9FC]">
       <Sidebar />
@@ -324,389 +402,639 @@ export default function CBPage() {
             })}
           </div>
 
-          {/* ─── SUB-TABS NAVIGATOR BASED ON ACTIVE MAIN TAB ─── */}
-          <div className="flex flex-wrap gap-2 text-xs font-bold bg-slate-100 p-1.5 rounded-xl shrink-0">
-            {activeTab === "employee_profile" && [
-              { id: "personal", label: "Thông tin cá nhân" },
-              { id: "salary", label: "Thông tin lương" },
-              { id: "contract", label: "Thông tin HĐ" },
-              { id: "promotion", label: "Lộ trình thăng tiến" },
-              { id: "termination", label: "Nghỉ việc" },
-              { id: "concurrent", label: "Quản lý kiêm nhiệm" }
-            ].map(sub => (
-              <button
-                key={sub.id}
-                onClick={() => setActiveSubTab(sub.id)}
-                className={`px-4 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  activeSubTab === sub.id ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                {sub.label}
-              </button>
-            ))}
+          {/* ─── SUB-TABS NAVIGATOR BASED ON ACTIVE MAIN TAB (NON-PROFILE TABS ONLY) ─── */}
+          {activeTab !== "employee_profile" && (
+            <div className="flex flex-wrap gap-2 text-xs font-bold bg-slate-100 p-1.5 rounded-xl shrink-0">
+              {activeTab === "attendance" && [
+                { id: "machine", label: "Lấy ngày công máy chấm công" },
+                { id: "explanation", label: "Thông tin giải trình" },
+                { id: "leave", label: "Nghỉ phép" },
+                { id: "travel", label: "Công tác" },
+                { id: "regime", label: "Nghỉ chế độ" },
+                { id: "allowances", label: "Phụ cấp cơm, xăng, dt..." }
+              ].map(sub => (
+                <button
+                  key={sub.id}
+                  onClick={() => setActiveSubTab(sub.id)}
+                  className={`px-4 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    activeSubTab === sub.id ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  {sub.label}
+                </button>
+              ))}
 
-            {activeTab === "attendance" && [
-              { id: "machine", label: "Lấy ngày công máy chấm công" },
-              { id: "explanation", label: "Thông tin giải trình" },
-              { id: "leave", label: "Nghỉ phép" },
-              { id: "travel", label: "Công tác" },
-              { id: "regime", label: "Nghỉ chế độ" },
-              { id: "allowances", label: "Phụ cấp cơm, xăng, dt..." }
-            ].map(sub => (
-              <button
-                key={sub.id}
-                onClick={() => setActiveSubTab(sub.id)}
-                className={`px-4 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  activeSubTab === sub.id ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                {sub.label}
-              </button>
-            ))}
+              {activeTab === "payroll_insurance" && [
+                { id: "calculation", label: "Tính lương" },
+                { id: "insurance", label: "Bảo hiểm xã hội (BHXH)" }
+              ].map(sub => (
+                <button
+                  key={sub.id}
+                  onClick={() => setActiveSubTab(sub.id)}
+                  className={`px-4 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    activeSubTab === sub.id ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  {sub.label}
+                </button>
+              ))}
 
-            {activeTab === "payroll_insurance" && [
-              { id: "calculation", label: "Tính lương" },
-              { id: "insurance", label: "Bảo hiểm xã hội (BHXH)" }
-            ].map(sub => (
-              <button
-                key={sub.id}
-                onClick={() => setActiveSubTab(sub.id)}
-                className={`px-4 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  activeSubTab === sub.id ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                {sub.label}
-              </button>
-            ))}
-
-            {activeTab === "benefits" && [
-              { id: "birthday", label: "Sinh nhật" },
-              { id: "funeral_wedding", label: "Hiếu hỷ" },
-              { id: "holiday_bonus", label: "Tiền thưởng lễ" }
-            ].map(sub => (
-              <button
-                key={sub.id}
-                onClick={() => setActiveSubTab(sub.id)}
-                className={`px-4 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  activeSubTab === sub.id ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                {sub.label}
-              </button>
-            ))}
-
-
-          </div>
+              {activeTab === "benefits" && [
+                { id: "birthday", label: "Sinh nhật" },
+                { id: "funeral_wedding", label: "Hiếu hỷ" },
+                { id: "holiday_bonus", label: "Tiền thưởng lễ" }
+              ].map(sub => (
+                <button
+                  key={sub.id}
+                  onClick={() => setActiveSubTab(sub.id)}
+                  className={`px-4 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    activeSubTab === sub.id ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  {sub.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* ─── TAB CONTENT PANELS ─── */}
 
           {/* ─── TAB 1: HỒ SƠ NHÂN VIÊN ─── */}
           {activeTab === "employee_profile" && (
-            <div className="space-y-6">
-              {activeSubTab === "personal" && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Left List of Employees */}
-                  <div className="lg:col-span-1 glass bg-white rounded-2xl p-5 border border-slate-200/50 shadow-sm flex flex-col space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <h3 className="font-heading font-extrabold text-slate-800 text-xs uppercase">Danh sách nhân viên ({filteredEmployees.length})</h3>
-                      <button onClick={fetchEmployees} className="text-slate-400 hover:text-[#005BAC] cursor-pointer">
-                        <RefreshCw size={14} className={loadingEmployees ? "animate-spin" : ""} />
-                      </button>
-                    </div>
+            <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 items-start">
+              {/* Left Column (20%): Directory List of Employees */}
+              <div className="xl:col-span-1 glass bg-white rounded-2xl p-5 border-transparent shadow-premium flex flex-col space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <h3 className="font-heading font-extrabold text-slate-800 text-xs uppercase tracking-wider">Nhân viên ({filteredEmployees.length})</h3>
+                  <button onClick={fetchEmployees} className="text-slate-400 hover:text-[#005BAC] cursor-pointer">
+                    <RefreshCw size={14} className={loadingEmployees ? "animate-spin" : ""} />
+                  </button>
+                </div>
 
-                    <div className="relative">
-                      <Search size={14} className="absolute left-3 top-3 text-slate-400" />
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Tìm nhân viên, bộ phận, chức vụ..."
-                        className="w-full border border-slate-200 rounded-xl py-2 pl-9 pr-4 text-xs font-semibold text-slate-800 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 outline-none"
-                      />
-                    </div>
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Tìm nhanh..."
+                    className="w-full border border-slate-150 rounded-xl py-2.5 pl-9 pr-4 text-xs font-semibold text-slate-800 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+                  />
+                </div>
 
-                    {loadingEmployees ? (
-                      <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-2">
-                        <Loader2 className="animate-spin text-[#005BAC]" size={20} />
-                        <span className="text-[10px]">Đang tải hồ sơ...</span>
+                {loadingEmployees ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-2">
+                    <Loader2 className="animate-spin text-[#005BAC]" size={20} />
+                    <span className="text-[10px]">Đang tải hồ sơ...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 max-h-[580px] overflow-y-auto pr-1">
+                    {filteredEmployees.map(emp => (
+                      <div
+                        key={emp.id}
+                        onClick={() => {
+                          setSelectedEmp(emp);
+                          // Keep activeSubTab if it exists in profile subtabs
+                        }}
+                        className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-all ${
+                          selectedEmp?.id === emp.id
+                            ? "bg-[#005BAC]/5 border-transparent shadow-sm"
+                            : "border-transparent bg-slate-50/20 hover:bg-slate-50"
+                        }`}
+                      >
+                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-extrabold text-[#005BAC] text-xs">
+                          {emp.avatar || emp.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-xs text-slate-850 truncate">{emp.name}</p>
+                          <p className="text-[10px] text-slate-450 truncate">{emp.role}</p>
+                        </div>
+                        <ChevronRight size={12} className="text-slate-350" />
                       </div>
-                    ) : (
-                      <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                        {filteredEmployees.map(emp => (
-                          <div
-                            key={emp.id}
-                            onClick={() => setSelectedEmp(emp)}
-                            className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-all ${
-                              selectedEmp?.id === emp.id
-                                ? "bg-blue-50/50 border-blue-200 shadow-sm"
-                                : "border-transparent bg-slate-50/20 hover:bg-slate-50"
-                            }`}
-                          >
-                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-extrabold text-[#005BAC] text-xs">
-                              {emp.avatar || emp.name.slice(0, 2).toUpperCase()}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-bold text-xs text-slate-800 truncate">{emp.name}</p>
-                              <p className="text-[10px] text-slate-400 truncate">{emp.role} | {emp.department}</p>
-                            </div>
-                            <ChevronRight size={14} className="text-slate-300" />
-                          </div>
-                        ))}
-                        {filteredEmployees.length === 0 && (
-                          <p className="text-center py-10 text-slate-400 italic text-[11px]">Không tìm thấy hồ sơ phù hợp</p>
-                        )}
-                      </div>
+                    ))}
+                    {filteredEmployees.length === 0 && (
+                      <p className="text-center py-10 text-slate-400 italic text-[11px]">Không tìm thấy hồ sơ</p>
                     )}
                   </div>
+                )}
+              </div>
 
-                  {/* Right Detail Profile Card */}
-                  <div className="lg:col-span-2 glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium">
-                    {selectedEmp ? (
-                      <div className="space-y-6">
-                        <div className="flex items-start justify-between border-b border-slate-100 pb-5">
-                          <div className="flex items-center gap-4">
-                            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-black text-white text-xl shadow-md">
-                              {selectedEmp.avatar || selectedEmp.name.slice(0, 2).toUpperCase()}
-                            </div>
-                            <div>
-                              <h3 className="font-heading font-black text-lg text-slate-850">{selectedEmp.name}</h3>
-                              <p className="text-slate-400 text-xs font-semibold">{selectedEmp.role} — <span className="text-slate-500 font-bold">{selectedEmp.department}</span></p>
-                              <span className={`inline-block mt-2 px-2.5 py-0.5 rounded-full text-[9px] font-black tracking-wider uppercase ${
+              {/* Right Column (80%): Detailed Employee Profile Card & Panels */}
+              <div className="xl:col-span-4 space-y-6">
+                {selectedEmp ? (
+                  <>
+                    {/* Large Profile Header Card */}
+                    <div className="glass bg-white rounded-3xl border-transparent shadow-premium overflow-hidden">
+                      {/* Cover Banner */}
+                      <div className="relative h-32 w-full bg-gradient-to-r from-[#005BAC] via-[#0089CD] to-[#00AEEF] overflow-hidden">
+                        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
+                        <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-white/10 blur-2xl"></div>
+                        <div className="absolute left-20 -bottom-20 w-60 h-60 rounded-full bg-[#00AEEF]/20 blur-3xl"></div>
+                      </div>
+
+                      {/* Header Main details */}
+                      <div className="px-8 pb-6 relative">
+                        {/* Avatar */}
+                        <div className="absolute -top-14 left-8">
+                          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 border-4 border-white flex items-center justify-center font-black text-white text-3xl shadow-xl">
+                            {selectedEmp.avatar || selectedEmp.name.slice(0, 2).toUpperCase()}
+                          </div>
+                        </div>
+
+                        {/* Title details */}
+                        <div className="pt-14 flex flex-col md:flex-row md:items-end justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <h2 className="font-heading font-black text-2xl text-slate-850">{selectedEmp.name}</h2>
+                              <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black tracking-wider uppercase ${
                                 selectedEmp.status === "Chính thức" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
                               }`}>
                                 {selectedEmp.status || "Chính thức"}
                               </span>
                             </div>
+                            <p className="text-slate-500 text-xs font-semibold">
+                              {selectedEmp.role} — <span className="text-slate-400 font-medium">{selectedEmp.department}</span>
+                            </p>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div className="space-y-4">
-                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-l-2 border-[#005BAC] pl-2">Thông tin liên hệ</h4>
-                            <div className="space-y-2 text-xs font-semibold text-slate-600">
-                              <p className="flex items-center gap-2"><Mail size={13} className="text-slate-400" /> Email: <span className="text-slate-800 font-bold">{selectedEmp.email}</span></p>
-                              <p className="flex items-center gap-2"><Phone size={13} className="text-slate-400" /> Số điện thoại: <span className="text-slate-800 font-bold">{selectedEmp.phone || "Chưa nhập"}</span></p>
-                              <p className="flex items-center gap-2"><Calendar size={13} className="text-slate-400" /> Ngày gia nhập: <span className="text-slate-800 font-bold">{new Date(selectedEmp.created_at).toLocaleDateString("vi-VN")}</span></p>
+                        {/* Summary Metrics Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-100">
+                          <div className="space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Đánh giá hiệu suất (KPI)</span>
+                            <div className="flex items-center gap-1.5">
+                              <div className="text-lg font-black text-[#005BAC]">{selectedEmp.kpi || 95}/100</div>
+                              <span className="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full font-bold">Xuất sắc</span>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Thâm niên làm việc</span>
+                            <div className="text-lg font-black text-slate-800">{calculateTenure(selectedEmp)}</div>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Mức độ hoàn thành</span>
+                            <div className="text-lg font-black text-slate-800">
+                              {selectedEmp.completed_tasks || 12} <span className="text-xs font-semibold text-slate-400">đã xong</span>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Trạng thái làm việc</span>
+                            <div className="flex items-center gap-2 pt-1">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                              <span className="text-xs font-bold text-slate-700">Đang hoạt động</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sub-tabs specific to this employee */}
+                    <div className="flex flex-wrap gap-1 text-xs font-bold bg-slate-100/80 p-1 rounded-2xl shrink-0 shadow-sm border border-slate-200/20">
+                      {[
+                        { id: "personal", label: "Thông tin cá nhân" },
+                        { id: "salary", label: "Thông tin lương" },
+                        { id: "contract", label: "Thông tin HĐ" },
+                        { id: "promotion", label: "Lộ trình thăng tiến" },
+                        { id: "termination", label: "Nghỉ việc" },
+                        { id: "concurrent", label: "Quản lý kiêm nhiệm" }
+                      ].map(sub => (
+                        <button
+                          key={sub.id}
+                          onClick={() => setActiveSubTab(sub.id)}
+                          className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                            activeSubTab === sub.id 
+                              ? "bg-white text-slate-850 shadow-sm" 
+                              : "text-slate-500 hover:text-slate-800"
+                          }`}
+                        >
+                          {sub.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Sub-tab Content Panel */}
+                    <div className="space-y-6">
+                      {activeSubTab === "personal" && (
+                        <div className="space-y-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Contact Card */}
+                            <div className="glass bg-white rounded-2xl p-6 border-transparent shadow-premium space-y-4 hover:shadow-lg transition-all duration-300">
+                              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                                <Mail size={16} className="text-[#005BAC]" />
+                                <h4 className="font-heading font-black text-slate-800 text-xs uppercase tracking-wider">Thông tin liên hệ</h4>
+                              </div>
+                              <div className="space-y-3.5 text-xs font-semibold text-slate-600">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-400">Email công việc</span>
+                                  <span className="text-slate-800 font-bold">{selectedEmp.email}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-400">Số điện thoại</span>
+                                  <span className="text-slate-800 font-bold">{selectedEmp.phone || "Chưa thiết lập"}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-400">Nơi làm việc</span>
+                                  <span className="text-slate-850 font-bold">Văn phòng HCM</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-400">Điện thoại khẩn cấp</span>
+                                  <span className="text-slate-800 font-bold">Người thân - 0909.123.456</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Job Info Card */}
+                            <div className="glass bg-white rounded-2xl p-6 border-transparent shadow-premium space-y-4 hover:shadow-lg transition-all duration-300">
+                              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                                <Briefcase size={16} className="text-[#005BAC]" />
+                                <h4 className="font-heading font-black text-slate-800 text-xs uppercase tracking-wider">Thông tin công việc</h4>
+                              </div>
+                              <div className="space-y-3.5 text-xs font-semibold text-slate-600">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-400">Chức vụ hiện tại</span>
+                                  <span className="text-slate-850 font-bold">{selectedEmp.role}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-400">Đơn vị trực thuộc</span>
+                                  <span className="text-slate-800 font-bold">{selectedEmp.department}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-400">Người quản lý trực tiếp</span>
+                                  <span className="text-[#005BAC] font-bold">Lê Thị Hoa Đào (Trưởng phòng)</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-400">Ngày gia nhập</span>
+                                  <span className="text-slate-800 font-bold">{new Date(selectedEmp.created_at).toLocaleDateString("vi-VN")}</span>
+                                </div>
+                              </div>
                             </div>
                           </div>
 
-                          <div className="space-y-4">
-                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-l-2 border-[#005BAC] pl-2">Thông tin công việc</h4>
-                            <div className="space-y-2 text-xs font-semibold text-slate-600">
-                              <p className="flex items-center gap-2"><Briefcase size={13} className="text-slate-400" /> Vị trí hiện tại: <span className="text-slate-800 font-bold">{selectedEmp.role}</span></p>
-                              <p className="flex items-center gap-2"><Building2 size={13} className="text-slate-400" /> Đơn vị trực thuộc: <span className="text-slate-800 font-bold">{selectedEmp.department}</span></p>
-                              <p className="flex items-center gap-2"><TrendingUp size={13} className="text-slate-400" /> Đánh giá KPI hiện tại: <span className="text-blue-600 font-black">{selectedEmp.kpi || 100} / 100</span></p>
+                          {/* KPI trend & Timeline */}
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* KPI Trend Chart */}
+                            <div className="lg:col-span-2 glass bg-white rounded-2xl p-6 border-transparent shadow-premium space-y-4 hover:shadow-lg transition-all duration-300">
+                              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                                <div className="flex items-center gap-2">
+                                  <TrendingUp size={16} className="text-[#005BAC]" />
+                                  <h4 className="font-heading font-black text-slate-800 text-xs uppercase tracking-wider">Xu hướng hiệu suất (KPI 6 tháng)</h4>
+                                </div>
+                                <span className="text-[10px] bg-blue-50 text-[#005BAC] px-2.5 py-0.5 rounded-full font-bold">Trung bình: {selectedEmp.kpi || 95}/100</span>
+                              </div>
+                              <div className="h-56 w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <LineChart data={getKpiTrend(selectedEmp)} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0, 0, 0, 0.03)" vertical={false} />
+                                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
+                                    <YAxis domain={[60, 100]} tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
+                                    <Tooltip 
+                                      contentStyle={{ 
+                                        background: 'rgba(255, 255, 255, 0.95)', 
+                                        border: 'none', 
+                                        borderRadius: '12px', 
+                                        boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
+                                        backdropFilter: 'blur(8px)',
+                                        fontSize: '11px',
+                                        fontWeight: 'bold',
+                                        color: '#1E293B'
+                                      }} 
+                                    />
+                                    <Line type="monotone" dataKey="KPI" stroke="#005BAC" strokeWidth={3} dot={{ r: 4, stroke: "#005BAC", strokeWidth: 2, fill: "#fff" }} activeDot={{ r: 6 }} />
+                                  </LineChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </div>
+
+                            {/* Career Timeline */}
+                            <div className="lg:col-span-1 glass bg-white rounded-2xl p-6 border-transparent shadow-premium space-y-4 hover:shadow-lg transition-all duration-300">
+                              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                                <Clock size={16} className="text-[#005BAC]" />
+                                <h4 className="font-heading font-black text-slate-800 text-xs uppercase tracking-wider">Lộ trình sự nghiệp</h4>
+                              </div>
+                              <div className="relative border-l border-slate-200 pl-4 space-y-5 py-2 ml-1">
+                                {getCareerTimeline(selectedEmp).map((milestone, idx) => {
+                                  const MilestoneIcon = milestone.icon;
+                                  return (
+                                    <div key={idx} className="relative">
+                                      <div className={`absolute -left-[25px] top-0.5 w-4.5 h-4.5 rounded-full ${milestone.color} text-white flex items-center justify-center shadow-sm`}>
+                                        <MilestoneIcon size={10} />
+                                      </div>
+                                      <div>
+                                        <span className="text-[9px] font-bold text-slate-400 block">{milestone.date}</span>
+                                        <h5 className="font-bold text-xs text-slate-850 mt-0.5">{milestone.title}</h5>
+                                        <p className="text-[10px] text-slate-500 font-medium leading-relaxed mt-0.5">{milestone.description}</p>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           </div>
                         </div>
+                      )}
 
-                        <div className="border-t border-slate-100 pt-5 space-y-3">
-                          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ghi chú & Đánh giá năng lực</h4>
-                          <div className="p-3 bg-slate-50 rounded-xl text-xs leading-relaxed text-slate-500 font-medium italic">
-                            Nhân sự làm việc năng nổ, có trách nhiệm cao trong công tác được giao. Có năng lực quản lý tốt và đang trong lộ trình đào tạo phát triển kỹ năng lãnh đạo phòng ban kế cận.
+                      {activeSubTab === "salary" && (
+                        <div className="space-y-6">
+                          {/* Large Gross/Net numbers */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="glass bg-gradient-to-br from-[#005BAC]/5 to-blue-50/20 rounded-2xl p-6 border-transparent shadow-premium flex items-center justify-between hover-elevate">
+                              <div className="space-y-1">
+                                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Lương cơ bản (Gross)</span>
+                                <div className="text-2xl font-black text-[#005BAC]">
+                                  {getEmployeeSalary(selectedEmp).base.toLocaleString("vi-VN")} đ
+                                </div>
+                              </div>
+                              <span className="p-3 bg-blue-100/50 text-[#005BAC] rounded-xl"><DollarSign size={20} /></span>
+                            </div>
+
+                            <div className="glass bg-gradient-to-br from-emerald-50/10 to-emerald-500/5 rounded-2xl p-6 border-transparent shadow-premium flex items-center justify-between hover-elevate">
+                              <div className="space-y-1">
+                                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Tổng phụ cấp tháng</span>
+                                <div className="text-2xl font-black text-emerald-600">
+                                  {(getEmployeeSalary(selectedEmp).phone + getEmployeeSalary(selectedEmp).lunch + getEmployeeSalary(selectedEmp).gas).toLocaleString("vi-VN")} đ
+                                </div>
+                              </div>
+                              <span className="p-3 bg-emerald-100/50 text-emerald-600 rounded-xl"><Plus size={20} /></span>
+                            </div>
+
+                            <div className="glass bg-gradient-to-br from-indigo-50/10 to-indigo-600/5 rounded-2xl p-6 border-transparent shadow-premium flex items-center justify-between hover-elevate">
+                              <div className="space-y-1">
+                                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Thực nhận dự kiến (Net)</span>
+                                <div className="text-2xl font-black text-indigo-600">
+                                  {getEmployeeSalary(selectedEmp).total.toLocaleString("vi-VN")} đ
+                                </div>
+                              </div>
+                              <span className="p-3 bg-indigo-100/50 text-indigo-600 rounded-xl"><CheckCircle size={20} /></span>
+                            </div>
+                          </div>
+
+                          {/* Breakdown lists */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Allowances breakdown */}
+                            <div className="glass bg-white rounded-2xl p-6 border-transparent shadow-premium space-y-4">
+                              <h4 className="font-heading font-black text-slate-800 text-xs uppercase tracking-wider border-b border-slate-100 pb-3">Chi tiết phụ cấp phúc lợi</h4>
+                              <div className="space-y-4">
+                                <div className="space-y-1.5">
+                                  <div className="flex justify-between text-xs font-semibold">
+                                    <span className="text-slate-500">Phụ cấp cơm trưa văn phòng</span>
+                                    <span className="text-slate-800 font-bold">{getEmployeeSalary(selectedEmp).lunch.toLocaleString("vi-VN")} đ</span>
+                                  </div>
+                                  <div className="w-full bg-slate-100 rounded-full h-1.5">
+                                    <div className="bg-[#005BAC] h-1.5 rounded-full" style={{ width: '100%' }}></div>
+                                  </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <div className="flex justify-between text-xs font-semibold">
+                                    <span className="text-slate-500">Hỗ trợ xăng xe di chuyển</span>
+                                    <span className="text-slate-800 font-bold">{getEmployeeSalary(selectedEmp).gas.toLocaleString("vi-VN")} đ</span>
+                                  </div>
+                                  <div className="w-full bg-slate-100 rounded-full h-1.5">
+                                    <div className="bg-[#00AEEF] h-1.5 rounded-full" style={{ width: '60%' }}></div>
+                                  </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <div className="flex justify-between text-xs font-semibold">
+                                    <span className="text-slate-500">Phụ cấp cước điện thoại</span>
+                                    <span className="text-slate-800 font-bold">{getEmployeeSalary(selectedEmp).phone.toLocaleString("vi-VN")} đ</span>
+                                  </div>
+                                  <div className="w-full bg-slate-100 rounded-full h-1.5">
+                                    <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: '30%' }}></div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Contributions and Deductions */}
+                            <div className="glass bg-white rounded-2xl p-6 border-transparent shadow-premium space-y-4">
+                              <h4 className="font-heading font-black text-slate-800 text-xs uppercase tracking-wider border-b border-slate-100 pb-3">Khấu trừ & Trích đóng BHXH</h4>
+                              <div className="space-y-3.5 text-xs font-semibold text-slate-600">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-400">Lương trích đóng bảo hiểm</span>
+                                  <span className="text-slate-800 font-bold">{getEmployeeSalary(selectedEmp).insurance.toLocaleString("vi-VN")} đ</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-400">Khấu trừ BHXH cá nhân (8%)</span>
+                                  <span className="text-rose-600 font-bold">-{Math.floor(getEmployeeSalary(selectedEmp).insurance * 0.08).toLocaleString("vi-VN")} đ</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-400">Khấu trừ BHYT cá nhân (1.5%)</span>
+                                  <span className="text-rose-600 font-bold">-{Math.floor(getEmployeeSalary(selectedEmp).insurance * 0.015).toLocaleString("vi-VN")} đ</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-400">Khấu trừ BHTN cá nhân (1%)</span>
+                                  <span className="text-rose-600 font-bold">-{Math.floor(getEmployeeSalary(selectedEmp).insurance * 0.01).toLocaleString("vi-VN")} đ</span>
+                                </div>
+                                <div className="border-t border-slate-100 pt-3 flex items-center justify-between font-bold text-slate-800">
+                                  <span>Doanh nghiệp đóng thêm (21.5%)</span>
+                                  <span className="text-emerald-600">+{Math.floor(getEmployeeSalary(selectedEmp).insurance * 0.215).toLocaleString("vi-VN")} đ</span>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="h-full flex items-center justify-center text-slate-400 text-xs italic">
-                        Chọn một nhân viên bên danh sách để xem chi tiết hồ sơ cá nhân
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
+                      )}
 
-              {activeSubTab === "salary" && (
-                <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <h3 className="font-heading font-extrabold text-slate-800 text-sm">HỒ SƠ THÔNG TIN LƯƠNG NHÂN SỰ</h3>
-                    <button className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-700 text-xs font-bold cursor-pointer">
-                      <Download size={13} /> Xuất bảng lương
-                    </button>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
-                          <th className="py-3 px-3">Họ và Tên</th>
-                          <th className="py-3 px-3">Lương Cơ Bản (Gross)</th>
-                          <th className="py-3 px-3">Lương Đóng BHXH</th>
-                          <th className="py-3 px-3">Phụ cấp điện thoại</th>
-                          <th className="py-3 px-3">Phụ cấp cơm trưa</th>
-                          <th className="py-3 px-3">Phụ cấp xăng xe</th>
-                          <th className="py-3 px-3 text-right">Tổng thực lĩnh</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                        {MOCK_SALARY_INFO.map(s => (
-                          <tr key={s.id} className="hover:bg-slate-50/50">
-                            <td className="py-3.5 px-3 text-slate-800 font-bold">{s.name}</td>
-                            <td className="py-3.5 px-3">{s.base.toLocaleString("vi-VN")} đ</td>
-                            <td className="py-3.5 px-3">{s.insurance.toLocaleString("vi-VN")} đ</td>
-                            <td className="py-3.5 px-3">{s.phone.toLocaleString("vi-VN")} đ</td>
-                            <td className="py-3.5 px-3">{s.lunch.toLocaleString("vi-VN")} đ</td>
-                            <td className="py-3.5 px-3">{s.gas.toLocaleString("vi-VN")} đ</td>
-                            <td className="py-3.5 px-3 text-right text-blue-600 font-bold">{s.total.toLocaleString("vi-VN")} đ</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+                      {activeSubTab === "contract" && (
+                        <div className="glass bg-white rounded-2xl p-6 border-transparent shadow-premium space-y-6">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                            <div>
+                              <h4 className="font-heading font-black text-slate-800 text-xs uppercase tracking-wider">Hợp đồng lao động chính thức</h4>
+                              <p className="text-slate-400 text-[10px] font-semibold mt-0.5">Chi tiết các điều khoản hợp đồng lao động đã ký kết</p>
+                            </div>
+                            <button className="flex items-center gap-1.5 px-3.5 py-2 bg-[#005BAC] hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm">
+                              <Download size={13} /> Tải PDF hợp đồng
+                            </button>
+                          </div>
 
-              {activeSubTab === "contract" && (
-                <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <h3 className="font-heading font-extrabold text-slate-800 text-sm">HỒ SƠ HỢP ĐỒNG LAO ĐỘNG HỆ THỐNG</h3>
-                    <span className="text-[10px] text-slate-400 font-bold">Quản lý ngày hiệu lực và ngày hết hạn hợp đồng chính thức</span>
-                  </div>
-                  {loadingContracts ? (
-                    <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-2">
-                      <Loader2 className="animate-spin text-blue-600" size={24} />
-                      <p className="text-xs">Đang đọc dữ liệu hợp đồng lao động...</p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
-                            <th className="py-3 px-3">Mã hợp đồng</th>
-                            <th className="py-3 px-3">Loại hợp đồng</th>
-                            <th className="py-3 px-3">Ngày ký</th>
-                            <th className="py-3 px-3">Ngày kết thúc</th>
-                            <th className="py-3 px-3 w-32 text-center">Trạng thái</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                          {contracts.map(c => (
-                            <tr key={c.id} className="hover:bg-slate-50/50">
-                              <td className="py-3.5 px-3 font-mono font-bold text-slate-800">{c.contract_number}</td>
-                              <td className="py-3.5 px-3">{c.type || "Hợp đồng xác định thời hạn"}</td>
-                              <td className="py-3.5 px-3">{c.effective_date ? new Date(c.effective_date).toLocaleDateString("vi-VN") : "Chưa xác định"}</td>
-                              <td className="py-3.5 px-3">{c.expiration_date ? new Date(c.expiration_date).toLocaleDateString("vi-VN") : "HĐ Không thời hạn"}</td>
-                              <td className="py-3.5 px-3 text-center">
-                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                                  c.status === "Còn hạn" || !c.expiration_date ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
-                                }`}>
-                                  {c.status || "Còn hiệu lực"}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                          {contracts.length === 0 && (
-                            <tr>
-                              <td colSpan={5} className="py-10 text-center text-slate-400 italic">Không có dữ liệu hợp đồng nào trong Supabase.</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
+                              <div className="bg-slate-50/50 p-4 rounded-xl space-y-3">
+                                <div className="flex justify-between text-xs font-semibold">
+                                  <span className="text-slate-400">Số hợp đồng</span>
+                                  <span className="text-mono text-slate-850 font-bold">HDLD-{selectedEmp.name.slice(0, 2).toUpperCase()}-2025</span>
+                                </div>
+                                <div className="flex justify-between text-xs font-semibold">
+                                  <span className="text-slate-400">Loại hợp đồng</span>
+                                  <span className="text-slate-850 font-bold">Xác định thời hạn (3 năm)</span>
+                                </div>
+                                <div className="flex justify-between text-xs font-semibold">
+                                  <span className="text-slate-400">Ngày ký hiệu lực</span>
+                                  <span className="text-slate-850 font-bold">{new Date(selectedEmp.created_at).toLocaleDateString("vi-VN")}</span>
+                                </div>
+                                <div className="flex justify-between text-xs font-semibold">
+                                  <span className="text-slate-400">Ngày hết hạn dự kiến</span>
+                                  <span className="text-slate-850 font-bold">
+                                    {new Date(new Date(selectedEmp.created_at).getTime() + 3 * 365 * 24 * 60 * 60 * 1000).toLocaleDateString("vi-VN")}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
 
-              {activeSubTab === "promotion" && (
-                <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-5">
-                  <div>
-                    <h3 className="font-heading font-extrabold text-slate-800 text-sm">LỘ TRÌNH THĂNG TIẾN & PHÁT TRIỂN NĂNG LỰC</h3>
-                    <p className="text-slate-400 text-[10px] font-semibold mt-1">Lịch sử thăng tiến chức danh, tăng bậc lương và khen thưởng nhân sự</p>
-                  </div>
-                  <div className="relative border-l-2 border-slate-100 ml-4 pl-6 space-y-6">
-                    {MOCK_PROMOTIONS.map((p, idx) => (
-                      <div key={idx} className="relative">
-                        {/* Dot */}
-                        <div className="absolute -left-[31px] top-1.5 w-4.5 h-4.5 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center">
-                          <div className="w-1.5 h-1.5 rounded-full bg-blue-600"></div>
+                            <div className="space-y-4">
+                              <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-l-2 border-[#005BAC] pl-2">Điều khoản quan trọng</h5>
+                              <div className="space-y-2.5 text-xs font-semibold text-slate-600">
+                                <p className="flex items-center gap-2">
+                                  <CheckCircle size={13} className="text-emerald-500" /> 
+                                  Thời giờ làm việc: 44 giờ/tuần (Sáng thứ 2 đến hết sáng thứ 7)
+                                </p>
+                                <p className="flex items-center gap-2">
+                                  <CheckCircle size={13} className="text-emerald-500" /> 
+                                  Số ngày nghỉ phép năm hưởng lương: 12 ngày/năm
+                                </p>
+                                <p className="flex items-center gap-2">
+                                  <CheckCircle size={13} className="text-emerald-500" /> 
+                                  Địa điểm làm việc: Trực thuộc Văn phòng đại diện hoặc Dự án chỉ định
+                                </p>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        
-                        <div className="bg-slate-50/60 rounded-xl p-4 border border-slate-100 hover:border-blue-100 hover:bg-slate-50 transition-all space-y-1">
-                          <span className="text-[9px] font-black text-[#005BAC] uppercase tracking-wider bg-blue-50 px-2 py-0.5 rounded-full">{p.type}</span>
-                          <h4 className="font-heading font-extrabold text-slate-850 text-xs mt-1">{p.name}</h4>
-                          <p className="text-[11px] text-slate-500 font-semibold">
-                            Chức vụ cũ: <span className="text-slate-400">{p.oldRole} ({p.oldDept})</span> ➔ Chức vụ mới: <span className="text-slate-800 font-black">{p.newRole} ({p.newDept})</span>
-                          </p>
-                          <p className="text-[10px] text-slate-400 mt-2 font-bold">Ngày quyết định có hiệu lực: {new Date(p.date).toLocaleDateString("vi-VN")}</p>
+                      )}
+
+                      {activeSubTab === "promotion" && (
+                        <div className="glass bg-white rounded-2xl p-6 border-transparent shadow-premium space-y-6">
+                          <div className="border-b border-slate-100 pb-4">
+                            <h4 className="font-heading font-black text-slate-800 text-xs uppercase tracking-wider">Lịch sử thăng tiến & Bổ nhiệm</h4>
+                            <p className="text-slate-400 text-[10px] font-semibold mt-0.5">Các quyết định điều động công tác, bổ nhiệm chức vụ và tăng bậc lương</p>
+                          </div>
+
+                          <div className="relative border-l border-slate-200 ml-4 pl-6 space-y-6 ml-1 py-1">
+                            {(() => {
+                              const matchingPromotions = MOCK_PROMOTIONS.filter(p => p.name === selectedEmp.name);
+                              const list = matchingPromotions.length > 0 ? matchingPromotions : [
+                                {
+                                  name: selectedEmp.name,
+                                  oldRole: "Nhân viên mới tuyển dụng",
+                                  newRole: selectedEmp.role,
+                                  oldDept: selectedEmp.department,
+                                  newDept: selectedEmp.department,
+                                  date: selectedEmp.created_at,
+                                  type: "Ký HĐLĐ chính thức"
+                                }
+                              ];
+
+                              return list.map((p, idx) => (
+                                <div key={idx} className="relative">
+                                  <div className="absolute -left-[31px] top-1 w-4 h-4 rounded-full bg-blue-150 border-2 border-white flex items-center justify-center shadow-sm">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-[#005BAC]"></div>
+                                  </div>
+                                  <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-100 hover:bg-slate-50 transition-all space-y-1">
+                                    <span className="text-[9px] font-black text-[#005BAC] uppercase tracking-wider bg-blue-50 px-2 py-0.5 rounded-full">{p.type}</span>
+                                    <h5 className="font-heading font-extrabold text-slate-850 text-xs mt-1.5">{p.name}</h5>
+                                    <p className="text-[11px] text-slate-500 font-semibold mt-1">
+                                      Vai trò cũ: <span className="text-slate-400">{p.oldRole} ({p.oldDept})</span>
+                                    </p>
+                                    <p className="text-[11px] text-slate-850 font-bold">
+                                      Chức danh mới: <span className="text-[#005BAC]">{p.newRole} ({p.newDept})</span>
+                                    </p>
+                                    <p className="text-[10px] text-slate-450 font-bold mt-2">Ngày quyết định: {new Date(p.date).toLocaleDateString("vi-VN")}</p>
+                                  </div>
+                                </div>
+                              ));
+                            })()}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                      )}
 
-              {activeSubTab === "termination" && (
-                <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <h3 className="font-heading font-extrabold text-slate-800 text-sm">HỒ SƠ NHÂN SỰ NGHỈ VIỆC / THỦ TỤC THANH LÝ</h3>
-                    <span className="text-[10px] text-slate-400 font-bold">Theo dõi lộ trình nghỉ việc và tiến độ bàn giao tài sản thiết bị</span>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
-                          <th className="py-3 px-3">Họ và Tên</th>
-                          <th className="py-3 px-3">Phòng Ban</th>
-                          <th className="py-3 px-3">Ngày chấm dứt HĐ</th>
-                          <th className="py-3 px-3">Lý do nghỉ việc</th>
-                          <th className="py-3 px-3">Tiến độ bàn giao</th>
-                          <th className="py-3 px-3 text-right">Trợ cấp thôi việc (nếu có)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                        {MOCK_TERMINATIONS.map((t, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50/50">
-                            <td className="py-3.5 px-3 text-slate-800 font-bold">{t.name}</td>
-                            <td className="py-3.5 px-3">{t.dept}</td>
-                            <td className="py-3.5 px-3">{new Date(t.date).toLocaleDateString("vi-VN")}</td>
-                            <td className="py-3.5 px-3 text-slate-500 italic">{t.reason}</td>
-                            <td className="py-3.5 px-3">
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                                t.status.includes("Đã bàn giao") ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                              }`}>{t.status}</span>
-                            </td>
-                            <td className="py-3.5 px-3 text-right text-slate-900 font-bold">{t.allowance > 0 ? `${t.allowance.toLocaleString("vi-VN")} đ` : "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+                      {activeSubTab === "termination" && (
+                        <div className="glass bg-white rounded-2xl p-6 border-transparent shadow-premium space-y-6">
+                          <div className="border-b border-slate-100 pb-4">
+                            <h4 className="font-heading font-black text-slate-800 text-xs uppercase tracking-wider">Hồ sơ thôi việc & Chấm dứt hợp đồng</h4>
+                            <p className="text-slate-400 text-[10px] font-semibold mt-0.5">Tiến trình giải quyết thủ tục thôi việc và bàn giao tài sản công ty</p>
+                          </div>
 
-              {activeSubTab === "concurrent" && (
-                <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <h3 className="font-heading font-extrabold text-slate-800 text-sm">QUẢN LÝ CHỨC DANH KIÊM NHIỆM</h3>
-                    <span className="text-[10px] text-slate-400 font-bold">Theo dõi phụ cấp kiêm nhiệm và các trách nhiệm bổ sung</span>
+                          {(() => {
+                            const matchTerm = MOCK_TERMINATIONS.find(t => t.name === selectedEmp.name);
+                            if (matchTerm) {
+                              return (
+                                <div className="space-y-4">
+                                  <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 text-xs font-semibold text-rose-800 flex items-center gap-2">
+                                    <AlertCircle size={15} />
+                                    Nhân sự đang trong tiến trình nghỉ việc. Dự kiến kết thúc: {new Date(matchTerm.date).toLocaleDateString("vi-VN")}.
+                                  </div>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-3.5 text-xs font-semibold text-slate-600">
+                                      <div className="flex justify-between">
+                                        <span className="text-slate-400">Lý do nghỉ việc</span>
+                                        <span className="text-slate-800 font-bold">{matchTerm.reason}</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-slate-400">Tiến độ bàn giao công việc</span>
+                                        <span className="text-slate-850 font-bold">{matchTerm.status}</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-slate-400">Trợ cấp thôi việc dự kiến</span>
+                                        <span className="text-slate-800 font-bold">{matchTerm.allowance.toLocaleString("vi-VN")} đ</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
+                                  <CheckCircle size={36} className="text-emerald-500 bg-emerald-50 rounded-full p-1.5" />
+                                  <h5 className="font-bold text-slate-850 text-sm mt-2">Nhân sự đang hoạt động tích cực</h5>
+                                  <p className="text-slate-450 text-xs font-semibold max-w-sm">Không ghi nhận bất kỳ hồ sơ hoặc yêu cầu chấm dứt hợp đồng lao động nào đối với nhân sự này.</p>
+                                </div>
+                              );
+                            }
+                          })()}
+                        </div>
+                      )}
+
+                      {activeSubTab === "concurrent" && (
+                        <div className="glass bg-white rounded-2xl p-6 border-transparent shadow-premium space-y-6">
+                          <div className="border-b border-slate-100 pb-4">
+                            <h4 className="font-heading font-black text-slate-800 text-xs uppercase tracking-wider">Thông tin kiêm nhiệm song song</h4>
+                            <p className="text-slate-400 text-[10px] font-semibold mt-0.5">Bổ nhiệm các chức danh kiêm nhiệm và chế độ phụ cấp bổ sung</p>
+                          </div>
+
+                          {(() => {
+                            const matchConc = MOCK_CONCURRENTS.find(c => c.name === selectedEmp.name);
+                            if (matchConc) {
+                              return (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  <div className="bg-blue-50/10 border border-blue-100/50 rounded-2xl p-5 space-y-3.5">
+                                    <div className="flex justify-between text-xs font-semibold">
+                                      <span className="text-slate-400">Vai trò kiêm nhiệm</span>
+                                      <span className="text-[#005BAC] font-black">{matchConc.concurrent}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs font-semibold">
+                                      <span className="text-slate-400">Khối/Phòng phụ trách</span>
+                                      <span className="text-slate-850 font-bold">{matchConc.dept}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs font-semibold">
+                                      <span className="text-slate-400">Phụ cấp bổ sung tháng</span>
+                                      <span className="text-emerald-600 font-bold">+{matchConc.allowance.toLocaleString("vi-VN")} đ</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs font-semibold">
+                                      <span className="text-slate-400">Ngày quyết định bổ nhiệm</span>
+                                      <span className="text-slate-800 font-bold">{new Date(matchConc.date).toLocaleDateString("vi-VN")}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
+                                  <Shield size={36} className="text-slate-400 bg-slate-50 rounded-full p-2" />
+                                  <h5 className="font-bold text-slate-700 text-sm mt-2">Không kiêm nhiệm</h5>
+                                  <p className="text-slate-450 text-xs font-semibold max-w-sm">Hiện tại nhân sự chỉ phụ trách chuyên môn chính theo chức danh quy định, không kiêm nhiệm vị trí khác.</p>
+                                </div>
+                              );
+                            }
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="glass bg-white rounded-3xl p-12 text-center text-slate-400 text-xs italic shadow-premium border-transparent">
+                    Vui lòng chọn một nhân sự từ danh sách bên trái để xem hồ sơ chi tiết.
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
-                          <th className="py-3 px-3">Họ và Tên</th>
-                          <th className="py-3 px-3">Chức danh chính</th>
-                          <th className="py-3 px-3">Chức danh kiêm nhiệm</th>
-                          <th className="py-3 px-3">Khối/Phòng phụ trách</th>
-                          <th className="py-3 px-3">Phụ cấp kiêm nhiệm</th>
-                          <th className="py-3 px-3 text-right">Ngày bổ nhiệm</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                        {MOCK_CONCURRENTS.map((c, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50/50">
-                            <td className="py-3.5 px-3 text-slate-800 font-bold">{c.name}</td>
-                            <td className="py-3.5 px-3">{c.primary}</td>
-                            <td className="py-3.5 px-3 text-blue-600 font-bold">{c.concurrent}</td>
-                            <td className="py-3.5 px-3">{c.dept}</td>
-                            <td className="py-3.5 px-3 text-emerald-600 font-bold">+{c.allowance.toLocaleString("vi-VN")} đ/tháng</td>
-                            <td className="py-3.5 px-3 text-right">{new Date(c.date).toLocaleDateString("vi-VN")}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
 

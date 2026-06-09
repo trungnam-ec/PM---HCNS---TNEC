@@ -32,7 +32,8 @@ import {
   Gift,
   AlertTriangle,
   RefreshCw,
-  Info
+  Info,
+  X
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -152,6 +153,31 @@ const HISTORICAL_SALARY_TREND = [
   { name: "T6", "Tổng lương (Tỷ)": 1.58, "Đóng BHXH (Triệu)": 170 }
 ];
 
+// --- ORG CHART SETUP DATA ---
+const DEPARTMENTS_LIST = [
+  // Khối Văn Phòng
+  { name: "Phòng Hành Chính Nhân Sự", key: "hr", type: "office", desc: "Quản trị hành chính, tuyển dụng, đào tạo, C&B và các chế độ phúc lợi", color: "from-blue-600 to-indigo-600" },
+  { name: "Phòng Kế Toán", key: "accounting", type: "office", desc: "Quản lý tài chính doanh nghiệp, kế toán thuế, công nợ và quyết toán thanh toán", color: "from-indigo-600 to-purple-600" },
+  { name: "Phòng Kế Hoạch Đấu Thầu", key: "bidding", type: "office", desc: "Xây dựng kế hoạch đấu thầu, định giá dự án, lập hồ sơ thầu thi công", color: "from-purple-600 to-fuchsia-600" },
+  { name: "Phòng Thị Trường", key: "market", type: "office", desc: "Phát triển thị trường, quan hệ đối tác, mở rộng dự án thi công xây dựng", color: "from-pink-600 to-rose-600" },
+  
+  // Khối Kỹ Thuật & Giám Sát
+  { name: "Phòng Kỹ Thuật", key: "technical", type: "tech", desc: "Giám sát thiết kế, bóc tách khối lượng, giải pháp kỹ thuật công trình", color: "from-teal-600 to-emerald-600" },
+  { name: "Phòng Vật Tư Thiết Bị", key: "materials", type: "tech", desc: "Cung ứng vật tư thiết bị, quản lý điều động máy móc công trình dự án", color: "from-cyan-600 to-blue-600" },
+  { name: "Phòng An Toàn Lao Động", key: "safety", type: "tech", desc: "Đảm bảo ATLĐ, vệ sinh môi trường công trường, đào tạo HSE", color: "from-emerald-600 to-green-600" },
+  { name: "Phòng Quản Lý Dự Án", key: "management", type: "tech", desc: "Quản lý tiến độ, chất lượng thi công dự án, hồ sơ thanh quyết toán", color: "from-sky-600 to-indigo-600" },
+
+  // Khối Hiện Trường / Công Trường
+  { name: "Ban Điều Hành Dự Án Vàm Lẽo", key: "project_vamleo", type: "project", desc: "Ban điều hành trực tiếp thi công, giám sát tại dự án Vàm Lẽo", color: "from-amber-600 to-orange-600" },
+  { name: "Ban Điều Hành Dự Án Cà Ná", key: "project_cana", type: "project", desc: "Ban điều hành trực tiếp thi công, giám sát tại dự án Cà Ná", color: "from-orange-600 to-red-600" }
+];
+
+const BOARD_OF_DIRECTORS = [
+  { name: "Nguyễn Nam Hải", role: "Tổng Giám Đốc", email: "hai.nn@trungnamec.com.vn", phone: "0918.999.888", avatar: "NH" },
+  { name: "Lê Minh Tâm", role: "Phó Tổng Giám Đốc Tài Chính", email: "tam.lm@trungnamec.com.vn", phone: "0912.777.666", avatar: "MT" },
+  { name: "Trần Đức Long", role: "Phó Tổng Giám Đốc Kỹ Thuật", email: "long.td@trungnamec.com.vn", phone: "0903.555.444", avatar: "DL" }
+];
+
 export default function CBPage() {
   // 5 Main Tabs: employee_profile, attendance, payroll_insurance, benefits, org_chart
   const [activeTab, setActiveTab] = useState("employee_profile");
@@ -171,6 +197,111 @@ export default function CBPage() {
 
   // Search keyword
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Org Chart state variables
+  const [selectedOrgDept, setSelectedOrgDept] = useState<string | null>(null);
+  const [isOrgDeptModalOpen, setIsOrgDeptModalOpen] = useState(false);
+  const [orgChartSearch, setOrgChartSearch] = useState("");
+  const [showAddMemberForm, setShowAddMemberForm] = useState(false);
+  
+  // New employee form state for Org Chart
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberRole, setNewMemberRole] = useState("");
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [newMemberPhone, setNewMemberPhone] = useState("");
+  const [newMemberStatus, setNewMemberStatus] = useState("Chính thức");
+  const [isSubmittingMember, setIsSubmittingMember] = useState(false);
+
+  // Group employees by department based on the fixed list
+  const departmentsWithEmployees = useMemo(() => {
+    return DEPARTMENTS_LIST.map(dept => {
+      const deptMembers = employees.filter(emp => emp.department === dept.name);
+      const manager = deptMembers.find(emp => 
+        emp.role.toLowerCase().includes("trưởng phòng") || 
+        emp.role.toLowerCase().includes("truong phong") ||
+        emp.role.toLowerCase().includes("chỉ huy trưởng") || 
+        emp.role.toLowerCase().includes("chihuytruong") || 
+        emp.role.toLowerCase().includes("leader") ||
+        emp.role.toLowerCase().includes("phó phòng") ||
+        emp.role.toLowerCase().includes("pho phong")
+      ) || deptMembers[0] || null;
+      
+      return {
+        ...dept,
+        members: deptMembers,
+        manager: manager
+      };
+    });
+  }, [employees]);
+
+  // Highlight departments matching the search query
+  const highlightedDeptKeys = useMemo(() => {
+    if (!orgChartSearch.trim()) return [];
+    const query = orgChartSearch.toLowerCase();
+    return departmentsWithEmployees
+      .filter(dept => 
+        dept.name.toLowerCase().includes(query) ||
+        dept.members.some(emp => 
+          emp.name.toLowerCase().includes(query) || 
+          emp.role.toLowerCase().includes(query)
+        )
+      )
+      .map(dept => dept.key);
+  }, [departmentsWithEmployees, orgChartSearch]);
+
+  const handleAddMemberFromChart = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemberName || !newMemberRole || !selectedOrgDept) return;
+    
+    try {
+      setIsSubmittingMember(true);
+      const avatarStr = newMemberName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+      const { error } = await supabase
+        .from("employees")
+        .insert([{
+          name: newMemberName,
+          department: selectedOrgDept,
+          role: newMemberRole,
+          phone: newMemberPhone || "N/A",
+          email: newMemberEmail || "N/A",
+          status: newMemberStatus,
+          avatar: avatarStr
+        }]);
+
+      if (error) throw error;
+      
+      setNewMemberName("");
+      setNewMemberRole("");
+      setNewMemberEmail("");
+      setNewMemberPhone("");
+      setNewMemberStatus("Chính thức");
+      setShowAddMemberForm(false);
+      
+      await fetchEmployees();
+      alert(`Đã thêm nhân sự ${newMemberName} vào ${selectedOrgDept} thành công!`);
+    } catch (err) {
+      console.error("Error adding member from org chart:", err);
+      alert("Lỗi khi thêm nhân sự!");
+    } finally {
+      setIsSubmittingMember(false);
+    }
+  };
+
+  const handleDeleteMember = async (id: string, name: string) => {
+    if (!confirm(`Bạn có chắc chắn muốn xóa nhân viên ${name} khỏi hệ thống?`)) return;
+    try {
+      const { error } = await supabase
+        .from("employees")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+      await fetchEmployees();
+      alert(`Đã xóa nhân viên ${name} thành công!`);
+    } catch (err) {
+      console.error("Error deleting member:", err);
+      alert("Lỗi khi xóa nhân viên!");
+    }
+  };
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
@@ -1161,88 +1292,475 @@ export default function CBPage() {
 
           {/* ─── TAB 5: SƠ ĐỒ TỔ CHỨC CÔNG TY ─── */}
           {activeTab === "org_chart" && (
-            <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-6">
-              <div className="border-b border-slate-100 pb-3">
-                <h3 className="font-heading font-extrabold text-slate-800 text-sm">SƠ ĐỒ CƠ CẤU TỔ CHỨC VÀ PHÂN CẤP PHÒNG BAN</h3>
-                <p className="text-slate-400 text-[10px] font-semibold mt-1">Cơ cấu tổ chức phòng ban thực tế dựa trên danh sách nhân sự chính thức của công ty</p>
-              </div>
-
-              {/* Organization Chart layout */}
-              <div className="flex flex-col items-center space-y-8 py-5">
-                {/* Level 1: Board of Directors */}
-                <div className="flex flex-col items-center">
-                  <div className="bg-[#005BAC] text-white p-4 rounded-2xl shadow-md border border-blue-600/30 text-center w-64 space-y-1">
-                    <span className="text-[9px] font-black text-blue-100 uppercase tracking-widest">Ban Điều Hành</span>
-                    <h4 className="font-heading font-black text-sm">Ban Giám Đốc TRUNGNAM E&C</h4>
-                    <p className="text-[10px] text-blue-200">Đại diện pháp luật & Ban lãnh đạo</p>
-                  </div>
-                  <div className="w-0.5 h-8 bg-slate-350"></div>
+            <div className="space-y-6">
+              {/* Toolbar & stats */}
+              <div className="glass bg-white rounded-2xl p-5 border border-slate-200/50 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h3 className="font-heading font-extrabold text-slate-800 text-sm">SƠ ĐỒ CƠ CẤU TỔ CHỨC VÀ PHÂN CẤP PHÒNG BAN</h3>
+                  <p className="text-slate-400 text-[10px] font-bold">Cơ cấu tổ chức phòng ban và công trường thực tế dựa trên danh sách nhân sự của công ty</p>
                 </div>
-
-                {/* Level 2: Divisions (HCM Office vs Project Sites) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12 w-full max-w-4xl relative">
-                  {/* Connector lines drawing horizontal bar */}
-                  <div className="absolute top-0 left-1/4 right-1/4 h-0.5 bg-slate-350 hidden md:block"></div>
+                
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Search box */}
+                  <div className="relative w-64">
+                    <Search size={14} className="absolute left-3 top-3 text-slate-400" />
+                    <input
+                      type="text"
+                      value={orgChartSearch}
+                      onChange={(e) => setOrgChartSearch(e.target.value)}
+                      placeholder="Tìm kiếm tên, vị trí trong sơ đồ..."
+                      className="w-full border border-slate-200 rounded-xl py-2 pl-9 pr-4 text-xs font-semibold text-slate-800 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 outline-none"
+                    />
+                    {orgChartSearch && (
+                      <button onClick={() => setOrgChartSearch("")} className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-655 font-bold text-xs">✕</button>
+                    )}
+                  </div>
                   
-                  {/* HCM Office Branch */}
-                  <div className="flex flex-col items-center space-y-4">
-                    <div className="absolute top-0 left-1/4 w-0.5 h-4 bg-slate-350 hidden md:block"></div>
-                    <div className="bg-indigo-650 text-white p-3.5 rounded-xl text-center w-56 space-y-0.5 shadow border border-indigo-600/20">
-                      <span className="text-[8px] font-bold text-indigo-200 uppercase tracking-widest">Khối Văn Phòng</span>
-                      <h5 className="font-heading font-extrabold text-xs">Văn phòng Hồ Chí Minh</h5>
+                  {/* Status indicators */}
+                  <div className="flex items-center gap-3 text-[10px] font-extrabold text-slate-500">
+                    <div className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span> Ban điều hành
                     </div>
-
-                    <div className="w-full space-y-3 pl-4 border-l border-slate-200">
-                      {orgChartData.filter(d => d.departmentName.toLowerCase().includes("hành chính") || d.departmentName.toLowerCase().includes("kế toán") || d.departmentName.toLowerCase().includes("kế hoạch")).map((dept, idx) => (
-                        <div key={idx} className="bg-slate-50/60 rounded-xl p-3.5 border border-slate-100 space-y-2">
-                          <h6 className="font-heading font-extrabold text-slate-800 text-[11px] flex items-center gap-1.5"><Building2 size={12} className="text-slate-400" /> {dept.departmentName}</h6>
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-blue-100 text-[#005BAC] flex items-center justify-center font-bold text-[10px] uppercase">
-                              {dept.manager ? dept.manager.name.slice(0,2) : "QL"}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-bold text-[10px] text-slate-800">{dept.manager ? dept.manager.name : "Đang bổ nhiệm"}</p>
-                              <p className="text-[9px] text-slate-400 truncate">{dept.manager ? dept.manager.role : "Quản lý phòng"}</p>
-                            </div>
-                          </div>
-                          <p className="text-[9px] text-slate-400 font-bold border-t border-slate-100/60 pt-2 flex justify-between">
-                            <span>Thành viên:</span> <span>{dept.members.length} nhân sự</span>
-                          </p>
-                        </div>
-                      ))}
+                    <div className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-650"></span> Khối Văn Phòng
                     </div>
-                  </div>
-
-                  {/* Project Sites Branch */}
-                  <div className="flex flex-col items-center space-y-4">
-                    <div className="absolute top-0 right-1/4 w-0.5 h-4 bg-slate-350 hidden md:block"></div>
-                    <div className="bg-indigo-650 text-white p-3.5 rounded-xl text-center w-56 space-y-0.5 shadow border border-indigo-600/20">
-                      <span className="text-[8px] font-bold text-indigo-200 uppercase tracking-widest">Khối Công Trường</span>
-                      <h5 className="font-heading font-extrabold text-xs">Ban Điều Hành Dự Án</h5>
+                    <div className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-teal-600"></span> Khối Kỹ Thuật
                     </div>
-
-                    <div className="w-full space-y-3 pl-4 border-l border-slate-200">
-                      {orgChartData.filter(d => !d.departmentName.toLowerCase().includes("hành chính") && !d.departmentName.toLowerCase().includes("kế toán") && !d.departmentName.toLowerCase().includes("kế hoạch")).map((dept, idx) => (
-                        <div key={idx} className="bg-slate-50/60 rounded-xl p-3.5 border border-slate-100 space-y-2">
-                          <h6 className="font-heading font-extrabold text-slate-800 text-[11px] flex items-center gap-1.5"><Building2 size={12} className="text-slate-400" /> {dept.departmentName}</h6>
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-blue-100 text-[#005BAC] flex items-center justify-center font-bold text-[10px] uppercase">
-                              {dept.manager ? dept.manager.name.slice(0,2) : "CH"}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-bold text-[10px] text-slate-800">{dept.manager ? dept.manager.name : "Đang bổ nhiệm"}</p>
-                              <p className="text-[9px] text-slate-400 truncate">{dept.manager ? dept.manager.role : "Chỉ huy trưởng"}</p>
-                            </div>
-                          </div>
-                          <p className="text-[9px] text-slate-400 font-bold border-t border-slate-100/60 pt-2 flex justify-between">
-                            <span>Thành viên:</span> <span>{dept.members.length} nhân sự</span>
-                          </p>
-                        </div>
-                      ))}
+                    <div className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-600"></span> Khối Công Trường
                     </div>
                   </div>
                 </div>
               </div>
+
+              {/* Tree view */}
+              <div className="glass bg-white rounded-3xl p-8 border border-slate-200/50 shadow-premium overflow-x-auto">
+                <div className="min-w-[1000px] flex flex-col items-center space-y-10 py-5">
+                  
+                  {/* ───────────────── LEVEL 1: BAN GIÁM ĐỐC ───────────────── */}
+                  <div className="flex flex-col items-center">
+                    <div className="relative flex flex-col items-center bg-gradient-to-br from-[#005BAC] to-blue-800 text-white px-6 py-4.5 rounded-2xl shadow-lg border border-blue-600/30 text-center w-80 space-y-2 group hover:scale-[1.02] transition-all duration-300">
+                      <span className="text-[8px] font-black text-blue-200 uppercase tracking-widest bg-blue-900/50 px-2 py-0.5 rounded-full self-center">Ban Điều Hành</span>
+                      <h4 className="font-heading font-black text-sm">{BOARD_OF_DIRECTORS[0].name}</h4>
+                      <p className="text-[10px] text-blue-100 font-black">{BOARD_OF_DIRECTORS[0].role}</p>
+                      
+                      {/* Sub info */}
+                      <div className="pt-2 border-t border-blue-400/20 text-[9px] text-blue-200 flex justify-between w-full font-bold">
+                        <span>{BOARD_OF_DIRECTORS[0].email}</span>
+                        <span>{BOARD_OF_DIRECTORS[0].phone}</span>
+                      </div>
+                    </div>
+                    
+                    {/* Line going down */}
+                    <div className="w-0.5 h-8 bg-slate-300"></div>
+                  </div>
+
+                  {/* Level 1.5: Deputy Directors */}
+                  <div className="relative flex justify-center gap-24">
+                    {/* Horizontal connector line */}
+                    <div className="absolute top-0 left-1/4 right-1/4 h-0.5 bg-slate-300"></div>
+                    
+                    {BOARD_OF_DIRECTORS.slice(1).map((dep, idx) => (
+                      <div key={idx} className="flex flex-col items-center relative">
+                        {/* Vertical line from horizontal line to card */}
+                        <div className="w-0.5 h-4 bg-slate-300"></div>
+                        
+                        <div className="bg-white text-slate-800 p-4 rounded-xl shadow-md border border-slate-200 text-center w-64 space-y-1 hover:scale-[1.01] hover:border-blue-400 transition-all duration-200">
+                          <span className="text-[8px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded-full">Phó Tổng Giám Đốc</span>
+                          <h5 className="font-heading font-extrabold text-xs text-slate-850 mt-1">{dep.name}</h5>
+                          <p className="text-[9px] text-slate-500 font-bold">{dep.role}</p>
+                          <p className="text-[8px] text-slate-400 mt-1">{dep.email} | {dep.phone}</p>
+                        </div>
+                        
+                        {/* Line going down to divisions */}
+                        <div className="w-0.5 h-8 bg-slate-350"></div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Horizontal distributor line for divisions */}
+                  <div className="w-full relative flex justify-center">
+                    <div className="absolute top-0 left-[15%] right-[15%] h-0.5 bg-slate-350"></div>
+                  </div>
+
+                  {/* ───────────────── LEVEL 2: DIVISIONS (Office vs Tech vs Project) ───────────────── */}
+                  <div className="grid grid-cols-3 gap-8 w-full">
+                    
+                    {/* COLUMN 1: KHỐI VĂN PHÒNG & NGHIỆP VỤ */}
+                    <div className="flex flex-col items-center space-y-5">
+                      {/* Vertical lead-in line */}
+                      <div className="w-0.5 h-6 bg-slate-350"></div>
+                      <div className="bg-indigo-900 text-white px-5 py-2.5 rounded-xl text-center w-64 space-y-0.5 shadow-md border border-indigo-950 font-heading font-black text-xs tracking-wider uppercase">
+                        Khối Văn Phòng (HCM Office)
+                      </div>
+                      
+                      {/* Departments cards */}
+                      <div className="w-full space-y-4">
+                        {departmentsWithEmployees.filter(d => d.type === "office").map((dept) => {
+                          const isHighlighted = highlightedDeptKeys.includes(dept.key);
+                          return (
+                            <div
+                              key={dept.key}
+                              onClick={() => {
+                                setSelectedOrgDept(dept.name);
+                                setIsOrgDeptModalOpen(true);
+                              }}
+                              className={`glass bg-white rounded-2xl p-4.5 border transition-all duration-300 cursor-pointer text-left flex flex-col justify-between hover-elevate ${
+                                isHighlighted
+                                  ? "border-blue-500 ring-4 ring-blue-500/10 shadow-lg scale-[1.02]"
+                                  : "border-slate-200/60 shadow-sm"
+                              }`}
+                            >
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className={`w-2.5 h-2.5 rounded-full bg-gradient-to-r ${dept.color}`}></span>
+                                  <span className="text-[9px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{dept.members.length} nhân sự</span>
+                                </div>
+                                <h6 className="font-heading font-extrabold text-slate-850 text-[11px] leading-snug">{dept.name}</h6>
+                                <p className="text-[9px] text-slate-450 font-medium line-clamp-2">{dept.desc}</p>
+                              </div>
+                              
+                              {/* Manager Section */}
+                              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-6.5 h-6.5 rounded-full bg-gradient-to-br ${dept.color} text-white flex items-center justify-center font-black text-[9px] uppercase shadow-sm`}>
+                                    {dept.manager ? dept.manager.name.split(" ").filter(Boolean).map(n => n[0]).join("").slice(0, 2) : "QL"}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-black text-[9.5px] text-slate-800 truncate leading-none">{dept.manager ? dept.manager.name : "Đang bổ nhiệm"}</p>
+                                    <p className="text-[8.5px] text-slate-405 font-bold truncate mt-0.5">{dept.manager ? dept.manager.role : "Trưởng bộ phận"}</p>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedOrgDept(dept.name);
+                                    setShowAddMemberForm(true);
+                                    setIsOrgDeptModalOpen(true);
+                                  }}
+                                  className="w-5 h-5 rounded-md bg-slate-50 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center text-slate-400 border border-slate-100 transition-colors"
+                                  title="Thêm nhân sự nhanh"
+                                >
+                                  <Plus size={10} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* COLUMN 2: KHỐI KỸ THUẬT & GIÁM SÁT */}
+                    <div className="flex flex-col items-center space-y-5">
+                      {/* Vertical lead-in line */}
+                      <div className="w-0.5 h-6 bg-slate-350"></div>
+                      <div className="bg-teal-905 text-white px-5 py-2.5 rounded-xl text-center w-64 space-y-0.5 shadow-md border border-teal-950 font-heading font-black text-xs tracking-wider uppercase">
+                        Khối Kỹ Thuật (Operations)
+                      </div>
+                      
+                      {/* Departments cards */}
+                      <div className="w-full space-y-4">
+                        {departmentsWithEmployees.filter(d => d.type === "tech").map((dept) => {
+                          const isHighlighted = highlightedDeptKeys.includes(dept.key);
+                          return (
+                            <div
+                              key={dept.key}
+                              onClick={() => {
+                                setSelectedOrgDept(dept.name);
+                                setIsOrgDeptModalOpen(true);
+                              }}
+                              className={`glass bg-white rounded-2xl p-4.5 border transition-all duration-300 cursor-pointer text-left flex flex-col justify-between hover-elevate ${
+                                isHighlighted
+                                  ? "border-blue-500 ring-4 ring-blue-500/10 shadow-lg scale-[1.02]"
+                                  : "border-slate-200/60 shadow-sm"
+                              }`}
+                            >
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className={`w-2.5 h-2.5 rounded-full bg-gradient-to-r ${dept.color}`}></span>
+                                  <span className="text-[9px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{dept.members.length} nhân sự</span>
+                                </div>
+                                <h6 className="font-heading font-extrabold text-slate-850 text-[11px] leading-snug">{dept.name}</h6>
+                                <p className="text-[9px] text-slate-450 font-medium line-clamp-2">{dept.desc}</p>
+                              </div>
+                              
+                              {/* Manager Section */}
+                              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-6.5 h-6.5 rounded-full bg-gradient-to-br ${dept.color} text-white flex items-center justify-center font-black text-[9px] uppercase shadow-sm`}>
+                                    {dept.manager ? dept.manager.name.split(" ").filter(Boolean).map(n => n[0]).join("").slice(0, 2) : "QL"}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-black text-[9.5px] text-slate-800 truncate leading-none">{dept.manager ? dept.manager.name : "Đang bổ nhiệm"}</p>
+                                    <p className="text-[8.5px] text-slate-405 font-bold truncate mt-0.5">{dept.manager ? dept.manager.role : "Trưởng bộ phận"}</p>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedOrgDept(dept.name);
+                                    setShowAddMemberForm(true);
+                                    setIsOrgDeptModalOpen(true);
+                                  }}
+                                  className="w-5 h-5 rounded-md bg-slate-50 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center text-slate-400 border border-slate-100 transition-colors"
+                                  title="Thêm nhân sự nhanh"
+                                >
+                                  <Plus size={10} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* COLUMN 3: KHỐI BAN ĐIỀU HÀNH CÔNG TRƯỜNG DỰ ÁN */}
+                    <div className="flex flex-col items-center space-y-5">
+                      {/* Vertical lead-in line */}
+                      <div className="w-0.5 h-6 bg-slate-350"></div>
+                      <div className="bg-amber-900 text-white px-5 py-2.5 rounded-xl text-center w-64 space-y-0.5 shadow-md border border-amber-955 font-heading font-black text-xs tracking-wider uppercase">
+                        Khối Dự Án (Project Sites)
+                      </div>
+                      
+                      {/* Departments cards */}
+                      <div className="w-full space-y-4">
+                        {departmentsWithEmployees.filter(d => d.type === "project").map((dept) => {
+                          const isHighlighted = highlightedDeptKeys.includes(dept.key);
+                          return (
+                            <div
+                              key={dept.key}
+                              onClick={() => {
+                                setSelectedOrgDept(dept.name);
+                                setIsOrgDeptModalOpen(true);
+                              }}
+                              className={`glass bg-white rounded-2xl p-4.5 border transition-all duration-300 cursor-pointer text-left flex flex-col justify-between hover-elevate ${
+                                isHighlighted
+                                  ? "border-blue-500 ring-4 ring-blue-500/10 shadow-lg scale-[1.02]"
+                                  : "border-slate-200/60 shadow-sm"
+                              }`}
+                            >
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className={`w-2.5 h-2.5 rounded-full bg-gradient-to-r ${dept.color}`}></span>
+                                  <span className="text-[9px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{dept.members.length} nhân sự</span>
+                                </div>
+                                <h6 className="font-heading font-extrabold text-slate-850 text-[11px] leading-snug">{dept.name}</h6>
+                                <p className="text-[9px] text-slate-450 font-medium line-clamp-2">{dept.desc}</p>
+                              </div>
+                              
+                              {/* Manager Section */}
+                              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-6.5 h-6.5 rounded-full bg-gradient-to-br ${dept.color} text-white flex items-center justify-center font-black text-[9px] uppercase shadow-sm`}>
+                                    {dept.manager ? dept.manager.name.split(" ").filter(Boolean).map(n => n[0]).join("").slice(0, 2) : "CH"}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-black text-[9.5px] text-slate-800 truncate leading-none">{dept.manager ? dept.manager.name : "Đang bổ nhiệm"}</p>
+                                    <p className="text-[8.5px] text-slate-405 font-bold truncate mt-0.5">{dept.manager ? dept.manager.role : "Chỉ huy trưởng"}</p>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedOrgDept(dept.name);
+                                    setShowAddMemberForm(true);
+                                    setIsOrgDeptModalOpen(true);
+                                  }}
+                                  className="w-5 h-5 rounded-md bg-slate-50 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center text-slate-400 border border-slate-100 transition-colors"
+                                  title="Thêm nhân sự nhanh"
+                                >
+                                  <Plus size={10} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
+
+              {/* ───────────────── ORG DEPT MEMBERS MODAL ───────────────── */}
+              {isOrgDeptModalOpen && selectedOrgDept && (() => {
+                const deptInfo = departmentsWithEmployees.find(d => d.name === selectedOrgDept);
+                if (!deptInfo) return null;
+                return (
+                  <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="glass bg-white rounded-3xl w-full max-w-lg overflow-hidden p-6 border border-white flex flex-col max-h-[85vh] text-xs font-semibold text-slate-600">
+                      
+                      {/* Modal Header */}
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+                        <div className="space-y-0.5">
+                          <h3 className="font-heading font-black text-slate-850 text-sm uppercase">{deptInfo.name}</h3>
+                          <p className="text-[10px] text-slate-400 font-semibold">{deptInfo.desc}</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setIsOrgDeptModalOpen(false);
+                            setShowAddMemberForm(false);
+                          }}
+                          className="w-6 h-6 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-450 hover:text-slate-600 transition-colors"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+
+                      {/* Modal Body */}
+                      <div className="flex-1 overflow-y-auto py-4 space-y-5 pr-1 scrollbar-thin scrollbar-thumb-slate-200">
+                        
+                        {/* Member List */}
+                        {!showAddMemberForm ? (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                              <span>Danh sách nhân viên ({deptInfo.members.length})</span>
+                              <button
+                                onClick={() => setShowAddMemberForm(true)}
+                                className="text-blue-600 hover:underline flex items-center gap-1"
+                              >
+                                <Plus size={11} /> Thêm nhân sự mới
+                              </button>
+                            </div>
+                            
+                            <div className="space-y-2.5">
+                              {deptInfo.members.map(emp => (
+                                <div key={emp.id} className="bg-slate-50/60 border border-slate-100 rounded-xl p-3.5 flex items-start gap-3 justify-between hover:bg-slate-50 transition-colors">
+                                  <div className="flex items-start gap-3 min-w-0">
+                                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-white text-xs shadow-sm shrink-0">
+                                      {emp.avatar || emp.name.slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0 space-y-0.5">
+                                      <p className="font-bold text-slate-800 text-xs truncate">{emp.name}</p>
+                                      <p className="text-[9.5px] text-slate-400 font-bold truncate">{emp.role}</p>
+                                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[8.5px] text-slate-450 font-bold pt-1.5">
+                                        <a href={`tel:${emp.phone}`} className="hover:underline flex items-center gap-0.5"><Phone size={9} /> {emp.phone}</a>
+                                        <a href={`mailto:${emp.email}`} className="hover:underline flex items-center gap-0.5"><Mail size={9} /> {emp.email}</a>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="flex flex-col items-end justify-between h-full gap-2 shrink-0">
+                                    <span className={`px-2 py-0.5 rounded-full text-[8.5px] font-bold ${
+                                      emp.status === "Chính thức" ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-amber-50 text-amber-600 border border-amber-100"
+                                    }`}>
+                                      {emp.status}
+                                    </span>
+                                    <button
+                                      onClick={() => handleDeleteMember(emp.id, emp.name)}
+                                      className="text-rose-500 hover:text-rose-750 hover:bg-rose-50 px-2 py-1 rounded transition-colors text-[9px]"
+                                    >
+                                      Xóa
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                              
+                              {deptInfo.members.length === 0 && (
+                                <div className="text-center py-12 bg-slate-50/40 rounded-2xl border border-dashed border-slate-200/60">
+                                  <p className="text-slate-450 italic text-[11px]">Chưa có nhân viên nào trực thuộc bộ phận này</p>
+                                  <button
+                                    onClick={() => setShowAddMemberForm(true)}
+                                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-sm"
+                                  >
+                                    <Plus size={11} /> Thêm nhân sự ngay
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          
+                          // Quick Add Member Form
+                          <form onSubmit={handleAddMemberFromChart} className="space-y-4">
+                            <div className="flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1.5">
+                              <span>Thêm nhân sự mới vào {deptInfo.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => setShowAddMemberForm(false)}
+                                className="text-slate-505 hover:underline"
+                              >
+                                Quay lại danh sách
+                              </button>
+                            </div>
+                            
+                            <div className="space-y-3 text-slate-650">
+                              <div className="space-y-1">
+                                <label className="text-slate-500">Họ và tên nhân viên</label>
+                                <input
+                                  type="text" required value={newMemberName} onChange={(e) => setNewMemberName(e.target.value)}
+                                  placeholder="Ví dụ: Nguyễn Văn A"
+                                  className="w-full px-3 py-2 border border-slate-250 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs font-semibold text-slate-800"
+                                />
+                              </div>
+                              
+                              <div className="space-y-1">
+                                <label className="text-slate-505">Chức vụ / Vị trí</label>
+                                <input
+                                  type="text" required value={newMemberRole} onChange={(e) => setNewMemberRole(e.target.value)}
+                                  placeholder="Ví dụ: Kỹ sư cầu đường / Chuyên viên"
+                                  className="w-full px-3 py-2 border border-slate-250 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs font-semibold text-slate-800"
+                                />
+                              </div>
+                              
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                  <label className="text-slate-500">Số điện thoại</label>
+                                  <input
+                                    type="text" value={newMemberPhone} onChange={(e) => setNewMemberPhone(e.target.value)}
+                                    placeholder="0912 xxx xxx"
+                                    className="w-full px-3 py-2 border border-slate-250 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs font-semibold text-slate-800"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-slate-500">Email làm việc</label>
+                                  <input
+                                    type="email" value={newMemberEmail} onChange={(e) => setNewMemberEmail(e.target.value)}
+                                    placeholder="username@trungnamec.com"
+                                    className="w-full px-3 py-2 border border-slate-250 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs font-semibold text-slate-800"
+                                  />
+                                </div>
+                              </div>
+                              
+                              <div className="space-y-1">
+                                <label className="text-slate-500">Trạng thái hợp đồng</label>
+                                <select
+                                  value={newMemberStatus}
+                                  onChange={(e) => setNewMemberStatus(e.target.value)}
+                                  className="w-full px-3 py-2 border border-slate-250 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
+                                >
+                                  <option value="Chính thức">Chính thức</option>
+                                  <option value="Thử việc">Thử việc</option>
+                                </select>
+                              </div>
+                            </div>
+                            
+                            {/* Submit actions */}
+                            <div className="flex gap-2 justify-end pt-3.5 border-t border-slate-100">
+                              <button
+                                type="button"
+                                onClick={() => setShowAddMemberForm(false)}
+                                className="px-3.5 py-1.5 border border-slate-200 text-slate-505 font-bold rounded-lg hover:bg-slate-50"
+                              >
+                                Hủy
+                              </button>
+                              <button
+                                type="submit"
+                                disabled={isSubmittingMember}
+                                className="px-3.5 py-1.5 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-lg shadow-sm flex items-center gap-1 disabled:opacity-50"
+                              >
+                                {isSubmittingMember ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                                Thêm nhân sự
+                              </button>
+                            </div>
+                          </form>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 

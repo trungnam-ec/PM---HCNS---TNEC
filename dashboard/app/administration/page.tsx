@@ -466,19 +466,34 @@ export default function AdministrationPage() {
           localStorage.setItem("tnec_supplies", JSON.stringify(parsed));
         }
       } else if (!data) {
-        // Seed INITIAL_SUPPLIES in Supabase!
+        // Seed in Supabase with current localStorage if it exists to prevent losing entered items, otherwise fallback to INITIAL_SUPPLIES
+        let seedData = INITIAL_SUPPLIES;
+        if (typeof window !== "undefined") {
+          const localSaved = localStorage.getItem("tnec_supplies");
+          if (localSaved) {
+            try {
+              const parsedLocal = JSON.parse(localSaved);
+              if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
+                seedData = parsedLocal;
+              }
+            } catch (e) {
+              console.error("Error parsing local supplies for seeding:", e);
+            }
+          }
+        }
+
         const { error: insertError } = await supabase
           .from("tasks")
           .insert([{
             title: "VPP_INVENTORY_CATALOG",
             assignee: "Hành chính",
             status: "completed",
-            notes: JSON.stringify(INITIAL_SUPPLIES)
+            notes: JSON.stringify(seedData)
           }]);
 
         if (insertError) throw insertError;
-        setSupplies(INITIAL_SUPPLIES);
-        localStorage.setItem("tnec_supplies", JSON.stringify(INITIAL_SUPPLIES));
+        setSupplies(seedData);
+        localStorage.setItem("tnec_supplies", JSON.stringify(seedData));
       }
     } catch (err) {
       console.error("Error fetching supplies catalog from Supabase:", err);

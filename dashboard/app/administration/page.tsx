@@ -1762,58 +1762,63 @@ export default function AdministrationPage() {
                             <h4 className="font-heading font-extrabold text-slate-800 text-xs flex items-center gap-1.5">
                               <span>📂</span> Quản lý Danh mục cấp phát
                             </h4>
-                            <span className="text-[10px] text-slate-400 font-semibold">Cấu hình danh sách phòng ban và dự án để cấp phát văn phòng phẩm</span>
+                            <span className="text-[10px] text-slate-400 font-semibold">Cấu hình danh mục các loại vật tư văn phòng phẩm cấp phát</span>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {/* Left Form: Add target */}
+                            {/* Left Form: Add material */}
                             <div className="md:col-span-1 border border-slate-200/80 bg-white p-4 rounded-xl space-y-3 shadow-sm">
                               <h5 className="font-bold text-slate-700 text-[11px] uppercase tracking-wider flex items-center gap-1">
-                                <span>➕</span> Thêm đối tượng mới
+                                <span>➕</span> Thêm vật tư mới
                               </h5>
-                              <form onSubmit={handleAddAllocationTarget} className="space-y-3 text-[11px] font-semibold text-slate-600">
+                              <form onSubmit={handleAddSupply} className="space-y-3 text-[11px] font-semibold text-slate-600">
                                 <div className="space-y-1">
-                                  <label className="text-[10px] font-black text-slate-400 uppercase block">Loại đối tượng</label>
+                                  <label className="text-[10px] font-black text-slate-400 uppercase block">Tên Vật tư <span className="text-rose-500">*</span></label>
+                                  <input
+                                    type="text"
+                                    required
+                                    value={newSupplyName}
+                                    onChange={(e) => setNewSupplyName(e.target.value)}
+                                    placeholder="Ví dụ: Giấy A4 Double A..."
+                                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-black text-slate-400 uppercase block">Danh mục</label>
                                   <select
-                                    value={newTargetType}
-                                    onChange={(e) => setNewTargetType(e.target.value as any)}
+                                    value={newSupplyCat}
+                                    onChange={(e) => setNewSupplyCat(e.target.value)}
                                     className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800 cursor-pointer"
                                   >
-                                    <option value="phongban">Phòng ban Văn phòng</option>
-                                    <option value="duan">Ban điều hành Dự án</option>
+                                    <option value="Giấy in">Giấy in</option>
+                                    <option value="Bút viết">Bút viết</option>
+                                    <option value="Dụng cụ lưu trữ">Dụng cụ lưu trữ</option>
+                                    <option value="Khác">Vật tư khác</option>
                                   </select>
                                 </div>
 
                                 <div className="space-y-1">
-                                  <label className="text-[10px] font-black text-slate-400 uppercase block">Tên phòng ban / dự án <span className="text-rose-500">*</span></label>
+                                  <label className="text-[10px] font-black text-slate-400 uppercase block">Đơn vị tính <span className="text-rose-500">*</span></label>
                                   <input
                                     type="text"
                                     required
-                                    value={newTargetName}
-                                    onChange={(e) => setNewTargetName(e.target.value)}
-                                    placeholder={newTargetType === "phongban" ? "Ví dụ: Phòng Vật tư" : "Ví dụ: Dự án Rạch Xuyên Tâm"}
+                                    value={newSupplyUnit}
+                                    onChange={(e) => setNewSupplyUnit(e.target.value)}
+                                    placeholder="Ví dụ: Ram, Hộp, Cái..."
                                     className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
                                   />
                                 </div>
 
                                 <div className="space-y-1">
-                                  <label className="text-[10px] font-black text-slate-400 uppercase block">Người nhận / Chức vụ mặc định</label>
+                                  <label className="text-[10px] font-black text-slate-400 uppercase block">Số Tồn Kho <span className="text-rose-500">*</span></label>
                                   <input
-                                    type="text"
-                                    value={newTargetReceiver}
-                                    onChange={(e) => setNewTargetReceiver(e.target.value)}
-                                    placeholder="Ví dụ: Như Quỳnh, Chỉ huy trưởng..."
-                                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
-                                  />
-                                </div>
-
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-black text-slate-400 uppercase block">Ghi chú / Địa điểm</label>
-                                  <input
-                                    type="text"
-                                    value={newTargetNotes}
-                                    onChange={(e) => setNewTargetNotes(e.target.value)}
-                                    placeholder="Ví dụ: Văn phòng công ty, Công trường..."
+                                    type="number"
+                                    required
+                                    value={newSupplyStock === 0 ? "" : newSupplyStock}
+                                    onChange={(e) => setNewSupplyStock(Number(e.target.value))}
+                                    placeholder="Ví dụ: 100"
+                                    min={0}
                                     className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
                                   />
                                 </div>
@@ -1822,60 +1827,54 @@ export default function AdministrationPage() {
                                   type="submit"
                                   className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer shadow"
                                 >
-                                  Lưu đối tượng
+                                  Lưu vật tư
                                 </button>
                               </form>
                             </div>
 
-                            {/* Right Table: Targets list */}
+                            {/* Right Table: Supplies list */}
                             <div className="md:col-span-2 space-y-3">
                               <h5 className="font-bold text-slate-700 text-[11px] uppercase tracking-wider flex items-center gap-1">
-                                <span>📋</span> Danh sách đối tượng ({allocationTargets.length})
+                                <span>📋</span> Danh sách vật tư ({supplies.length})
                               </h5>
                               <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm max-h-[300px] overflow-y-auto">
                                 <table className="w-full text-xs text-left border-collapse">
                                   <thead>
                                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
                                       <th className="py-2.5 px-3 w-12 text-center">STT</th>
-                                      <th className="py-2.5 px-3 w-28">Phân loại</th>
-                                      <th className="py-2.5 px-3">Tên phòng / dự án</th>
-                                      <th className="py-2.5 px-3">Người nhận</th>
-                                      <th className="py-2.5 px-3">Ghi chú</th>
+                                      <th className="py-2.5 px-3">Tên vật tư</th>
+                                      <th className="py-2.5 px-3 w-28">Danh mục</th>
+                                      <th className="py-2.5 px-3 w-20">Đơn vị</th>
+                                      <th className="py-2.5 px-3 w-24">Số tồn kho</th>
                                       <th className="py-2.5 px-3 w-12 text-center">Xóa</th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                                    {allocationTargets.map((t, index) => (
-                                      <tr key={t.id} className="hover:bg-slate-50/50 transition-all">
-                                        <td className="py-2 px-3 text-center text-slate-400 font-mono text-[10px]">{index + 1}</td>
-                                        <td className="py-2 px-3">
-                                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                                            t.type === "phongban" 
-                                              ? "bg-blue-50 text-blue-700 border border-blue-100" 
-                                              : "bg-purple-50 text-purple-700 border border-purple-100"
-                                          }`}>
-                                            {t.type === "phongban" ? "Phòng ban" : "Dự án"}
-                                          </span>
-                                        </td>
-                                        <td className="py-2 px-3 text-slate-800 font-bold">{t.name}</td>
-                                        <td className="py-2 px-3 text-slate-500 text-[11px]">{t.receiver || "—"}</td>
-                                        <td className="py-2 px-3 text-slate-400 italic text-[11px]">{t.notes || "—"}</td>
-                                        <td className="py-2 px-3 text-center">
-                                          <button
-                                            type="button"
-                                            onClick={() => handleDeleteAllocationTarget(t.id)}
-                                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                            title="Xóa đối tượng"
-                                          >
-                                            <Trash2 size={13} />
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                    {allocationTargets.length === 0 && (
+                                    {supplies
+                                      .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                                      .map((s, index) => (
+                                        <tr key={index} className="hover:bg-slate-50/50 transition-all">
+                                          <td className="py-2 px-3 text-center text-slate-400 font-mono text-[10px]">{index + 1}</td>
+                                          <td className="py-2 px-3 text-slate-800 font-bold">{s.name}</td>
+                                          <td className="py-2 px-3 text-slate-500">{s.cat}</td>
+                                          <td className="py-2 px-3 font-mono text-slate-500">{s.unit}</td>
+                                          <td className="py-2 px-3 text-slate-800 font-bold">{s.stock}</td>
+                                          <td className="py-2 px-3 text-center">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleDeleteSupply(s.name)}
+                                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                              title="Xóa vật tư"
+                                            >
+                                              <Trash2 size={13} />
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    {supplies.length === 0 && (
                                       <tr>
                                         <td colSpan={6} className="py-6 text-center text-slate-400 italic">
-                                          Chưa có đối tượng cấp phát nào được cấu hình
+                                          Chưa có vật tư nào trong danh mục
                                         </td>
                                       </tr>
                                     )}

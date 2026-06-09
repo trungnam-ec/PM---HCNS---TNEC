@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
-import { Settings, Database, Info, Key, CheckCircle } from "lucide-react";
+import { Settings, Database, Info, Key, CheckCircle, ShieldAlert, Check, X, Calendar, Briefcase, User } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 export default function SettingsPage() {
   const [apiKey, setApiKey] = useState("");
@@ -11,14 +12,184 @@ export default function SettingsPage() {
   const [model, setModel] = useState("gpt-4o-mini");
   const [saved, setSaved] = useState(false);
 
+  // Approvals States
+  const [currentUser, setCurrentUser] = useState<{
+    email: string;
+    name: string;
+    role: string;
+    department: string;
+    isAdmin: boolean;
+  } | null>(null);
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [activeApprovalTab, setActiveApprovalTab] = useState<"trip" | "leave">("trip");
+
   // Load configuration from local storage on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
       setApiKey(localStorage.getItem("openai_api_key") || "");
       setWebhookUrl(localStorage.getItem("apps_script_url") || "");
       setModel(localStorage.getItem("openai_model") || "gpt-4o-mini");
+      
+      fetchUserRoleAndDept();
+      fetchTasks();
     }
   }, []);
+
+  const fetchUserRoleAndDept = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !session.user) return;
+
+      const user = session.user;
+      const email = user.email || "";
+
+      // 1. Check allowed_users for Admin
+      const { data: allowedData } = await supabase
+        .from("allowed_users")
+        .select("role")
+        .ilike("email", email)
+        .maybeSingle();
+
+      const isAdmin = allowedData?.role === "Admin";
+
+      // 2. Check employees
+      const { data: empData } = await supabase
+        .from("employees")
+        .select("name, role, department")
+        .ilike("email", email)
+        .maybeSingle();
+
+      setCurrentUser({
+        email,
+        name: empData?.name || user.user_metadata?.full_name || user.user_metadata?.name || "Người dùng",
+        role: empData?.role || (isAdmin ? "Admin" : "Nhân viên"),
+        department: empData?.department || "Chưa xếp phòng",
+        isAdmin
+      });
+    } catch (err) {
+      console.error("Error fetching current user info in settings:", err);
+    }
+  };
+
+  const fetchTasks = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("tasks")
+        .select("*")
+        .order("created_at", { ascending: false });
+      
+      if (error) throw error;
+      if (data) {
+        setTasks(data);
+      }
+    } catch (err) {
+      console.error("Error fetching tasks in settings:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApprove = async (taskId: string, isTrip: boolean) => {
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .update({
+          status: isTrip ? "in_progress" : "completed",
+          progress: isTrip ? 50 : 100
+        })
+        .eq("id", taskId);
+      
+      if (error) throw error;
+      alert(`Đã phê duyệt thành công yêu cầu ${isTrip ? "đi công tác" : "nghỉ phép"}!`);
+      fetchTasks();
+    } catch (err) {
+      console.error("Error approving task:", err);
+      alert("Lỗi khi phê duyệt yêu cầu!");
+    }
+  };
+
+  const handleReject = async (taskId: string) => {
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .update({ status: "need_revision" })
+        .eq("id", taskId);
+      
+      if (error) throw error;
+      alert("Đã từ chối yêu cầu.");
+      fetchTasks();
+    } catch (err) {
+      console.error("Error rejecting task:", err);
+      alert("Lỗi khi từ chối yêu cầu!");
+    }
+  };
+
+  const isApprover = useMemo(() => {
+    if (!currentUser) return false;
+    if (currentUser.isAdmin) return true;
+    const roleLower = currentUser.role.toLowerCase();
+    return (
+      roleLower.includes("trưởng phòng") ||
+      roleLower.includes("truong phong") ||
+      roleLower.includes("phó phòng") ||
+      roleLower.includes("pho phong") ||
+      roleLower.includes("phó trưởng phòng") || 
+      roleLower.includes("pho truong phong") ||
+      roleLower.includes("giám đốc") ||
+      roleLower.includes("giam doc")
+    );
+  }, [currentUser]);
+
+  // Business trip approvals list (Trưởng phòng & Admin only)
+  const pendingTrips = useMemo(() => {
+    if (!currentUser || !isApprover) return [];
+    
+    const isUserAdmin = currentUser.isAdmin || (currentUser.role || "").toLowerCase() === "admin";
+    const isUserManager = (currentUser.role || "").toLowerCase().includes("trưởng phòng") || 
+                          (currentUser.role || "").toLowerCase().includes("truong phong") ||
+                          (currentUser.role || "").toLowerCase().includes("giám đốc") ||
+                          (currentUser.role || "").toLowerCase().includes("giam doc");
+
+    // Only Admin and Trưởng phòng can see/approve trips
+    if (!isUserAdmin && !isUserManager) return [];
+
+    return tasks.filter(t => 
+      t.status === "pending_approval" && 
+      (t.title.toLowerCase().startsWith("công tác") || t.title.toLowerCase().includes("cong tac"))
+    );
+  }, [tasks, currentUser, isApprover]);
+
+  // Leave approvals list (custom rules)
+  const pendingLeaves = useMemo(() => {
+    if (!currentUser || !isApprover) return [];
+
+    const isUserAdmin = currentUser.isAdmin || (currentUser.role || "").toLowerCase() === "admin";
+    const isUserManager = (currentUser.role || "").toLowerCase().includes("trưởng phòng") || 
+                          (currentUser.role || "").toLowerCase().includes("truong phong") ||
+                          (currentUser.role || "").toLowerCase().includes("giám đốc") ||
+                          (currentUser.role || "").toLowerCase().includes("giam doc");
+
+    return tasks.filter(t => {
+      if (t.status !== "pending_approval") return false;
+      if (!t.title.toLowerCase().startsWith("nghỉ phép") && !t.title.toLowerCase().includes("nghi phep")) return false;
+
+      // 1. Explicitly designated approver
+      if (t.notes && t.notes.includes(`Người duyệt: ${currentUser.name}`)) return true;
+
+      // 2. Quỳnh approves Hằng's 1-day leave
+      if (currentUser.name.toLowerCase().includes("quỳnh") && t.assignee.toLowerCase().includes("hằng") && t.title.includes("1 ngày")) return true;
+
+      // 3. Hoành Anh approves Quyên's 1-day leave
+      if (currentUser.name.toLowerCase().includes("hoành anh") && t.assignee.toLowerCase().includes("quuyên") && t.title.includes("1 ngày")) return true;
+
+      // 4. Managers/Admins can see and approve all leaves
+      if (isUserAdmin || isUserManager) return true;
+
+      return false;
+    });
+  }, [tasks, currentUser, isApprover]);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,6 +275,179 @@ export default function SettingsPage() {
               </div>
             </form>
           </div>
+
+          {/* Nhóm Duyệt Yêu Cầu */}
+          {isApprover && (
+            <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-3">
+                <h2 className="font-heading font-bold text-slate-800 text-sm flex items-center gap-2">
+                  <CheckCircle size={18} className="text-emerald-600" /> Nhóm Duyệt Yêu Cầu
+                </h2>
+                
+                {/* Modern Capsule Segmented Style */}
+                <div className="bg-slate-100 p-0.5 rounded-xl flex gap-1 border border-slate-200 text-[10px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setActiveApprovalTab("trip")}
+                    className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
+                      activeApprovalTab === "trip"
+                        ? "bg-white text-blue-600 shadow-sm border border-slate-200/20"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    1. Duyệt công tác ({pendingTrips.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveApprovalTab("leave")}
+                    className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
+                      activeApprovalTab === "leave"
+                        ? "bg-white text-blue-600 shadow-sm border border-slate-200/20"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    2. Duyệt Nghỉ Phép ({pendingLeaves.length})
+                  </button>
+                </div>
+              </div>
+
+              {loading ? (
+                <div className="flex items-center justify-center py-8 text-slate-400 text-xs font-semibold gap-2">
+                  <span className="w-4 h-4 border-2 border-slate-305 border-t-blue-600 rounded-full animate-spin" />
+                  Đang tải danh sách yêu cầu chờ duyệt...
+                </div>
+              ) : activeApprovalTab === "trip" ? (
+                <div className="space-y-4">
+                  {pendingTrips.length === 0 ? (
+                    <p className="text-center text-slate-400 text-xs italic py-8">Không có yêu cầu đi công tác nào chờ bạn phê duyệt.</p>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-slate-200/60 bg-white">
+                      <table className="w-full text-xs text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50/75 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                            <th className="py-3 px-4">Nhân sự</th>
+                            <th className="py-3 px-4">Thời gian</th>
+                            <th className="py-3 px-4">Điểm đến</th>
+                            <th className="py-3 px-4">Nhiệm vụ</th>
+                            <th className="py-3 px-4 text-center">Thao tác</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
+                          {pendingTrips.map((req) => {
+                            // Extract destination or mission from notes
+                            let cleanDest = "Chưa xác định";
+                            let cleanMission = "Đi công tác";
+                            if (req.notes) {
+                              const destMatch = req.notes.match(/-\s+\*\*Điểm công tác chính\*\*:\s*(.*)/i);
+                              if (destMatch) cleanDest = destMatch[1].trim();
+                              
+                              const missionMatch = req.notes.match(/-\s+\*\*Nhiệm vụ cụ thể\*\*:\s*(.*)/i);
+                              if (missionMatch) cleanMission = missionMatch[1].trim();
+                            }
+
+                            return (
+                              <tr key={req.id} className="hover:bg-slate-50/50 transition-all duration-150">
+                                <td className="py-3.5 px-4 font-bold text-slate-800 flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-full bg-indigo-500 text-white text-[9px] font-bold flex items-center justify-center">
+                                    {req.assignee ? req.assignee.split(" ").filter(Boolean).map((n: string) => n[0]).join("").slice(0, 2).toUpperCase() : "NV"}
+                                  </div>
+                                  <span>{req.assignee}</span>
+                                </td>
+                                <td className="py-3.5 px-4 text-slate-500 font-mono text-[10px]">
+                                  {req.start_date ? new Date(req.start_date).toLocaleDateString("vi-VN") : ""} ➔ {req.due_date ? new Date(req.due_date).toLocaleDateString("vi-VN") : ""}
+                                </td>
+                                <td className="py-3.5 px-4 text-slate-700 font-bold">{cleanDest}</td>
+                                <td className="py-3.5 px-4 text-slate-450 font-normal max-w-[200px] truncate" title={cleanMission}>{cleanMission}</td>
+                                <td className="py-3.5 px-4">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleApprove(req.id, true)}
+                                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
+                                    >
+                                      Duyệt
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleReject(req.id)}
+                                      className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
+                                    >
+                                      Từ chối
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {pendingLeaves.length === 0 ? (
+                    <p className="text-center text-slate-400 text-xs italic py-8">Không có yêu cầu nghỉ phép nào chờ bạn phê duyệt.</p>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-slate-200/60 bg-white">
+                      <table className="w-full text-xs text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50/75 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                            <th className="py-3 px-4">Nhân sự</th>
+                            <th className="py-3 px-4">Thời gian</th>
+                            <th className="py-3 px-4">Lý do nghỉ</th>
+                            <th className="py-3 px-4 text-center">Thao tác</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
+                          {pendingLeaves.map((req) => {
+                            let cleanReason = "Xin nghỉ phép";
+                            if (req.notes) {
+                              const reasonMatch = req.notes.match(/Lý do:\s*(.*)/i);
+                              if (reasonMatch) cleanReason = reasonMatch[1].trim();
+                            }
+
+                            return (
+                              <tr key={req.id} className="hover:bg-slate-50/50 transition-all duration-150">
+                                <td className="py-3.5 px-4 font-bold text-slate-800 flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-full bg-emerald-500 text-white text-[9px] font-bold flex items-center justify-center">
+                                    {req.assignee ? req.assignee.split(" ").filter(Boolean).map((n: string) => n[0]).join("").slice(0, 2).toUpperCase() : "NV"}
+                                  </div>
+                                  <span>{req.assignee}</span>
+                                </td>
+                                <td className="py-3.5 px-4 text-slate-500 font-mono text-[10px]">
+                                  {req.start_date ? new Date(req.start_date).toLocaleDateString("vi-VN") : ""} ➔ {req.due_date ? new Date(req.due_date).toLocaleDateString("vi-VN") : ""}
+                                </td>
+                                <td className="py-3.5 px-4 text-slate-450 font-normal max-w-[250px] truncate" title={cleanReason}>{cleanReason}</td>
+                                <td className="py-3.5 px-4">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleApprove(req.id, false)}
+                                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
+                                    >
+                                      Duyệt
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleReject(req.id)}
+                                      className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
+                                    >
+                                      Từ chối
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* System Info */}
           <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-sm space-y-4">

@@ -513,22 +513,54 @@ export default function CalendarPage() {
   // Approval list for current manager
   const pendingApprovals = useMemo(() => {
     if (!currentUser) return [];
-    return tasks.filter(t => 
-      t.status === "pending_approval" && 
-      t.title.toLowerCase().startsWith("nghỉ phép") &&
-      t.notes && t.notes.includes(`Người duyệt: ${currentUser.name}`)
-    );
+    const isUserAdmin = currentUser.isAdmin || (currentUser.role || "").toLowerCase() === "admin";
+    const isUserManager = (currentUser.role || "").toLowerCase().includes("trưởng phòng") || 
+                          (currentUser.role || "").toLowerCase().includes("truong phong") ||
+                          (currentUser.role || "").toLowerCase().includes("giám đốc") ||
+                          (currentUser.role || "").toLowerCase().includes("giam doc");
+
+    return tasks.filter(t => {
+      if (t.status !== "pending_approval") return false;
+      const isLeave = t.title.toLowerCase().startsWith("nghỉ phép") || t.title.toLowerCase().includes("nghi phep");
+      const isTrip = t.title.toLowerCase().startsWith("công tác") || t.title.toLowerCase().includes("cong tac");
+      
+      if (isLeave) {
+        // Enforce leave approval rules:
+        // 1. Explicitly designated approver in notes
+        if (t.notes && t.notes.includes(`Người duyệt: ${currentUser.name}`)) return true;
+        // 2. Quỳnh approves Hằng's 1-day leave
+        if (currentUser.name.toLowerCase().includes("quỳnh") && t.assignee.toLowerCase().includes("hằng") && t.title.includes("1 ngày")) return true;
+        // 3. Hoành Anh approves Quyên's 1-day leave
+        if (currentUser.name.toLowerCase().includes("hoành anh") && t.assignee.toLowerCase().includes("quuyên") && t.title.includes("1 ngày")) return true;
+        // 4. Managers/Admins can see and approve all leaves
+        if (isUserAdmin || isUserManager) return true;
+      }
+      
+      if (isTrip) {
+        // Trưởng phòng & Admin can see and approve business trips
+        if (isUserAdmin || isUserManager) return true;
+      }
+      
+      return false;
+    });
   }, [tasks, currentUser]);
 
   const handleApproveLeave = async (taskId: string) => {
     try {
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      const isTrip = task.title.toLowerCase().startsWith("công tác") || task.title.toLowerCase().includes("cong tac");
+      
       const { error } = await supabase
         .from("tasks")
-        .update({ status: "completed", progress: 100 })
+        .update({ 
+          status: isTrip ? "in_progress" : "completed", 
+          progress: isTrip ? 50 : 100 
+        })
         .eq("id", taskId);
       
       if (error) throw error;
-      alert("Đã phê duyệt đơn nghỉ phép thành công!");
+      alert(`Đã phê duyệt đơn ${isTrip ? "đi công tác" : "nghỉ phép"} thành công!`);
       fetchData();
     } catch (err) {
       console.error(err);
@@ -544,7 +576,7 @@ export default function CalendarPage() {
         .eq("id", taskId);
       
       if (error) throw error;
-      alert("Đã từ chối đơn nghỉ phép.");
+      alert("Đã từ chối đơn thành công.");
       fetchData();
     } catch (err) {
       console.error(err);
@@ -681,7 +713,7 @@ ${tripRoutes.map((r, i) => `Chặng ${i + 1}:
           due_date: modalEnd,
           priority: "Trung bình",
           progress: 0,
-          status: "in_progress",
+          status: "pending_approval",
           notes: notesMarkdown
         }]);
 
@@ -1416,17 +1448,30 @@ ${tripRoutes.map((r, i) => `Chặng ${i + 1}:
 
               {leaveDaysCount === 1 && (
                 <div className="space-y-1.5 animate-in fade-in duration-200">
-                  <label className="text-slate-500 text-[11px] font-bold">Người duyệt (Phó phòng) <span className="text-rose-500">*</span></label>
+                  <label className="text-slate-500 text-[11px] font-bold">
+                    {modalName.toLowerCase().includes("hằng") || modalName.toLowerCase().includes("hang") || modalName.toLowerCase().includes("quyên") || modalName.toLowerCase().includes("quyen")
+                      ? "Người duyệt (Phó phòng) *" 
+                      : "Người duyệt (Trưởng phòng) *"}
+                  </label>
                   <select
                     required
                     value={selectedApprover}
                     onChange={(e) => setSelectedApprover(e.target.value)}
                     className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white font-semibold text-slate-800 text-xs"
                   >
-                    <option value="">Chọn phó phòng duyệt...</option>
-                    {deputiesList.map(d => (
-                      <option key={d.id} value={d.name}>{d.name} ({d.role})</option>
-                    ))}
+                    <option value="">Chọn người duyệt...</option>
+                    {modalName.toLowerCase().includes("hằng") || modalName.toLowerCase().includes("hang")
+                      ? deputiesList.filter(d => d.name.toLowerCase().includes("quỳnh") || d.name.toLowerCase().includes("quynh")).map(d => (
+                          <option key={d.id} value={d.name}>{d.name} ({d.role})</option>
+                        ))
+                      : modalName.toLowerCase().includes("quyên") || modalName.toLowerCase().includes("quyen")
+                      ? deputiesList.filter(d => d.name.toLowerCase().includes("hoành anh") || d.name.toLowerCase().includes("hoanh anh")).map(d => (
+                          <option key={d.id} value={d.name}>{d.name} ({d.role})</option>
+                        ))
+                      : managersList.map(m => (
+                          <option key={m.id} value={m.name}>{m.name} ({m.role})</option>
+                        ))
+                    }
                   </select>
                 </div>
               )}

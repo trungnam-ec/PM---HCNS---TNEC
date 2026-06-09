@@ -553,39 +553,8 @@ export default function AdministrationPage() {
 
       if (error) throw error;
 
-      if (!data || data.length === 0) {
-        // If empty in Supabase, seed with INITIAL_DEPT_REQUESTS!
-        const seedTasks = INITIAL_DEPT_REQUESTS.map(r => ({
-          title: `VPP: ${r.targetName} | ${r.item} | ${r.qty}`,
-          assignee: r.targetName,
-          start_date: r.date,
-          due_date: r.date,
-          priority: "Thấp",
-          progress: r.status === "Đã cấp phát" ? 100 : 0,
-          status: r.status === "Đã cấp phát" ? "completed" : "pending_approval",
-          notes: JSON.stringify({
-            dept: r.dept,
-            target: r.target,
-            targetName: r.targetName,
-            item: r.item,
-            qty: r.qty,
-            date: r.date
-          })
-        }));
-
-        const { data: insertedData, error: insertError } = await supabase
-          .from("tasks")
-          .insert(seedTasks)
-          .select();
-
-        if (insertError) throw insertError;
-
-        const mapped = (insertedData || []).map(t => parseVppTask(t));
-        setDeptRequests(mapped);
-      } else {
-        const mapped = data.map(t => parseVppTask(t));
-        setDeptRequests(mapped);
-      }
+      const mapped = (data || []).map(t => parseVppTask(t));
+      setDeptRequests(mapped);
     } catch (err) {
       console.error("Error fetching dept requests from Supabase:", err);
     }

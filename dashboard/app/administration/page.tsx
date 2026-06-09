@@ -53,6 +53,7 @@ interface DeptRequest {
   item: string;
   qty: number;
   date: string;
+  allocationTime?: string;
   status: "Chờ duyệt" | "Đã cấp phát";
   target?: "phongban" | "duan";
   targetName?: string;
@@ -393,6 +394,18 @@ export default function AdministrationPage() {
   const [showAiSettingsModal, setShowAiSettingsModal] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
+  // AI VPP Upload & Auto-Creation States
+  const [vppFileUploading, setVppFileUploading] = useState(false);
+  const [showVppPreviewModal, setShowVppPreviewModal] = useState(false);
+  const [vppPreviewTargetType, setVppPreviewTargetType] = useState<"phongban" | "duan">("phongban");
+  const [vppPreviewTargetName, setVppPreviewTargetName] = useState("");
+  const [vppPreviewItems, setVppPreviewItems] = useState<Array<{
+    checked: boolean;
+    name: string;
+    unit: string;
+    qty: number;
+  }>>([]);
+
   // Helper to parse tasks into DeptRequests
   const parseVppTask = (t: any): DeptRequest => {
     try {
@@ -404,6 +417,7 @@ export default function AdministrationPage() {
           item: parsed.item,
           qty: parsed.qty,
           date: parsed.date || t.start_date,
+          allocationTime: parsed.allocationTime || parsed.allocationDate || "",
           status: t.status === "completed" ? "Đã cấp phát" : "Chờ duyệt",
           target: parsed.target || "phongban",
           targetName: parsed.targetName || t.assignee
@@ -424,6 +438,7 @@ export default function AdministrationPage() {
       item: item,
       qty: qty,
       date: t.start_date || "",
+      allocationTime: "",
       status: t.status === "completed" ? "Đã cấp phát" : "Chờ duyệt",
       target: t.title.includes("Ban điều hành") || t.title.includes("BĐH") ? "duan" : "phongban",
       targetName: targetName
@@ -1245,6 +1260,166 @@ export default function AdministrationPage() {
     } catch (err: any) {
       console.error("Error creating PYC in Supabase:", err);
       alert("Lỗi khi tạo phiếu yêu cầu: " + (err.message || err));
+    }
+  };
+
+  const handleVppFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setVppFileUploading(true);
+    
+    // Clear the file input so the same file can be uploaded again if needed
+    const fileInput = document.getElementById("vpp-file-input") as HTMLInputElement;
+    if (fileInput) fileInput.value = "";
+
+    try {
+      const customKey = localStorage.getItem("openai_api_key_hanh_chinh") || localStorage.getItem("openai_api_key") || "";
+      const customModel = localStorage.getItem("openai_model_hanh_chinh") || "gpt-4o-mini";
+
+      const formData = new FormData();
+      formData.append("vpp_file", file);
+      formData.append("original_filename", file.name);
+
+      const headers: Record<string, string> = {};
+      if (customKey) {
+        headers["Authorization"] = `Bearer ${customKey}`;
+      }
+      if (customModel) {
+        headers["x-openai-model"] = customModel;
+      }
+
+      const res = await fetch("/api/analyze-vpp-document", {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || `Lỗi HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      // Populate preview states
+      setVppPreviewTargetType(data.targetType === "duan" ? "duan" : "phongban");
+      setVppPreviewTargetName(data.targetName || "");
+      
+      const parsedItems = (data.items || []).map((item: any) => ({
+        checked: true,
+        name: item.name || "",
+        unit: item.unit || "Cái",
+        qty: Number(item.qty) || 1,
+      }));
+      
+      setVppPreviewItems(parsedItems);
+      setShowVppPreviewModal(true);
+    } catch (err: any) {
+      console.error("Error analyzing VPP document:", err);
+      alert("Lỗi khi phân tích tài liệu: " + (err.message || err));
+    } finally {
+      setVppFileUploading(false);
+    }
+  };
+
+  const handleConfirmVppPreview = async () => {
+    const selectedItems = vppPreviewItems.filter(item => item.checked && item.qty > 0 && item.name.trim() !== "");
+    if (selectedItems.length === 0) {
+      alert("Vui lòng chọn ít nhất một vật tư hợp lệ để tạo phiếu yêu cầu.");
+      return;
+    }
+    if (!vppPreviewTargetName) {
+      alert("Vui lòng chọn phòng ban hoặc dự án yêu cầu.");
+      return;
+    }
+
+    const deptName = vppPreviewTargetType === "phongban" ? vppPreviewTargetName : `Ban điều hành ${vppPreviewTargetName}`;
+    const dateStr = new Date().toISOString().split("T")[0];
+
+    try {
+      const payloads = selectedItems.map(item => ({
+        title: `VPP: ${vppPreviewTargetName} | ${item.name} | ${item.qty}`,
+        assignee: vppPreviewTargetName,
+        start_date: dateStr,
+        due_date: dateStr,
+        priority: "Thấp",
+        progress: 0,
+        status: "pending_approval",
+        notes: JSON.stringify({
+          dept: deptName,
+          target: vppPreviewTargetType,
+          targetName: vppPreviewTargetName,
+          item: item.name,
+          qty: Number(item.qty),
+          date: dateStr
+        })
+      }));
+
+      const { error } = await supabase
+        .from("tasks")
+        .insert(payloads);
+
+      if (error) throw error;
+
+      alert(`Đã tạo thành công ${payloads.length} yêu cầu cấp phát VPP cho ${deptName}.`);
+      setShowVppPreviewModal(false);
+      
+      // Refresh list from Supabase
+      fetchDeptRequests();
+    } catch (err: any) {
+      console.error("Error creating batch PYC in Supabase:", err);
+      alert("Lỗi khi tạo danh sách phiếu yêu cầu: " + (err.message || err));
+    }
+  };
+
+  const updateVppRequestField = async (reqId: string, field: "qty" | "allocationTime", value: any) => {
+    const currentReq = deptRequests.find(r => r.id === reqId);
+    if (!currentReq) return;
+
+    try {
+      const updatedQty = field === "qty" ? Number(value) : currentReq.qty;
+      const updatedTime = field === "allocationTime" ? String(value) : (currentReq.allocationTime || "");
+
+      const newTitle = `VPP: ${currentReq.targetName} | ${currentReq.item} | ${updatedQty}`;
+      
+      const newNotes = {
+        dept: currentReq.dept,
+        target: currentReq.target,
+        targetName: currentReq.targetName,
+        item: currentReq.item,
+        qty: updatedQty,
+        date: currentReq.date,
+        allocationTime: updatedTime
+      };
+
+      const { error } = await supabase
+        .from("tasks")
+        .update({
+          title: newTitle,
+          notes: JSON.stringify(newNotes)
+        })
+        .eq("id", reqId);
+
+      if (error) throw error;
+
+      setDeptRequests(prev => prev.map(r => {
+        if (r.id === reqId) {
+          return {
+            ...r,
+            qty: updatedQty,
+            allocationTime: updatedTime
+          };
+        }
+        return r;
+      }));
+    } catch (err: any) {
+      console.error("Error updating VPP field:", err);
+      alert("Lỗi khi cập nhật dữ liệu: " + (err.message || err));
     }
   };
 
@@ -2253,6 +2428,32 @@ export default function AdministrationPage() {
                           >
                             <Plus size={14} /> Tạo yêu cầu cấp
                           </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const input = document.getElementById("vpp-file-input");
+                              if (input) input.click();
+                            }}
+                            disabled={vppFileUploading}
+                            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 disabled:opacity-50"
+                          >
+                            {vppFileUploading ? (
+                              <Loader2 size={14} className="animate-spin text-slate-500" />
+                            ) : (
+                              <Upload size={14} className="text-slate-500" />
+                            )}
+                            {vppFileUploading ? "Đang phân tích..." : "Nhập file yêu cầu"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowAiSettingsModal(true)}
+                            className="p-2.5 text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all shadow-sm"
+                            title="Cấu hình AI VPP"
+                          >
+                            <Settings size={14} />
+                          </button>
                         </div>
                       </div>
 
@@ -2260,10 +2461,10 @@ export default function AdministrationPage() {
                         <table className="w-full text-xs text-left">
                           <thead>
                             <tr className="bg-slate-50/75 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                              <th className="py-3 px-4">Mã PYC</th>
+                              <th className="py-3 px-4 w-44">Thời gian cấp phát</th>
                               <th className="py-3 px-4">Phòng ban</th>
                               <th className="py-3 px-4">Vật tư yêu cầu</th>
-                              <th className="py-3 px-4 text-center">Số lượng</th>
+                              <th className="py-3 px-4 text-center w-24">Số lượng</th>
                               <th className="py-3 px-4">Ngày yêu cầu</th>
                               <th className="py-3 px-4">Trạng thái</th>
                               <th className="py-3 px-4 text-center">Thao tác</th>
@@ -2274,10 +2475,26 @@ export default function AdministrationPage() {
                               .filter(r => r.target === "phongban" && (selectedDeptFilter === "Tất cả" || r.targetName === selectedDeptFilter))
                               .map((req) => (
                                 <tr key={req.id} className="hover:bg-slate-50/50 hover:translate-x-[2px] transition-all duration-150">
-                                  <td className="py-3.5 px-4 font-mono text-slate-400">{req.id}</td>
+                                  <td className="py-2 px-4">
+                                    <input
+                                      type="text"
+                                      value={req.allocationTime || ""}
+                                      onChange={(e) => updateVppRequestField(req.id, "allocationTime", e.target.value)}
+                                      placeholder="Điền ngày/giờ..."
+                                      className="w-full px-2 py-1 border border-slate-200 rounded-lg outline-none focus:border-[#005BAC] text-xs font-semibold bg-white text-slate-700"
+                                    />
+                                  </td>
                                   <td className="py-3.5 px-4 text-slate-800 font-bold">{req.targetName}</td>
                                   <td className="py-3.5 px-4 text-slate-600">{req.item}</td>
-                                  <td className="py-3.5 px-4 text-center text-slate-850 font-bold">{req.qty}</td>
+                                  <td className="py-2 px-4 text-center">
+                                    <input
+                                      type="number"
+                                      value={req.qty}
+                                      min={1}
+                                      onChange={(e) => updateVppRequestField(req.id, "qty", parseInt(e.target.value) || 0)}
+                                      className="w-16 px-1.5 py-1 text-center border border-slate-200 rounded-lg outline-none focus:border-[#005BAC] text-xs font-bold bg-white text-slate-800"
+                                    />
+                                  </td>
                                   <td className="py-3.5 px-4 font-mono text-slate-500">{req.date}</td>
                                   <td className="py-3.5 px-4">
                                     <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${
@@ -2365,6 +2582,32 @@ export default function AdministrationPage() {
                           >
                             <Plus size={14} /> Tạo yêu cầu cấp
                           </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const input = document.getElementById("vpp-file-input");
+                              if (input) input.click();
+                            }}
+                            disabled={vppFileUploading}
+                            className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 disabled:opacity-50"
+                          >
+                            {vppFileUploading ? (
+                              <Loader2 size={14} className="animate-spin text-slate-500" />
+                            ) : (
+                              <Upload size={14} className="text-slate-500" />
+                            )}
+                            {vppFileUploading ? "Đang phân tích..." : "Nhập file yêu cầu"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowAiSettingsModal(true)}
+                            className="p-2.5 text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all shadow-sm"
+                            title="Cấu hình AI VPP"
+                          >
+                            <Settings size={14} />
+                          </button>
                         </div>
                       </div>
 
@@ -2372,10 +2615,10 @@ export default function AdministrationPage() {
                         <table className="w-full text-xs text-left">
                           <thead>
                             <tr className="bg-slate-50/75 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                              <th className="py-3 px-4">Mã PYC</th>
+                              <th className="py-3 px-4 w-44">Thời gian cấp phát</th>
                               <th className="py-3 px-4">Dự án</th>
                               <th className="py-3 px-4">Vật tư yêu cầu</th>
-                              <th className="py-3 px-4 text-center">Số lượng</th>
+                              <th className="py-3 px-4 text-center w-24">Số lượng</th>
                               <th className="py-3 px-4">Ngày yêu cầu</th>
                               <th className="py-3 px-4">Trạng thái</th>
                               <th className="py-3 px-4 text-center">Thao tác</th>
@@ -2386,10 +2629,26 @@ export default function AdministrationPage() {
                               .filter(r => r.target === "duan" && (selectedProjectFilter === "Tất cả" || r.targetName === selectedProjectFilter))
                               .map((req) => (
                                 <tr key={req.id} className="hover:bg-slate-50/50 hover:translate-x-[2px] transition-all duration-150">
-                                  <td className="py-3.5 px-4 font-mono text-slate-400">{req.id}</td>
+                                  <td className="py-2 px-4">
+                                    <input
+                                      type="text"
+                                      value={req.allocationTime || ""}
+                                      onChange={(e) => updateVppRequestField(req.id, "allocationTime", e.target.value)}
+                                      placeholder="Điền ngày/giờ..."
+                                      className="w-full px-2 py-1 border border-slate-200 rounded-lg outline-none focus:border-[#005BAC] text-xs font-semibold bg-white text-slate-700"
+                                    />
+                                  </td>
                                   <td className="py-3.5 px-4 text-slate-800 font-bold">{req.dept}</td>
                                   <td className="py-3.5 px-4 text-slate-600">{req.item}</td>
-                                  <td className="py-3.5 px-4 text-center text-slate-850 font-bold">{req.qty}</td>
+                                  <td className="py-2 px-4 text-center">
+                                    <input
+                                      type="number"
+                                      value={req.qty}
+                                      min={1}
+                                      onChange={(e) => updateVppRequestField(req.id, "qty", parseInt(e.target.value) || 0)}
+                                      className="w-16 px-1.5 py-1 text-center border border-slate-200 rounded-lg outline-none focus:border-[#005BAC] text-xs font-bold bg-white text-slate-800"
+                                    />
+                                  </td>
                                   <td className="py-3.5 px-4 font-mono text-slate-500">{req.date}</td>
                                   <td className="py-3.5 px-4">
                                     <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${
@@ -2435,6 +2694,253 @@ export default function AdministrationPage() {
                             )}
                           </tbody>
                         </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Hidden VPP File Input */}
+                  <input
+                    type="file"
+                    id="vpp-file-input"
+                    className="hidden"
+                    accept=".xlsx,.xls,.docx,.doc,.pdf,image/*"
+                    onChange={handleVppFileUpload}
+                  />
+
+                  {/* AI VPP Preview & Confirmation Modal */}
+                  {showVppPreviewModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                      <div className="bg-white rounded-2xl max-w-4xl w-full p-6 border border-slate-100 shadow-2xl relative flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+                        <button
+                          onClick={() => setShowVppPreviewModal(false)}
+                          className="absolute right-4 top-4 p-1 text-slate-400 hover:bg-slate-50 rounded-lg transition-all"
+                        >
+                          <X size={16} />
+                        </button>
+                        
+                        <div className="border-b border-slate-100 pb-3 shrink-0 flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-[#005BAC]">
+                            <Brain className="text-[#005BAC] animate-pulse" size={18} />
+                          </div>
+                          <div>
+                            <h3 className="font-heading font-extrabold text-sm text-slate-800">Chi Tiết Phiếu Yêu Cầu Trích Xuất Bằng AI</h3>
+                            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Vui lòng rà soát lại thông tin phòng ban/dự án và danh sách vật tư trước khi lưu vào hệ thống</p>
+                          </div>
+                        </div>
+
+                        <div className="py-4 space-y-4 overflow-y-auto flex-1 pr-1">
+                          {/* Target Type Selector */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đối tượng nhận cấp phát</label>
+                              <div className="grid grid-cols-2 gap-2 mt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setVppPreviewTargetType("phongban");
+                                    const pbs = allocationTargets.filter(t => t.type === "phongban");
+                                    setVppPreviewTargetName(pbs.length > 0 ? pbs[0].name : "");
+                                  }}
+                                  className={`py-2.5 px-3 border rounded-xl font-bold transition-all text-center text-xs active:scale-[0.98] ${
+                                    vppPreviewTargetType === "phongban"
+                                      ? "border-[#005BAC] bg-blue-50/45 text-[#005BAC] shadow-sm"
+                                      : "border-slate-200 text-slate-500 hover:bg-slate-50/50"
+                                  }`}
+                                >
+                                  Phòng Ban VP
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setVppPreviewTargetType("duan");
+                                    const das = allocationTargets.filter(t => t.type === "duan");
+                                    setVppPreviewTargetName(das.length > 0 ? das[0].name : "");
+                                  }}
+                                  className={`py-2.5 px-3 border rounded-xl font-bold transition-all text-center text-xs active:scale-[0.98] ${
+                                    vppPreviewTargetType === "duan"
+                                      ? "border-[#005BAC] bg-blue-50/45 text-[#005BAC] shadow-sm"
+                                      : "border-slate-200 text-slate-500 hover:bg-slate-50/50"
+                                  }`}
+                                >
+                                  BĐH Dự Án
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Specific Department/Project Selection */}
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                {vppPreviewTargetType === "phongban" ? "Chọn Phòng Ban VP" : "Chọn Dự Án BĐH"}
+                              </label>
+                              <select
+                                value={vppPreviewTargetName}
+                                onChange={(e) => setVppPreviewTargetName(e.target.value)}
+                                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white font-semibold text-slate-700 focus:border-blue-500 focus:outline-none mt-1 cursor-pointer text-xs"
+                              >
+                                {vppPreviewTargetType === "phongban"
+                                  ? allocationTargets.filter(t => t.type === "phongban").map((t) => (
+                                      <option key={t.id} value={t.name}>{t.name}</option>
+                                    ))
+                                  : allocationTargets.filter(t => t.type === "duan").map((t) => (
+                                      <option key={t.id} value={t.name}>{t.name}</option>
+                                    ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Items Table */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Danh sách vật tư yêu cầu</label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setVppPreviewItems([
+                                    ...vppPreviewItems,
+                                    { checked: true, name: "", unit: "Cái", qty: 1 }
+                                  ]);
+                                }}
+                                className="flex items-center gap-1 text-[#005BAC] hover:text-blue-700 text-xs font-bold transition-all"
+                              >
+                                <Plus size={14} /> Thêm dòng
+                              </button>
+                            </div>
+
+                            <div className="border border-slate-100 rounded-xl overflow-hidden shadow-sm">
+                              <table className="w-full text-xs text-left">
+                                <thead>
+                                  <tr className="bg-slate-50/75 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                                    <th className="py-2.5 px-3 w-10 text-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={vppPreviewItems.length > 0 && vppPreviewItems.every(i => i.checked)}
+                                        onChange={(e) => {
+                                          const val = e.target.checked;
+                                          setVppPreviewItems(vppPreviewItems.map(i => ({ ...i, checked: val })));
+                                        }}
+                                        className="cursor-pointer rounded border-slate-300 text-[#005BAC] focus:ring-[#005BAC]"
+                                      />
+                                    </th>
+                                    <th className="py-2.5 px-3">Tên vật tư</th>
+                                    <th className="py-2.5 px-3 w-28">ĐVT</th>
+                                    <th className="py-2.5 px-3 w-28 text-center">Số lượng</th>
+                                    <th className="py-2.5 px-3 w-16 text-center">Thao tác</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
+                                  {vppPreviewItems.map((item, index) => {
+                                    const matchedSupply = supplies.find(s => s.name.trim().toLowerCase() === item.name.trim().toLowerCase());
+                                    const exists = !!matchedSupply;
+                                    return (
+                                      <tr key={index} className={`hover:bg-slate-50/50 ${!item.checked ? 'opacity-50' : ''}`}>
+                                        <td className="py-2 px-3 text-center">
+                                          <input
+                                            type="checkbox"
+                                            checked={item.checked}
+                                            onChange={(e) => {
+                                              const val = e.target.checked;
+                                              setVppPreviewItems(vppPreviewItems.map((it, idx) => idx === index ? { ...it, checked: val } : it));
+                                            }}
+                                            className="cursor-pointer rounded border-slate-300 text-[#005BAC] focus:ring-[#005BAC]"
+                                          />
+                                        </td>
+                                        <td className="py-2 px-3">
+                                          <div className="space-y-1">
+                                            <input
+                                              type="text"
+                                              value={item.name}
+                                              onChange={(e) => {
+                                                const val = e.target.value;
+                                                setVppPreviewItems(vppPreviewItems.map((it, idx) => idx === index ? { ...it, name: val } : it));
+                                              }}
+                                              placeholder="Tên vật tư (nhập tay hoặc chọn từ kho...)"
+                                              className="w-full bg-transparent border-none focus:outline-none focus:ring-0 text-slate-700 placeholder-slate-400 p-0"
+                                            />
+                                            {!exists && item.name.trim() !== "" && (
+                                              <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-100">
+                                                <AlertTriangle size={10} /> Chưa có trong danh mục kho
+                                              </div>
+                                            )}
+                                            {exists && (
+                                              <div className="text-[9px] text-emerald-600 font-bold flex items-center gap-0.5">
+                                                <Check size={10} /> Khớp danh mục (Tồn: {matchedSupply.stock} {matchedSupply.unit})
+                                              </div>
+                                            )}
+                                          </div>
+                                        </td>
+                                        <td className="py-2 px-3">
+                                          <input
+                                            type="text"
+                                            value={item.unit}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              setVppPreviewItems(vppPreviewItems.map((it, idx) => idx === index ? { ...it, unit: val } : it));
+                                            }}
+                                            placeholder="Cái"
+                                            className="w-full bg-transparent border-none focus:outline-none focus:ring-0 text-slate-700 p-0"
+                                          />
+                                        </td>
+                                        <td className="py-2 px-3 text-center">
+                                          <input
+                                            type="number"
+                                            value={item.qty}
+                                            min={1}
+                                            onChange={(e) => {
+                                              const val = parseInt(e.target.value) || 0;
+                                              setVppPreviewItems(vppPreviewItems.map((it, idx) => idx === index ? { ...it, qty: val } : it));
+                                            }}
+                                            className="w-16 px-1.5 py-1 text-center border border-slate-200 rounded-lg outline-none focus:border-[#005BAC]"
+                                          />
+                                        </td>
+                                        <td className="py-2 px-3 text-center">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setVppPreviewItems(vppPreviewItems.filter((_, idx) => idx !== index));
+                                            }}
+                                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                            title="Xóa dòng"
+                                          >
+                                            <Trash2 size={13} />
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                  {vppPreviewItems.length === 0 && (
+                                    <tr>
+                                      <td colSpan={5} className="py-6 text-center text-slate-400 font-medium italic">
+                                        Không có vật tư nào. Nhấp "Thêm dòng" để tự thêm vật tư.
+                                      </td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-slate-100 pt-3 shrink-0 flex items-center justify-between gap-3">
+                          <div className="text-[10px] text-slate-400 font-semibold">
+                            Tổng cộng: <span className="font-bold text-slate-700">{vppPreviewItems.filter(i => i.checked).length}</span> / {vppPreviewItems.length} vật tư được chọn
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowVppPreviewModal(false)}
+                              className="py-2 px-4 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 text-xs font-bold transition-all"
+                            >
+                              Hủy bỏ
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleConfirmVppPreview}
+                              className="py-2 px-4 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+                            >
+                              <Check size={14} /> Xác nhận & Tạo phiếu
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}

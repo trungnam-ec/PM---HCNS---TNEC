@@ -208,10 +208,104 @@ const INITIAL_SUPPLIERS: Supplier[] = [
   { id: "NCC-07", name: "TRẦN NGHIỆP QUANG", account: "0942870512", bank: "Ngân hàng SHB", service: "Thuê nhà Vàm Lẽo" },
 ];
 
+interface AdminMonthlyReport {
+  id: string;
+  stt: string;
+  content: string;
+  category_type: "office" | "project";
+  m1: number;
+  m2: number;
+  m3: number;
+  m4: number;
+  m5: number;
+  m6: number;
+  m7: number;
+  m8: number;
+  m9: number;
+  m10: number;
+  m11: number;
+  m12: number;
+  notes: string;
+  is_custom: boolean;
+  created_at?: string;
+}
+
+const DEFAULT_REPORT_ROWS: Array<{ stt: string; content: string; category_type: 'office' | 'project' }> = [
+  { stt: "1", content: "Văn phòng phẩm", category_type: "office" },
+  { stt: "2", content: "Photo, in ấn, mực in", category_type: "office" },
+  { stt: "2.1", content: "Photo, in ấn, mực in  tại các VP", category_type: "office" },
+  { stt: "2.2", content: "Photo, in ấn tài liệu phục vụ chuyên môn", category_type: "office" },
+  { stt: "2.3", content: "Thuê máy photo các DA", category_type: "office" },
+  { stt: "3", content: "Hóa chất, vật dụng vệ sinh văn phòng", category_type: "office" },
+  { stt: "3.1", content: "Hóa chất, vật dụng", category_type: "office" },
+  { stt: "3.2", content: "Thuê dịch vụ vệ sinh", category_type: "office" },
+  { stt: "4", content: "CP hành chính vp", category_type: "office" },
+  { stt: "1", content: "Chi phí CCDC, phần mềm hỗ trợ, đồ dùng phục vụ công tác quản lý (giá trị dưới 10tr.đ)", category_type: "office" },
+  { stt: "1.1", content: "Mua sắm  bàn, ghế VP", category_type: "office" },
+  { stt: "1.2", content: "Mua sắm đồ trang trí VP", category_type: "office" },
+  { stt: "1.3", content: "Mua đồ dùng văn phòng (pin, ổ cắm, trái cây, hoa, ….)", category_type: "office" },
+  { stt: "1.4", content: "Chi phí mua bánh, trái cây tổ chức lễ 08/03", category_type: "office" },
+  { stt: "1.5", content: "Hoa tặng, trái cây, hoa lễ khỏi công", category_type: "office" },
+  { stt: "1.6", content: "Cúng tất niên, khai trương, thần tài", category_type: "office" },
+  { stt: "1.7", content: "Chi phí in tem nhãn", category_type: "office" },
+  { stt: "1.8", content: "Chi phí pickle ball", category_type: "office" },
+  { stt: "19", content: "Chi phí di chuyển trang thiết bị làm việc", category_type: "office" },
+  { stt: "20", content: "Làm móc khóa, quà tặng tuyển dụng", category_type: "office" },
+  { stt: "2", content: "Sự kiện sinh nhật 18 TNEC", category_type: "office" },
+  { stt: "2.1", content: "Chi phí sảnh tiệc", category_type: "office" },
+  { stt: "2.2", content: "Tổ chức sự kiện", category_type: "office" },
+  { stt: "2.3", content: "Quà tặng", category_type: "office" },
+  { stt: "2.4", content: "Thuê phòng cho BLĐ (Mr Phát & Mr Hùng)", category_type: "office" },
+  { stt: "1", content: "Chi phí VMB", category_type: "office" },
+  { stt: "1.1", content: "Chi phí VMB", category_type: "office" },
+  { stt: "1.2", content: "Thuê xe, taxi", category_type: "office" },
+  { stt: "3", content: "Thuê nhà, văn phòng làm việc", category_type: "office" },
+  { stt: "3.1", content: "Chi phí cho PGĐ", category_type: "office" },
+  { stt: "3.1.1", content: "Thuê nhà cho PGĐ", category_type: "office" },
+  { stt: "3.1.2", content: "Tiền điện , nước", category_type: "office" },
+  { stt: "3.1.3", content: "Di chuyển", category_type: "office" },
+  { stt: "3.2", content: "Thuê VP HCM  + phí quản lý", category_type: "office" },
+  { stt: "4", content: "Chi phí điện vp + phí gửi xe (xe máy + xe ô tô)", category_type: "office" },
+  { stt: "5", content: "Chi phí nước (nước uống)", category_type: "office" },
+  { stt: "6.2", content: "Chuyển phát nhanh", category_type: "office" },
+  { stt: "7", content: "Xăng dầu, cầu phà, bến bãi xe ô tô con", category_type: "office" },
+  { stt: "7.1", content: "Phí gửi xe, rửa xe và các chi phí khác", category_type: "office" },
+  { stt: "7.2", content: "Nhiên liệu", category_type: "office" },
+  { stt: "8", content: "Chi phí sửa chữa, bảo dưỡng ô tô", category_type: "office" },
+  { stt: "9", content: "Thuê xe ô tô hàng tháng", category_type: "office" },
+  { stt: "10", content: "Chi phí đăng kiểm, phí đường bộ XMTB", category_type: "office" },
+  { stt: "11", content: "Chi phí mua quà tặng đối tác khách hàng", category_type: "office" },
+  { stt: "12", content: "Dự án Cà Ná", category_type: "project" },
+  { stt: "12.1", content: "Mua sắm CCDC, thiết bị cho VP làm việc", category_type: "project" },
+  { stt: "13", content: "RẠCH XUYÊN TÂM", category_type: "project" },
+  { stt: "13.1", content: "Cúng chặt cây tại dự án", category_type: "project" },
+  { stt: "13.2", content: "Tivi 55 inch + giá treo", category_type: "project" },
+  { stt: "13.3", content: "Cab HDMI 10m", category_type: "project" },
+  { stt: "14", content: "Dự án Cống âu thuyền Vàm Lẽo", category_type: "project" },
+  { stt: "14.1", content: "Mời cơm Khách tham gia Lễ khởi công", category_type: "project" },
+  { stt: "14.2", content: "Chi phí hậu cần Lễ khởi công", category_type: "project" },
+  { stt: "14.3", content: "Kệ hoa chúc mừng Lễ Khởi Công", category_type: "project" },
+  { stt: "14.4", content: "CP thuê nhà +nước sinh hoạt", category_type: "project" },
+  { stt: "14.5", content: "Chi phí thuê đơn vị tổ chức sự kiện Lễ khởi công", category_type: "project" },
+  { stt: "14.6", content: "CP cho TVGS", category_type: "project" },
+  { stt: "15", content: "DA Tỉnh lộ  8", category_type: "project" },
+  { stt: "15.1", content: "Làm con dấu tròn BĐH", category_type: "project" },
+  { stt: "16", content: "DA Trà Vinh", category_type: "project" },
+  { stt: "16.1", content: "Flycam Mini 2 Combo + thẻ nhớ 64Gb", category_type: "project" },
+  { stt: "17", content: "DA XLNT Tây Ninh", category_type: "project" },
+  { stt: "17.1", content: "Tiền thuê nhà BĐH", category_type: "project" },
+];
+
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 export default function AdministrationPage() {
   const [activeTab, setActiveTab] = useState<"checklist" | "invoice" | "recurring" | "report" | "vpp">("checklist");
   const [recurringSubTab, setRecurringSubTab] = useState<"suppliers" | "payments">("suppliers");
+
+  // States for interactive monthly cost report
+  const [reportRows, setReportRows] = useState<AdminMonthlyReport[]>([]);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [autoFillLoading, setAutoFillLoading] = useState(false);
+  const [editingCell, setEditingCell] = useState<{ rowId: string; field: string } | null>(null);
 
   // State Management
   const [supplies, setSupplies] = useState<SupplyItem[]>(() => {
@@ -617,6 +711,7 @@ export default function AdministrationPage() {
       // Fetch Dept Requests and Supplies Catalog from Supabase
       fetchDeptRequests();
       fetchSuppliesCatalog();
+      fetchReportRows();
 
       fetchUserRoleAndDept();
     }
@@ -1140,8 +1235,303 @@ export default function AdministrationPage() {
     }
   };
 
-  const handleExportReportExcel = (startDate: string, endDate: string) => {
+  // --- INTERACTIVE MONTHLY COST REPORT STATE HANDLERS ---
+  
+  const normalizeText = (text: string) => {
+    return text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[đĐ]/g, "d")
+      .replace(/[^a-z0-9\s]/g, "")
+      .trim();
+  };
+
+  const findMatchingRow = (rows: AdminMonthlyReport[], desc: string, supplier: string) => {
+    const normDesc = normalizeText(desc || "");
+    const normSupplier = normalizeText(supplier || "");
+    const fullText = normDesc + " " + normSupplier;
+
+    // Define matching rules
+    const rules = [
+      { key: "van phong pham", keywords: ["van phong pham", "vpp", "but bi", "giay a4", "kep buom", "tem nhan", "bang keo", "bia ho so"] },
+      { key: "photo, in an", keywords: ["photo", "in an", "muc in", "thue may photo", "photocopy"] },
+      { key: "hoa chat, vat dung ve sinh", keywords: ["ve sinh", "hoa chat ve sinh", "nuoc lau san", "xa bong", "giay ve sinh", "rua chen"] },
+      { key: "ccdc, phan mem ho tro", keywords: ["ccdc", "do dung van phong", "pin", "o cam", "trans can", "pickle ball", "le khoi cong", "hoa khai truong", "tivi 55 inch", "cap hdmi"] },
+      { key: "vmb", keywords: ["vmb", "ve may bay", "vietnam airlines", "vietjet", "bamboo airways", "bay"] },
+      { key: "thue nha, van phong", keywords: ["thue nha", "thue vp", "thue van phong", "phong ban giam doc", "pgd", "tien thue nha"] },
+      { key: "dien vp", keywords: ["dien vp", "tien dien", "evn", "dien luc"] },
+      { key: "nuoc (nuoc uong)", keywords: ["tien nuoc", "nuoc khoang", "lavie", "vinh hao", "aquafina", "nuoc sinh hoat"] },
+      { key: "chuyen phat nhanh", keywords: ["chuyen phat", "cpn", "buu dien", "viettel post", "giaohangnhanh", "dhl", "fedex", "shopee express", "grabexpress"] },
+      { key: "xang dau, cau pha", keywords: ["xang dau", "dau diezel", "gui xe", "rua xe", "cau duong", "ve xe", "nhien lieu"] },
+      { key: "sua chua, bao duong o to", keywords: ["sua chua o to", "bao duong o to", "thay nho", "lop xe", "sam xe", "phu tung o to"] },
+      { key: "thue xe o to", keywords: ["thue xe o to", "thue xe thang", "thue o to"] },
+      { key: "dang kiem, phi duong bo", keywords: ["dang kiem", "duong bo", "phi duong bo"] },
+      { key: "qua tang doi tac", keywords: ["qua tang", "qua doi tac", "hoa tang"] },
+      { key: "ca na", keywords: ["ca na"] },
+      { key: "rach xuyen tam", keywords: ["rach xuyen tam"] },
+      { key: "vam leo", keywords: ["vam leo", "au thuyen vam leo"] },
+      { key: "tinh lo 8", keywords: ["tinh lo 8"] },
+      { key: "tra vinh", keywords: ["tra vinh"] },
+      { key: "tay ninh", keywords: ["tay ninh"] }
+    ];
+
+    for (const rule of rules) {
+      if (rule.keywords.some(kw => fullText.includes(kw))) {
+        const found = rows.find(r => normalizeText(r.content).includes(rule.key));
+        if (found) return found;
+      }
+    }
+
+    for (const row of rows) {
+      const normContent = normalizeText(row.content);
+      if (normContent.length > 4 && (normDesc.includes(normContent) || normSupplier.includes(normContent))) {
+        return row;
+      }
+    }
+    return null;
+  };
+
+  const computedStats = useMemo(() => {
+    const officeRows = reportRows.filter(r => r.category_type === "office");
+    const projectRows = reportRows.filter(r => r.category_type === "project");
+
+    const getMonthlySubtotals = (rows: AdminMonthlyReport[]) => {
+      const subtotals: Record<string, number> = {};
+      for (let i = 1; i <= 12; i++) {
+        const key = `m${i}`;
+        subtotals[key] = rows.reduce((sum, r) => sum + (Number(r[key as keyof AdminMonthlyReport]) || 0), 0);
+      }
+      return subtotals;
+    };
+
+    const officeMonthlySubtotals = getMonthlySubtotals(officeRows);
+    const projectMonthlySubtotals = getMonthlySubtotals(projectRows);
+
+    const officeAnnualSubtotal = Object.values(officeMonthlySubtotals).reduce((a, b) => a + b, 0);
+    const projectAnnualSubtotal = Object.values(projectMonthlySubtotals).reduce((a, b) => a + b, 0);
+
+    const grandMonthlyTotals: Record<string, number> = {};
+    for (let i = 1; i <= 12; i++) {
+      const key = `m${i}`;
+      grandMonthlyTotals[key] = officeMonthlySubtotals[key] + projectMonthlySubtotals[key];
+    }
+
+    const grandAnnualTotal = officeAnnualSubtotal + projectAnnualSubtotal;
+
+    return {
+      officeRows,
+      projectRows,
+      officeMonthlySubtotals,
+      projectMonthlySubtotals,
+      officeAnnualSubtotal,
+      projectAnnualSubtotal,
+      grandMonthlyTotals,
+      grandAnnualTotal
+    };
+  }, [reportRows]);
+
+  const fetchReportRows = useCallback(async () => {
+    setReportLoading(true);
     try {
+      const { data, error } = await supabase
+        .from("admin_monthly_reports")
+        .select("*")
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setReportRows(data as AdminMonthlyReport[]);
+      } else {
+        const seedPayload = DEFAULT_REPORT_ROWS.map(row => ({
+          stt: row.stt,
+          content: row.content,
+          category_type: row.category_type,
+          is_custom: false,
+          m1: 0, m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0, m8: 0, m9: 0, m10: 0, m11: 0, m12: 0,
+          notes: ""
+        }));
+        const { error: seedErr } = await supabase
+          .from("admin_monthly_reports")
+          .insert(seedPayload);
+        if (seedErr) throw seedErr;
+
+        const { data: refetched, error: refetchErr } = await supabase
+          .from("admin_monthly_reports")
+          .select("*")
+          .order("created_at", { ascending: true });
+        if (refetchErr) throw refetchErr;
+        if (refetched) {
+          setReportRows(refetched as AdminMonthlyReport[]);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch monthly report rows:", err);
+    } finally {
+      setReportLoading(false);
+    }
+  }, []);
+
+  const handleUpdateReportCell = async (rowId: string, field: string, value: any) => {
+    try {
+      const { error } = await supabase
+        .from("admin_monthly_reports")
+        .update({ [field]: value })
+        .eq("id", rowId);
+      if (error) throw error;
+      
+      setReportRows(prev => prev.map(row => 
+        row.id === rowId ? { ...row, [field]: value } : row
+      ));
+    } catch (err) {
+      console.error("Failed to update report cell:", err);
+      alert("Lỗi khi cập nhật ô dữ liệu!");
+    }
+  };
+
+  const handleAddReportRow = async (type: "office" | "project") => {
+    const content = window.prompt("Nhập tên hạng mục mới:");
+    if (!content || !content.trim()) return;
+
+    const stt = window.prompt("Nhập số thứ tự (STT) (ví dụ: 12, 13.5):") || "";
+
+    try {
+      const newRow = {
+        stt: stt.trim(),
+        content: content.trim(),
+        category_type: type,
+        is_custom: true,
+        m1: 0, m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0, m8: 0, m9: 0, m10: 0, m11: 0, m12: 0,
+        notes: ""
+      };
+
+      const { data, error } = await supabase
+        .from("admin_monthly_reports")
+        .insert(newRow)
+        .select();
+
+      if (error) throw error;
+      if (data) {
+        setReportRows(prev => [...prev, data[0]]);
+      }
+    } catch (err) {
+      console.error("Failed to add custom row:", err);
+      alert("Lỗi khi thêm hạng mục!");
+    }
+  };
+
+  const handleDeleteReportRow = async (rowId: string, content: string) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa hạng mục "${content}" không?`)) return;
+
+    try {
+      const { error } = await supabase
+        .from("admin_monthly_reports")
+        .delete()
+        .eq("id", rowId);
+
+      if (error) throw error;
+      setReportRows(prev => prev.filter(row => row.id !== rowId));
+    } catch (err) {
+      console.error("Failed to delete custom row:", err);
+      alert("Lỗi khi xóa hạng mục!");
+    }
+  };
+
+  const handleAutoFillReport = async () => {
+    setAutoFillLoading(true);
+    try {
+      const updatedRows = reportRows.map(row => ({
+        ...row,
+        m1: 0, m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0, m8: 0, m9: 0, m10: 0, m11: 0, m12: 0
+      }));
+
+      invoices.forEach(inv => {
+        if (!inv.date || !inv.date.startsWith("2026")) return;
+        const dateParts = inv.date.split("-");
+        if (dateParts.length < 2) return;
+        const monthNum = parseInt(dateParts[1]);
+        if (monthNum < 1 || monthNum > 12) return;
+
+        const matchedRow = findMatchingRow(updatedRows, inv.desc, inv.beneficiary_name || "");
+        if (matchedRow) {
+          const field = `m${monthNum}` as keyof AdminMonthlyReport;
+          (matchedRow[field] as number) += Number(inv.amount) || 0;
+        }
+      });
+
+      pendingPayments.forEach(p => {
+        if (!p.month || !p.month.includes("2026")) return;
+        const monthParts = p.month.split("/");
+        if (monthParts.length < 2) return;
+        const monthNum = parseInt(monthParts[0]);
+        if (monthNum < 1 || monthNum > 12) return;
+
+        const matchedRow = findMatchingRow(updatedRows, p.content, p.supplierName);
+        if (matchedRow) {
+          const field = `m${monthNum}` as keyof AdminMonthlyReport;
+          (matchedRow[field] as number) += Number(p.amount) || 0;
+        }
+      });
+
+      const promises = updatedRows.map(row => {
+        return supabase
+          .from("admin_monthly_reports")
+          .update({
+            m1: row.m1, m2: row.m2, m3: row.m3, m4: row.m4, m5: row.m5, m6: row.m6,
+            m7: row.m7, m8: row.m8, m9: row.m9, m10: row.m10, m11: row.m11, m12: row.m12
+          })
+          .eq("id", row.id);
+      });
+
+      await Promise.all(promises);
+      setReportRows(updatedRows);
+      alert("Đồng bộ dữ liệu chi phí từ hóa đơn và thanh toán định kỳ thành công!");
+    } catch (err) {
+      console.error("Error during auto fill:", err);
+      alert("Lỗi khi đồng bộ dữ liệu!");
+    } finally {
+      setAutoFillLoading(false);
+    }
+  };
+
+  const handleExportReportExcel = (startDate?: string, endDate?: string) => {
+    try {
+      if (!startDate || !endDate) {
+        let csvContent = "\uFEFF";
+        
+        csvContent += `"BẢNG TỔNG HỢP CHI PHÍ QUẢN LÝ HÀNH CHÍNH NĂM 2026 - TRUNGNAM E&C"\n`;
+        csvContent += `"Ngày xuất báo cáo:","${new Date().toLocaleDateString("vi-VN")}"\n\n`;
+        
+        csvContent += `"STT","Nội dung","Tổng CP 2026","Tháng 1","Tháng 2","Tháng 3","Tháng 4","Tháng 5","Tháng 6","Tháng 7","Tháng 8","Tháng 9","Tháng 10","Tháng 11","Tháng 12","Ghi chú"\n`;
+        
+        csvContent += `"I","Danh mục chi phí Văn phòng","${computedStats.officeAnnualSubtotal}","${computedStats.officeMonthlySubtotals.m1}","${computedStats.officeMonthlySubtotals.m2}","${computedStats.officeMonthlySubtotals.m3}","${computedStats.officeMonthlySubtotals.m4}","${computedStats.officeMonthlySubtotals.m5}","${computedStats.officeMonthlySubtotals.m6}","${computedStats.officeMonthlySubtotals.m7}","${computedStats.officeMonthlySubtotals.m8}","${computedStats.officeMonthlySubtotals.m9}","${computedStats.officeMonthlySubtotals.m10}","${computedStats.officeMonthlySubtotals.m11}","${computedStats.officeMonthlySubtotals.m12}",""\n`;
+        
+        computedStats.officeRows.forEach(row => {
+          const rowTotal = Array.from({ length: 12 }, (_, idx) => Number(row[`m${idx + 1}` as keyof typeof row]) || 0).reduce((a, b) => a + b, 0);
+          csvContent += `"${row.stt}","${row.content.replace(/"/g, '""')}","${rowTotal}","${row.m1}","${row.m2}","${row.m3}","${row.m4}","${row.m5}","${row.m6}","${row.m7}","${row.m8}","${row.m9}","${row.m10}","${row.m11}","${row.m12}","${(row.notes || "").replace(/"/g, '""')}"\n`;
+        });
+        
+        csvContent += `"II","Danh mục chi phí Dự án","${computedStats.projectAnnualSubtotal}","${computedStats.projectMonthlySubtotals.m1}","${computedStats.projectMonthlySubtotals.m2}","${computedStats.projectMonthlySubtotals.m3}","${computedStats.projectMonthlySubtotals.m4}","${computedStats.projectMonthlySubtotals.m5}","${computedStats.projectMonthlySubtotals.m6}","${computedStats.projectMonthlySubtotals.m7}","${computedStats.projectMonthlySubtotals.m8}","${computedStats.projectMonthlySubtotals.m9}","${computedStats.projectMonthlySubtotals.m10}","${computedStats.projectMonthlySubtotals.m11}","${computedStats.projectMonthlySubtotals.m12}",""\n`;
+        
+        computedStats.projectRows.forEach(row => {
+          const rowTotal = Array.from({ length: 12 }, (_, idx) => Number(row[`m${idx + 1}` as keyof typeof row]) || 0).reduce((a, b) => a + b, 0);
+          csvContent += `"${row.stt}","${row.content.replace(/"/g, '""')}","${rowTotal}","${row.m1}","${row.m2}","${row.m3}","${row.m4}","${row.m5}","${row.m6}","${row.m7}","${row.m8}","${row.m9}","${row.m10}","${row.m11}","${row.m12}","${(row.notes || "").replace(/"/g, '""')}"\n`;
+        });
+        
+        csvContent += `"","TỔNG CỘNG CPQL PHÁT SINH","${computedStats.grandAnnualTotal}","${computedStats.grandMonthlyTotals.m1}","${computedStats.grandMonthlyTotals.m2}","${computedStats.grandMonthlyTotals.m3}","${computedStats.grandMonthlyTotals.m4}","${computedStats.grandMonthlyTotals.m5}","${computedStats.grandMonthlyTotals.m6}","${computedStats.grandMonthlyTotals.m7}","${computedStats.grandMonthlyTotals.m8}","${computedStats.grandMonthlyTotals.m9}","${computedStats.grandMonthlyTotals.m10}","${computedStats.grandMonthlyTotals.m11}","${computedStats.grandMonthlyTotals.m12}",""\n`;
+        
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Chi_phi_quan_ly_hanh_chinh_nam_2026.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        return;
+      }
+      
       const { combinedItems, totalAmount, invoiceCount, recurringCount, categoriesMap } = getReportData(startDate, endDate);
       const rangeLabel = `${formatDateVN(startDate)} - ${formatDateVN(endDate)}`;
 
@@ -4161,7 +4551,7 @@ export default function AdministrationPage() {
                                     <td className="py-3 px-3 text-center animate-in fade-in" onClick={(e) => e.stopPropagation()}>
                                       {uploadingPaymentId === p.id ? (
                                         <Loader2 className="animate-spin text-blue-600 mx-auto" size={14} />
-                                      ) : p.fileUrl ? (
+                                          ) : p.fileUrl ? (
                                         <div className="flex items-center justify-center gap-1">
                                           <button
                                             type="button"
@@ -4188,7 +4578,7 @@ export default function AdministrationPage() {
                                           </label>
                                         </div>
                                       ) : (
-                                        <label className="text-slate-400 hover:text-blue-600 transition-colors p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer inline-flex items-center justify-center relative mx-auto">
+                                        <label className="text-blue-600 hover:text-blue-800 transition-colors p-1.5 rounded-lg hover:bg-blue-50 cursor-pointer inline-flex items-center justify-center relative">
                                           <Upload size={14} />
                                           <input
                                             type="file"
@@ -4203,11 +4593,14 @@ export default function AdministrationPage() {
                                       )}
                                     </td>
                                     <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                                      <div className="flex items-center justify-center gap-1.5">
+                                      <div className="flex items-center justify-center gap-1">
                                         <button
                                           type="button"
-                                          onClick={() => setEditingPayment(p)}
-                                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer bg-transparent border-none"
+                                          onClick={() => {
+                                            setActivePreviewPayment(p);
+                                            setShowRecurringPreviewModal(true);
+                                          }}
+                                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer bg-transparent border-none"
                                           title="Chỉnh sửa thanh toán"
                                         >
                                           <Pencil size={13} />
@@ -4236,22 +4629,259 @@ export default function AdministrationPage() {
                     </div>
                   </div>
                 )}
-
             </div>
           )}
 
               {/* ─── TAB 4: Báo cáo chi phí tháng ─── */}
               {activeTab === "report" && (() => {
-                const { combinedItems, totalAmount, invoiceCount, recurringCount, categoriesMap } = getReportData(reportStartDate, reportEndDate);
+                const { combinedItems, totalAmount, invoiceCount, recurringCount } = getReportData(reportStartDate, reportEndDate);
                 
+                const renderEditableCell = (row: AdminMonthlyReport, field: string, value: any, type: "number" | "text") => {
+                  const isEditing = editingCell?.rowId === row.id && editingCell?.field === field;
+                  
+                  if (isEditing) {
+                    return (
+                      <input
+                        type={type}
+                        defaultValue={value === 0 && type === "number" ? "" : value}
+                        onBlur={(e) => {
+                          setEditingCell(null);
+                          let newVal: any = e.target.value;
+                          if (type === "number") {
+                            const parsed = parseFloat(newVal);
+                            newVal = isNaN(parsed) ? 0 : parsed;
+                          }
+                          if (newVal !== value) {
+                            handleUpdateReportCell(row.id, field, newVal);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            (e.target as HTMLInputElement).blur();
+                          }
+                          if (e.key === "Escape") {
+                            setEditingCell(null);
+                          }
+                        }}
+                        className="w-full text-xs font-bold font-mono px-1 py-0.5 border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500/20 text-slate-800 bg-white"
+                        style={{ textAlign: type === "number" ? "right" : "left" }}
+                        autoFocus
+                      />
+                    );
+                  }
+
+                  const displayVal = type === "number"
+                    ? (value > 0 ? value.toLocaleString("vi-VN") : "-")
+                    : value;
+
+                  return (
+                    <div
+                      onClick={() => setEditingCell({ rowId: row.id, field })}
+                      className={`cursor-pointer hover:bg-slate-100 px-1.5 py-0.5 rounded transition-colors w-full h-full min-h-[22px] flex items-center ${type === "number" ? "justify-end text-right font-mono text-slate-700" : "justify-start text-left text-slate-600 font-medium"}`}
+                    >
+                      {displayVal}
+                    </div>
+                  );
+                };
+
+                const renderRow = (row: AdminMonthlyReport) => {
+                  const rowTotal = Array.from({ length: 12 }, (_, idx) => Number(row[`m${idx + 1}` as keyof typeof row]) || 0).reduce((a, b) => a + b, 0);
+                  const isChild = row.stt.includes(".");
+                  
+                  return (
+                    <tr key={row.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-100">
+                      <td className="py-2 px-3 text-center text-slate-400 sticky left-0 bg-white z-10 border-r border-slate-200 font-mono text-[10px]">
+                        {row.stt}
+                      </td>
+                      <td className={`py-2 px-3 sticky left-[60px] bg-white z-10 border-r border-slate-200 text-[11px] max-w-[280px] truncate ${isChild ? "pl-6 text-slate-500 font-medium" : "text-slate-800 font-bold"}`}>
+                        {row.content}
+                      </td>
+                      <td className="py-2 px-3 text-right bg-slate-50/40 border-r border-slate-200 font-mono text-slate-800 font-extrabold text-[11px]">
+                        {rowTotal > 0 ? rowTotal.toLocaleString("vi-VN") : "-"}
+                      </td>
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const field = `m${i + 1}`;
+                        const val = row[field as keyof typeof row] as number;
+                        return (
+                          <td key={i} className="py-2 px-1 text-right border-r border-slate-200 font-mono text-[11px]">
+                            {renderEditableCell(row, field, val, "number")}
+                          </td>
+                        );
+                      })}
+                      <td className="py-2 px-1 border-r border-slate-200 text-[11px]">
+                        {renderEditableCell(row, "notes", row.notes || "", "text")}
+                      </td>
+                      <td className="py-2 px-1 text-center">
+                        {row.is_custom && (
+                          <button
+                            onClick={() => handleDeleteReportRow(row.id, row.content)}
+                            className="p-1 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Xóa hạng mục"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                };
+
                 return (
                   <div className="space-y-6">
                     {/* Header Controls */}
                     <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium">
+                      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                        <div>
+                          <h3 className="font-heading font-extrabold text-[#005BAC] text-sm">CHI PHÍ QUẢN LÝ HÀNH CHÍNH NĂM 2026 - TRUNGNAM E&C</h3>
+                          <p className="text-slate-400 text-[10px] font-semibold mt-1">Bảng tính tự động & chỉnh sửa trực tiếp. Click vào ô số tiền/ghi chú để sửa. Blur để tự động lưu lên Supabase.</p>
+                        </div>
+                        
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={handleAutoFillReport}
+                            disabled={autoFillLoading}
+                            className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-[11px] font-bold px-3.5 py-2 rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                          >
+                            {autoFillLoading ? (
+                              <>
+                                <Loader2 size={12} className="animate-spin" />
+                                Đang đồng bộ...
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw size={12} />
+                                Đồng bộ từ Hóa đơn
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => handleAddReportRow("office")}
+                            className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-3.5 py-2 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                          >
+                            <Plus size={12} />
+                            Thêm dòng văn phòng
+                          </button>
+
+                          <button
+                            onClick={() => handleAddReportRow("project")}
+                            className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold px-3.5 py-2 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                          >
+                            <Plus size={12} />
+                            Thêm dòng dự án
+                          </button>
+
+                          <button
+                            onClick={() => handleExportReportExcel()}
+                            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white text-[11px] font-bold px-3.5 py-2 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                          >
+                            <FileSpreadsheet size={12} /> Xuất Excel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Master Spreadsheet Grid */}
+                    <div className="glass bg-white rounded-2xl border border-slate-200/50 shadow-premium overflow-hidden">
+                      <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/40 flex justify-between items-center">
+                        <div>
+                          <h4 className="font-heading font-bold text-slate-800 text-xs">Bảng tính chi phí quản lý hành chính năm 2026</h4>
+                          <p className="text-slate-400 text-[10px] font-semibold mt-0.5">Tự động cộng dồn Subtotals khối Văn phòng/Dự án và tính Tổng cộng thời gian thực</p>
+                        </div>
+                        {reportLoading && (
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold">
+                            <Loader2 size={12} className="animate-spin text-[#005BAC]" /> Tải dữ liệu...
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="overflow-x-auto custom-scrollbar">
+                        <table className="w-full text-left border-collapse min-w-[1700px]">
+                          <thead>
+                            <tr className="bg-slate-50/70 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                              <th className="py-3 px-3 text-center sticky left-0 bg-slate-50 z-20 w-[60px] border-r border-slate-200">STT</th>
+                              <th className="py-3 px-3 sticky left-[60px] bg-slate-50 z-20 w-[280px] border-r border-slate-200">Nội dung</th>
+                              <th className="py-3 px-3 text-right bg-slate-100/55 w-[140px] border-r border-slate-200 font-extrabold text-slate-600">Tổng CP 2026</th>
+                              {Array.from({ length: 12 }, (_, i) => (
+                                <th key={i} className="py-3 px-3 text-right w-[105px] border-r border-slate-200">Tháng {i + 1}</th>
+                              ))}
+                              <th className="py-3 px-3 w-[220px] border-r border-slate-200">Ghi chú</th>
+                              <th className="py-3 px-3 text-center w-[70px]">Thao tác</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-150 text-[11px] font-semibold text-slate-600">
+                            
+                            {/* SECTION I: VĂN PHÒNG */}
+                            <tr className="bg-slate-100/60 font-extrabold text-[#005BAC] border-b border-slate-200">
+                              <td className="py-2.5 px-3 text-center sticky left-0 bg-slate-100 z-10 border-r border-slate-200 font-black">I</td>
+                              <td className="py-2.5 px-3 sticky left-[60px] bg-slate-100 z-10 border-r border-slate-200 uppercase tracking-wider text-[11.5px]">Danh mục chi phí Văn phòng</td>
+                              <td className="py-2.5 px-3 text-right bg-slate-200/50 border-r border-slate-200 font-mono font-black text-slate-800">
+                                {computedStats.officeAnnualSubtotal.toLocaleString("vi-VN")}
+                              </td>
+                              {Array.from({ length: 12 }, (_, i) => {
+                                const val = computedStats.officeMonthlySubtotals[`m${i + 1}`];
+                                return (
+                                  <td key={i} className="py-2.5 px-3 text-right border-r border-slate-200 font-mono font-black text-slate-700">
+                                    {val > 0 ? val.toLocaleString("vi-VN") : "-"}
+                                  </td>
+                                );
+                              })}
+                              <td className="py-2.5 px-3 border-r border-slate-200 bg-slate-50/10"></td>
+                              <td className="py-2.5 px-3 bg-slate-50/10"></td>
+                            </tr>
+
+                            {computedStats.officeRows.map(row => renderRow(row))}
+
+                            {/* SECTION II: DỰ ÁN */}
+                            <tr className="bg-slate-100/60 font-extrabold text-[#005BAC] border-b border-slate-200">
+                              <td className="py-2.5 px-3 text-center sticky left-0 bg-slate-100 z-10 border-r border-slate-200 font-black">II</td>
+                              <td className="py-2.5 px-3 sticky left-[60px] bg-slate-100 z-10 border-r border-slate-200 uppercase tracking-wider text-[11.5px]">Danh mục chi phí Dự án</td>
+                              <td className="py-2.5 px-3 text-right bg-slate-200/50 border-r border-slate-200 font-mono font-black text-slate-800">
+                                {computedStats.projectAnnualSubtotal.toLocaleString("vi-VN")}
+                              </td>
+                              {Array.from({ length: 12 }, (_, i) => {
+                                const val = computedStats.projectMonthlySubtotals[`m${i + 1}`];
+                                return (
+                                  <td key={i} className="py-2.5 px-3 text-right border-r border-slate-200 font-mono font-black text-slate-700">
+                                    {val > 0 ? val.toLocaleString("vi-VN") : "-"}
+                                  </td>
+                                );
+                              })}
+                              <td className="py-2.5 px-3 border-r border-slate-200 bg-slate-50/10"></td>
+                              <td className="py-2.5 px-3 bg-slate-50/10"></td>
+                            </tr>
+
+                            {computedStats.projectRows.map(row => renderRow(row))}
+
+                            {/* GRAND TOTAL ROW */}
+                            <tr className="bg-gradient-to-r from-orange-500 to-amber-500 text-white font-extrabold text-xs border-t-2 border-orange-600 shadow-md">
+                              <td className="py-3 px-3 text-center sticky left-0 bg-orange-600 z-10 border-r border-orange-400 font-black"></td>
+                              <td className="py-3 px-3 sticky left-[60px] bg-orange-600 z-10 border-r border-orange-400 uppercase tracking-wider text-[11.5px]">TỔNG CỘNG CPQL PHÁT SINH</td>
+                              <td className="py-3 px-3 text-right bg-orange-700/30 border-r border-orange-400 font-mono font-black text-[12.5px]">
+                                {computedStats.grandAnnualTotal.toLocaleString("vi-VN")}
+                              </td>
+                              {Array.from({ length: 12 }, (_, i) => {
+                                const val = computedStats.grandMonthlyTotals[`m${i + 1}`];
+                                return (
+                                  <td key={i} className="py-3 px-3 text-right border-r border-orange-400 font-mono font-black text-[11.5px]">
+                                    {val > 0 ? val.toLocaleString("vi-VN") : "-"}
+                                  </td>
+                                );
+                              })}
+                              <td className="py-3 px-3 border-r border-orange-400"></td>
+                              <td className="py-3 px-3"></td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Filter Controls for raw transactions below */}
+                    <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
-                          <h3 className="font-heading font-bold text-slate-800 text-sm">Báo cáo tổng hợp chi phí</h3>
-                          <p className="text-slate-400 text-[10px] font-semibold mt-1">Tổng hợp tự động toàn bộ hóa đơn và các khoản thanh toán định kỳ theo khoảng ngày</p>
+                          <h4 className="font-heading font-bold text-slate-800 text-xs">Đối soát hóa đơn & chứng từ gốc</h4>
+                          <p className="text-slate-400 text-[10px] font-semibold mt-1">Lọc danh sách hóa đơn gốc và các khoản định kỳ theo khoảng ngày cụ thể bên dưới</p>
                         </div>
                         
                         <div className="flex flex-wrap items-center gap-3">
@@ -4263,24 +4893,20 @@ export default function AdministrationPage() {
                                 setTempEndDate(reportEndDate);
                                 setShowDatePickerPopover(!showDatePickerPopover);
                               }}
-                              className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100/80 border border-slate-200/80 rounded-xl px-3.5 py-2 transition-all group"
+                              className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100/80 border border-slate-200/80 rounded-xl px-3.5 py-2 transition-all group cursor-pointer"
                             >
-                              <Calendar size={14} className="text-[#005BAC]" />
-                              <span className="text-[11px] font-bold text-slate-700">
+                              <Calendar size={13} className="text-[#005BAC]" />
+                              <span className="text-[10px] font-bold text-slate-700">
                                 {formatDateVN(reportStartDate)} <span className="text-slate-400 font-normal">→</span> {formatDateVN(reportEndDate)}
                               </span>
-                              <ChevronDown size={12} className={`text-slate-400 transition-transform duration-200 ${showDatePickerPopover ? 'rotate-180' : ''}`} />
+                              <ChevronDown size={11} className={`text-slate-400 transition-transform duration-200 ${showDatePickerPopover ? 'rotate-180' : ''}`} />
                             </button>
 
                             {/* Date Range Popover */}
                             {showDatePickerPopover && (
                               <>
-                                {/* Backdrop */}
                                 <div className="fixed inset-0 z-[90]" onClick={handleCancelDateRange} />
-
-                                {/* Popover Panel */}
-                                <div className="absolute right-0 top-full mt-2 z-[100] w-[420px] bg-white rounded-2xl border border-slate-200/80 shadow-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150">
-                                  {/* Popover Header */}
+                                <div className="absolute right-0 top-full mt-2 z-[100] w-[420px] bg-white rounded-2xl border border-slate-200/80 shadow-2xl overflow-hidden">
                                   <div className="bg-gradient-to-r from-[#005BAC]/5 to-indigo-50/30 px-5 py-3.5 border-b border-slate-100">
                                     <div className="flex items-center gap-2">
                                       <div className="bg-[#005BAC]/10 p-1.5 rounded-lg">
@@ -4294,7 +4920,6 @@ export default function AdministrationPage() {
                                   </div>
 
                                   <div className="p-5 space-y-5">
-                                    {/* Quick Select Section */}
                                     <div className="space-y-2.5">
                                       <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Chọn nhanh</span>
                                       <div className="grid grid-cols-2 gap-2">
@@ -4307,7 +4932,7 @@ export default function AdministrationPage() {
                                           <button
                                             key={opt.value}
                                             onClick={() => handleQuickSelect(opt.value)}
-                                            className="px-3 py-2.5 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-[#005BAC]/5 hover:border-[#005BAC]/30 text-[11px] font-bold text-slate-600 hover:text-[#005BAC] transition-all duration-150 active:scale-[0.97]"
+                                            className="px-3 py-2 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-[#005BAC]/5 hover:border-[#005BAC]/30 text-[11px] font-bold text-slate-600 hover:text-[#005BAC] transition-all duration-150 cursor-pointer"
                                           >
                                             {opt.label}
                                           </button>
@@ -4315,198 +4940,88 @@ export default function AdministrationPage() {
                                       </div>
                                     </div>
 
-                                    {/* Divider */}
                                     <div className="flex items-center gap-3">
                                       <div className="flex-1 h-px bg-slate-100" />
                                       <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">hoặc chọn tùy chỉnh</span>
                                       <div className="flex-1 h-px bg-slate-100" />
                                     </div>
 
-                                    {/* Custom Date Inputs */}
                                     <div className="grid grid-cols-2 gap-4">
                                       <div className="space-y-1.5">
-                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Từ ngày</label>
-                                        <div className="relative">
-                                          <input
-                                            type="date"
-                                            value={tempStartDate}
-                                            onChange={(e) => setTempStartDate(e.target.value)}
-                                            className="w-full bg-white border border-slate-200/80 rounded-xl px-3 py-2.5 text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#005BAC]/20 focus:border-[#005BAC]/40 transition-all hover:border-slate-300"
-                                          />
-                                        </div>
+                                        <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Từ ngày</label>
+                                        <input
+                                          type="date"
+                                          value={tempStartDate}
+                                          onChange={(e) => setTempStartDate(e.target.value)}
+                                          className="w-full bg-white border border-slate-200/80 rounded-xl px-3 py-2 text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#005BAC]/20 focus:border-[#005BAC]/40 transition-all"
+                                        />
                                       </div>
                                       <div className="space-y-1.5">
-                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Đến ngày</label>
-                                        <div className="relative">
-                                          <input
-                                            type="date"
-                                            value={tempEndDate}
-                                            onChange={(e) => setTempEndDate(e.target.value)}
-                                            className="w-full bg-white border border-slate-200/80 rounded-xl px-3 py-2.5 text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#005BAC]/20 focus:border-[#005BAC]/40 transition-all hover:border-slate-300"
-                                          />
-                                        </div>
+                                        <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Đến ngày</label>
+                                        <input
+                                          type="date"
+                                          value={tempEndDate}
+                                          onChange={(e) => setTempEndDate(e.target.value)}
+                                          className="w-full bg-white border border-slate-200/80 rounded-xl px-3 py-2 text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#005BAC]/20 focus:border-[#005BAC]/40 transition-all"
+                                        />
                                       </div>
                                     </div>
-
-                                    {/* Preview Range */}
-                                    {tempStartDate && tempEndDate && (
-                                      <div className="bg-slate-50/80 border border-slate-100 rounded-xl px-3.5 py-2 flex items-center justify-center gap-2">
-                                        <Calendar size={11} className="text-[#005BAC]" />
-                                        <span className="text-[10px] font-bold text-slate-500">
-                                          Kỳ chọn: <span className="text-[#005BAC]">{formatDateVN(tempStartDate)}</span>
-                                          <span className="text-slate-300 mx-1">→</span>
-                                          <span className="text-[#005BAC]">{formatDateVN(tempEndDate)}</span>
-                                        </span>
-                                      </div>
-                                    )}
                                   </div>
 
-                                  {/* Popover Footer Actions */}
-                                  <div className="bg-slate-50/50 border-t border-slate-100 px-5 py-3.5 flex items-center justify-end gap-2.5">
+                                  <div className="bg-slate-50/50 border-t border-slate-100 px-5 py-3 flex items-center justify-end gap-2">
                                     <button
                                       onClick={handleCancelDateRange}
-                                      className="px-4 py-2 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-50 text-[11px] font-bold text-slate-500 hover:text-slate-700 transition-all active:scale-95"
+                                      className="px-4 py-2 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-50 text-[11px] font-bold text-slate-500 hover:text-slate-700 transition-all cursor-pointer"
                                     >
                                       Hủy
                                     </button>
                                     <button
                                       onClick={handleApplyDateRange}
-                                      className="px-4 py-2 rounded-xl bg-[#005BAC] hover:bg-blue-700 text-white text-[11px] font-bold shadow-md transition-all active:scale-95"
+                                      className="px-4 py-2 rounded-xl bg-[#005BAC] hover:bg-blue-700 text-white text-[11px] font-bold shadow-md transition-all cursor-pointer"
                                     >
                                       Áp dụng
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        handleExportReportExcel(tempStartDate, tempEndDate);
-                                        setShowDatePickerPopover(false);
-                                      }}
-                                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shadow-md transition-all active:scale-95"
-                                    >
-                                      <FileSpreadsheet size={12} /> Xuất Excel
                                     </button>
                                   </div>
                                 </div>
                               </>
                             )}
                           </div>
-
-                          <button
-                            onClick={() => handleExportReportExcel(reportStartDate, reportEndDate)}
-                            className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md transition-all active:scale-95"
-                          >
-                            <FileSpreadsheet size={14} /> Tải xuống báo cáo (Excel)
-                          </button>
                         </div>
                       </div>
                     </div>
 
                     {/* KPI Summary Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      {/* Total cost card */}
                       <div className="glass bg-gradient-to-br from-blue-50/50 to-indigo-50/20 rounded-2xl p-5 border border-blue-100/60 shadow-premium flex items-center justify-between">
                         <div className="space-y-1.5">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Tổng chi phí kỳ</span>
-                          <h3 className="text-xl font-black text-[#005BAC] tracking-tight">{totalAmount.toLocaleString("vi-VN")} đ</h3>
-                          <p className="text-[10px] text-slate-400 font-semibold">Tự động tổng hợp thời gian thực</p>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Chi phí trong kỳ lọc</span>
+                          <h3 className="text-lg font-black text-[#005BAC] tracking-tight">{totalAmount.toLocaleString("vi-VN")} đ</h3>
+                          <p className="text-[9px] text-slate-400 font-semibold">Cộng dồn từ hóa đơn & định kỳ trong kỳ lọc</p>
                         </div>
-                        <div className="bg-blue-500/10 text-[#005BAC] p-3.5 rounded-2xl">
-                          <Receipt size={24} />
+                        <div className="bg-blue-500/10 text-[#005BAC] p-3 rounded-2xl">
+                          <Receipt size={22} />
                         </div>
                       </div>
 
-                      {/* Invoices Count */}
                       <div className="glass bg-gradient-to-br from-emerald-50/50 to-teal-50/20 rounded-2xl p-5 border border-emerald-100/60 shadow-premium flex items-center justify-between">
                         <div className="space-y-1.5">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Hồ sơ hóa đơn xử lý</span>
-                          <h3 className="text-xl font-black text-emerald-600 tracking-tight">{invoiceCount} Hồ sơ</h3>
-                          <p className="text-[10px] text-slate-400 font-semibold">Trích xuất thành công từ hóa đơn AI</p>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Hóa đơn trong kỳ lọc</span>
+                          <h3 className="text-lg font-black text-emerald-600 tracking-tight">{invoiceCount} Hồ sơ</h3>
+                          <p className="text-[9px] text-slate-400 font-semibold">Hóa đơn quét AI trong kỳ lọc</p>
                         </div>
-                        <div className="bg-emerald-500/10 text-emerald-600 p-3.5 rounded-2xl">
-                          <FileText size={24} />
+                        <div className="bg-emerald-500/10 text-emerald-600 p-3 rounded-2xl">
+                          <FileText size={22} />
                         </div>
                       </div>
 
-                      {/* Recurring Payments Count */}
                       <div className="glass bg-gradient-to-br from-purple-50/50 to-pink-50/20 rounded-2xl p-5 border border-purple-100/60 shadow-premium flex items-center justify-between">
                         <div className="space-y-1.5">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Thanh toán định kỳ</span>
-                          <h3 className="text-xl font-black text-purple-600 tracking-tight">{recurringCount} Hồ sơ</h3>
-                          <p className="text-[10px] text-slate-400 font-semibold">Các khoản chi định kỳ trong kỳ</p>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Thanh toán định kỳ kỳ lọc</span>
+                          <h3 className="text-lg font-black text-purple-600 tracking-tight">{recurringCount} Hồ sơ</h3>
+                          <p className="text-[9px] text-slate-400 font-semibold">Các khoản chi cố định trong kỳ lọc</p>
                         </div>
-                        <div className="bg-purple-500/10 text-purple-600 p-3.5 rounded-2xl">
-                          <RefreshCw size={24} />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Cost structure breakdown & Process flow */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {/* Cost breakdown progress bars */}
-                      <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-4">
-                        <div className="border-b border-slate-100 pb-3">
-                          <h4 className="font-heading font-bold text-slate-800 text-xs">Cơ cấu chi phí thực tế</h4>
-                          <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Phân loại tự động dựa trên hóa đơn và phiếu chi</p>
-                        </div>
-
-                        <div className="space-y-4 pt-1">
-                          {[
-                            { label: "Văn phòng phẩm", key: "Văn phòng phẩm", color: "bg-blue-500" },
-                            { label: "Điện nước văn phòng", key: "Điện nước văn phòng", color: "bg-[#005BAC]" },
-                            { label: "Cáp quang Internet", key: "Cáp quang Internet", color: "bg-indigo-500" },
-                            { label: "Chi phí mua đồ tiếp khách", key: "Chi phí mua đồ tiếp khách", color: "bg-purple-500" },
-                            { label: "Chi phí khác", key: "Chi phí khác", color: "bg-slate-400" },
-                          ].map((cost, idx) => {
-                            const amount = categoriesMap[cost.key as keyof typeof categoriesMap] || 0;
-                            const pct = totalAmount > 0 ? (amount / totalAmount) * 100 : 0;
-                            
-                            return (
-                              <div key={idx} className="space-y-1.5">
-                                <div className="flex justify-between text-[10px] font-bold text-slate-600">
-                                  <span>{cost.label} ({pct.toFixed(1)}%)</span>
-                                  <span className="text-slate-700 font-extrabold">{amount.toLocaleString("vi-VN")} đ</span>
-                                </div>
-                                <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                                  <div 
-                                    className={`${cost.color} h-full rounded-full transition-all duration-500`}
-                                    style={{ width: `${pct}%` }}
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Process info and totals summary */}
-                      <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium flex flex-col justify-between space-y-4">
-                        <div className="space-y-3">
-                          <div className="border-b border-slate-100 pb-3">
-                            <h4 className="font-heading font-bold text-slate-800 text-xs">Tổng hợp và quy trình kiểm tra</h4>
-                            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Thông tin đối soát dữ liệu phòng HCNS</p>
-                          </div>
-
-                          <div className="space-y-2 text-[10.5px] font-semibold text-slate-500 pt-1">
-                            <div className="flex justify-between border-b border-slate-50 pb-1.5">
-                              <span>Kỳ đối soát:</span>
-                              <span className="text-slate-800 font-bold">{formatDateVN(reportStartDate)} → {formatDateVN(reportEndDate)}</span>
-                            </div>
-                            <div className="flex justify-between border-b border-slate-50 pb-1.5">
-                              <span>Tổng chứng từ tổng hợp:</span>
-                              <span className="text-slate-800 font-bold">{combinedItems.length} hồ sơ chứng từ</span>
-                            </div>
-                            <div className="flex justify-between pb-1">
-                              <span>Ngày chốt số liệu dự kiến:</span>
-                              <span className="text-slate-800 font-bold">Ngày cuối tháng</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="bg-blue-50/40 border border-blue-100 rounded-2xl p-4 text-[10px] text-slate-500 leading-relaxed font-semibold">
-                          <div className="flex items-center gap-1.5 text-[#005BAC] font-bold mb-1.5">
-                            <AlertTriangle size={13} />
-                            <span className="text-[11px] uppercase tracking-wider">Quy trình chốt tháng:</span>
-                          </div>
-                          Nhân viên Hành chính kiểm tra trạng thái tất cả các hồ sơ thanh toán trong tháng, kết xuất file excel báo cáo chi phí tổng hợp, trình ký bản cứng đính kèm hóa đơn/phiếu thanh toán để chuyển phòng Kế toán đối soát trước ngày 05 tháng sau.
+                        <div className="bg-purple-500/10 text-purple-600 p-3 rounded-2xl">
+                          <RefreshCw size={22} />
                         </div>
                       </div>
                     </div>
@@ -4515,33 +5030,33 @@ export default function AdministrationPage() {
                     <div className="glass bg-white rounded-2xl border border-slate-200/50 shadow-premium overflow-hidden">
                       <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/40 flex justify-between items-center">
                         <div>
-                          <h4 className="font-heading font-bold text-slate-800 text-xs">Bảng đối soát chi tiết các khoản chi</h4>
-                          <p className="text-slate-400 text-[10px] font-semibold mt-0.5">Hiển thị toàn bộ hóa đơn trích xuất và khoản thanh toán định kỳ</p>
+                          <h4 className="font-heading font-bold text-slate-800 text-xs">Bảng đối soát chi tiết các khoản chi gốc</h4>
+                          <p className="text-slate-400 text-[10px] font-semibold mt-0.5">Hiển thị hóa đơn trích xuất và khoản thanh toán định kỳ nằm trong kỳ lọc</p>
                         </div>
                         <span className="bg-slate-100 text-slate-600 text-[9px] font-extrabold px-2.5 py-1 rounded-full border border-slate-200/50">
                           {combinedItems.length} Bản ghi
                         </span>
                       </div>
 
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto custom-scrollbar">
                         <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 bg-slate-50/20">
-                              <th className="py-3 px-4 w-12 text-center">STT</th>
-                              <th className="py-3 px-4 w-36">Loại chứng từ</th>
-                              <th className="py-3 px-4 w-32">Số hóa đơn/Mã</th>
-                              <th className="py-3 px-4 w-28">Ngày nhận</th>
-                              <th className="py-3 px-4">Đơn vị thụ hưởng</th>
-                              <th className="py-3 px-4">Nội dung</th>
-                              <th className="py-3 px-4">Phân loại</th>
-                              <th className="py-3 px-4 text-right w-36">Số tiền</th>
+                            <tr className="border-b border-slate-150 text-[10px] font-bold text-slate-400 bg-slate-50/20 uppercase tracking-wider">
+                              <th className="py-2.5 px-4 w-12 text-center">STT</th>
+                              <th className="py-2.5 px-4 w-36">Loại chứng từ</th>
+                              <th className="py-2.5 px-4 w-32">Số hóa đơn/Mã</th>
+                              <th className="py-2.5 px-4 w-28">Ngày nhận</th>
+                              <th className="py-2.5 px-4">Đơn vị thụ hưởng</th>
+                              <th className="py-2.5 px-4">Nội dung</th>
+                              <th className="py-2.5 px-4">Phân loại</th>
+                              <th className="py-2.5 px-4 text-right w-36">Số tiền</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-100/50 text-[11px] font-semibold text-slate-600">
+                          <tbody className="divide-y divide-slate-100 text-[11px] font-semibold text-slate-600">
                             {combinedItems.map((item, index) => (
                               <tr key={item.id} className="hover:bg-slate-50/30 transition-all">
-                                <td className="py-3 px-4 text-center text-slate-400">{index + 1}</td>
-                                <td className="py-3 px-4">
+                                <td className="py-2.5 px-4 text-center text-slate-400">{index + 1}</td>
+                                <td className="py-2.5 px-4">
                                   {item.type === "Hóa đơn" ? (
                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-100">
                                       <FileText size={10} /> Hóa đơn
@@ -4552,16 +5067,16 @@ export default function AdministrationPage() {
                                     </span>
                                   )}
                                 </td>
-                                <td className="py-3 px-4 font-mono text-slate-500 font-bold">{item.code}</td>
-                                <td className="py-3 px-4 text-slate-400">{item.date}</td>
-                                <td className="py-3 px-4 font-bold text-slate-700 max-w-[180px] truncate">{item.beneficiary}</td>
-                                <td className="py-3 px-4 max-w-[240px] truncate" title={item.desc}>{item.desc}</td>
-                                <td className="py-3 px-4">
-                                  <span className="bg-slate-100 text-slate-600 text-[9px] font-extrabold px-2 py-0.5 rounded-full">
+                                <td className="py-2.5 px-4 font-mono text-slate-500 font-bold">{item.code}</td>
+                                <td className="py-2.5 px-4 text-slate-400">{item.date}</td>
+                                <td className="py-2.5 px-4 font-bold text-slate-700 max-w-[180px] truncate">{item.beneficiary}</td>
+                                <td className="py-2.5 px-4 max-w-[240px] truncate" title={item.desc}>{item.desc}</td>
+                                <td className="py-2.5 px-4">
+                                  <span className="bg-slate-100 text-slate-500 text-[9px] font-bold px-2 py-0.5 rounded-full border border-slate-200">
                                     {item.category}
                                   </span>
                                 </td>
-                                <td className="py-3 px-4 text-right font-extrabold text-slate-800">{item.amount.toLocaleString("vi-VN")} đ</td>
+                                <td className="py-2.5 px-4 text-right font-extrabold text-slate-800 font-mono">{item.amount.toLocaleString("vi-VN")} đ</td>
                               </tr>
                             ))}
 

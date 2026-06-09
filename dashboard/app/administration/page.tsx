@@ -1373,19 +1373,22 @@ export default function AdministrationPage() {
   }, []);
 
   const handleUpdateReportCell = async (rowId: string, field: string, value: any) => {
+    // Update local state immediately
+    setReportRows(prev => prev.map(row => 
+      row.id === rowId ? { ...row, [field]: value } : row
+    ));
+
+    // Skip Supabase update for temp rows (not yet synced)
+    if (rowId.startsWith("temp-")) return;
+
     try {
       const { error } = await supabase
         .from("admin_monthly_reports")
         .update({ [field]: value })
         .eq("id", rowId);
       if (error) throw error;
-      
-      setReportRows(prev => prev.map(row => 
-        row.id === rowId ? { ...row, [field]: value } : row
-      ));
     } catch (err) {
       console.error("Failed to update report cell:", err);
-      alert("Lỗi khi cập nhật ô dữ liệu!");
     }
   };
 

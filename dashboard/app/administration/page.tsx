@@ -509,6 +509,21 @@ export default function AdministrationPage() {
     currentUser.role.toLowerCase().includes("pho truong phong")
   ));
 
+  const canApproveRequests = !!(currentUser && (
+    currentUser.isAdmin || 
+    currentUser.role.toLowerCase() === "admin" ||
+    currentUser.role.toLowerCase().includes("trưởng phòng") || 
+    currentUser.role.toLowerCase().includes("truong phong") ||
+    currentUser.role.toLowerCase().includes("phó phòng") || 
+    currentUser.role.toLowerCase().includes("pho phong") ||
+    currentUser.role.toLowerCase().includes("phó trưởng phòng") || 
+    currentUser.role.toLowerCase().includes("pho truong phong") ||
+    currentUser.role.toLowerCase().includes("hành chính") ||
+    currentUser.role.toLowerCase().includes("hanh chinh") ||
+    currentUser.department.toLowerCase().includes("hành chính") ||
+    currentUser.department.toLowerCase().includes("hanh chinh")
+  ));
+
   // Sync supplies to localStorage when changed
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -2152,12 +2167,16 @@ export default function AdministrationPage() {
                                   <td className="py-3.5 px-4">
                                     <div className="flex items-center justify-center gap-2">
                                       {req.status === "Chờ duyệt" ? (
-                                        <button
-                                          onClick={() => handleApproveRequest(req.id)}
-                                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm shrink-0"
-                                        >
-                                          Duyệt & Cấp phát
-                                        </button>
+                                        canApproveRequests ? (
+                                          <button
+                                            onClick={() => handleApproveRequest(req.id)}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm shrink-0"
+                                          >
+                                            Duyệt & Cấp phát
+                                          </button>
+                                        ) : (
+                                          <span className="text-slate-400 text-[10px] font-bold italic shrink-0">Chờ duyệt</span>
+                                        )
                                       ) : (
                                         <span className="text-slate-350 text-[10px] font-normal italic shrink-0">Đã bàn giao</span>
                                       )}
@@ -2260,12 +2279,16 @@ export default function AdministrationPage() {
                                   <td className="py-3.5 px-4">
                                     <div className="flex items-center justify-center gap-2">
                                       {req.status === "Chờ duyệt" ? (
-                                        <button
-                                          onClick={() => handleApproveRequest(req.id)}
-                                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm shrink-0"
-                                        >
-                                          Duyệt & Cấp phát
-                                        </button>
+                                        canApproveRequests ? (
+                                          <button
+                                            onClick={() => handleApproveRequest(req.id)}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm shrink-0"
+                                          >
+                                            Duyệt & Cấp phát
+                                          </button>
+                                        ) : (
+                                          <span className="text-slate-400 text-[10px] font-bold italic shrink-0">Chờ duyệt</span>
+                                        )
                                       ) : (
                                         <span className="text-slate-350 text-[10px] font-normal italic shrink-0">Đã bàn giao</span>
                                       )}

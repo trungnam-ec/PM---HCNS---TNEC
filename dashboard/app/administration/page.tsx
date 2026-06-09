@@ -1340,30 +1340,8 @@ export default function AdministrationPage() {
         .order("created_at", { ascending: true });
       if (error) throw error;
 
-      if (data && data.length > 0) {
+      if (data) {
         setReportRows(data as AdminMonthlyReport[]);
-      } else {
-        const seedPayload = DEFAULT_REPORT_ROWS.map(row => ({
-          stt: row.stt,
-          content: row.content,
-          category_type: row.category_type,
-          is_custom: false,
-          m1: 0, m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0, m8: 0, m9: 0, m10: 0, m11: 0, m12: 0,
-          notes: ""
-        }));
-        const { error: seedErr } = await supabase
-          .from("admin_monthly_reports")
-          .insert(seedPayload);
-        if (seedErr) throw seedErr;
-
-        const { data: refetched, error: refetchErr } = await supabase
-          .from("admin_monthly_reports")
-          .select("*")
-          .order("created_at", { ascending: true });
-        if (refetchErr) throw refetchErr;
-        if (refetched) {
-          setReportRows(refetched as AdminMonthlyReport[]);
-        }
       }
     } catch (err) {
       console.error("Failed to fetch monthly report rows:", err);

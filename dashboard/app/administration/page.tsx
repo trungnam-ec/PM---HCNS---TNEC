@@ -3200,7 +3200,6 @@ export default function AdministrationPage() {
                             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold bg-white"
                           >
                             <option value="Như Quỳnh">Như Quỳnh</option>
-                            <option value="Thùy Quyên">Thùy Quyên</option>
                             <option value="Thanh Hằng">Thanh Hằng</option>
                           </select>
                         </div>
@@ -3241,15 +3240,11 @@ export default function AdministrationPage() {
                     </form>
                   )}
 
-                  {/* Three personnel summary */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  {/* Personnel summary */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Như Quỳnh (Phó phòng Hành chính)</strong></p>
                       <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Phụ trách hậu cần, kho VPP, phòng họp, tiếp khách & làm hồ sơ thanh toán, đối soát hóa đơn</p>
-                    </div>
-                    <div className="border-l border-slate-200 pl-4">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Thùy Quyên (Tuyển dụng)</strong></p>
-                      <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: Đăng tin tuyển dụng, lọc hồ sơ ứng viên, liên hệ và sắp xếp lịch phỏng vấn nhân sự mới</p>
                     </div>
                     <div className="border-l border-slate-200 pl-4">
                       <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>Thanh Hằng (Văn thư)</strong></p>

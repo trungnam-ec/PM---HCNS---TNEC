@@ -654,6 +654,25 @@ export default function AdministrationPage() {
     }
   };
 
+  // Fetch suppliers from Supabase
+  const fetchSuppliers = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("suppliers")
+        .select("*")
+        .order("id", { ascending: true });
+      if (error) throw error;
+      if (data && data.length > 0) {
+        setSuppliers(data as Supplier[]);
+      } else {
+        setSuppliers(INITIAL_SUPPLIERS);
+      }
+    } catch (err) {
+      console.error("Failed to fetch suppliers from Supabase:", err);
+      setSuppliers(INITIAL_SUPPLIERS);
+    }
+  }, []);
+
   // Load API Settings on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -662,15 +681,6 @@ export default function AdministrationPage() {
       
       const savedName = localStorage.getItem("employee_name") || localStorage.getItem("display_name");
       if (savedName) setEmployeeName(savedName);
-
-      // Load Suppliers
-      const savedSuppliers = localStorage.getItem("tnec_suppliers");
-      if (savedSuppliers) {
-        setSuppliers(JSON.parse(savedSuppliers));
-      } else {
-        setSuppliers(INITIAL_SUPPLIERS);
-        localStorage.setItem("tnec_suppliers", JSON.stringify(INITIAL_SUPPLIERS));
-      }
 
       // Load Allocation Targets
       const savedTargets = localStorage.getItem("tnec_allocation_targets");
@@ -702,20 +712,15 @@ export default function AdministrationPage() {
         localStorage.setItem("tnec_allocation_targets", JSON.stringify(INITIAL_ALLOCATION_TARGETS));
       }
 
-      // Load Pending Payments
-      const savedPayments = localStorage.getItem("tnec_pending_payments");
-      if (savedPayments) {
-        setPendingPayments(JSON.parse(savedPayments));
-      }
-
       // Fetch Dept Requests and Supplies Catalog from Supabase
       fetchDeptRequests();
+      fetchSuppliers();
       fetchSuppliesCatalog();
       fetchReportRows();
 
       fetchUserRoleAndDept();
     }
-  }, []);
+  }, [fetchSuppliers]);
 
   const fetchUserRoleAndDept = async () => {
     try {
@@ -842,7 +847,7 @@ export default function AdministrationPage() {
   };
 
   // --- NEW SUPPLIER & RECURRING PAYMENT HANDLERS ---
-  const handleAddSupplier = (e: React.FormEvent) => {
+  const handleAddSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supplierNameState.trim() || !supplierAccountState.trim() || !supplierBankState.trim()) {
       alert("Vui lòng nhập đầy đủ thông tin nhà cung cấp!");
@@ -858,10 +863,23 @@ export default function AdministrationPage() {
       service: supplierServiceState.trim()
     };
 
-    const updated = [...suppliers, newSupplier];
-    setSuppliers(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("tnec_suppliers", JSON.stringify(updated));
+    try {
+      const { error } = await supabase
+        .from("suppliers")
+        .insert([newSupplier]);
+      if (error) throw error;
+
+      setSuppliers(prev => [...prev, newSupplier]);
+      alert("Đã thêm Nhà cung cấp thành công!");
+    } catch (err: any) {
+      console.error("Failed to add supplier to Supabase:", err);
+      // Fallback
+      const updated = [...suppliers, newSupplier];
+      setSuppliers(updated);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("tnec_suppliers", JSON.stringify(updated));
+      }
+      alert("Đã thêm Nhà cung cấp (Lưu tạm trên trình duyệt)!");
     }
 
     // Reset form
@@ -870,15 +888,26 @@ export default function AdministrationPage() {
     setSupplierAccountState("");
     setSupplierBankState("");
     setSupplierServiceState("");
-    alert("Đã thêm Nhà cung cấp thành công!");
   };
 
-  const handleDeleteSupplier = (id: string) => {
+  const handleDeleteSupplier = async (id: string) => {
     if (confirm("Bạn có chắc chắn muốn xóa Nhà cung cấp này không?")) {
-      const updated = suppliers.filter(s => s.id !== id);
-      setSuppliers(updated);
-      if (typeof window !== "undefined") {
-        localStorage.setItem("tnec_suppliers", JSON.stringify(updated));
+      try {
+        const { error } = await supabase
+          .from("suppliers")
+          .delete()
+          .eq("id", id);
+        if (error) throw error;
+
+        setSuppliers(prev => prev.filter(s => s.id !== id));
+      } catch (err: any) {
+        console.error("Failed to delete supplier from Supabase:", err);
+        // Fallback
+        const updated = suppliers.filter(s => s.id !== id);
+        setSuppliers(updated);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("tnec_suppliers", JSON.stringify(updated));
+        }
       }
     }
   };
@@ -2218,6 +2247,32 @@ export default function AdministrationPage() {
           bank_name_branch: row.bank_name_branch || ""
         }));
         setInvoices(loadedInvs);
+
+        // Dynamically populate pendingPayments (recurring payments) state from HD-DK- invoices
+        const recurringInvs = data.filter((row: any) => row.number && row.number.startsWith("HD-DK-"));
+        const mappedPayments: SupplierPayment[] = recurringInvs.map((row: any) => {
+          // Parse month from date (YYYY-MM-DD) to MM/YYYY
+          let monthStr = "06/2026";
+          if (row.date) {
+            const parts = row.date.split("-");
+            if (parts.length >= 2) {
+              monthStr = `${parts[1]}/${parts[0]}`;
+            }
+          }
+          return {
+            id: row.id,
+            supplierId: "",
+            supplierName: row.beneficiary_name || "",
+            account: row.bank_account || "",
+            bank: row.bank_name_branch || "",
+            service: "",
+            amount: Number(row.amount),
+            content: row.description || "",
+            month: monthStr,
+            fileUrl: row.file_url || ""
+          };
+        });
+        setPendingPayments(mappedPayments);
         setIsTableMissing(false);
       }
     } catch (err: any) {

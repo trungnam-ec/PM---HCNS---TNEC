@@ -505,6 +505,41 @@ function isOneDayBefore(dateStr: string): boolean {
   return Math.round(diffTime / oneDayMs) === 1;
 }
 
+function isToday(dateStr: string): boolean {
+  if (!dateStr) return false;
+  let year = 0, month = 0, day = 0;
+  
+  if (dateStr.includes('-')) {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      year = parseInt(parts[0], 10);
+      month = parseInt(parts[1], 10) - 1;
+      day = parseInt(parts[2], 10);
+    }
+  } else if (dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      if (parts[2].length === 4) {
+        year = parseInt(parts[2], 10);
+        month = parseInt(parts[1], 10) - 1;
+        day = parseInt(parts[0], 10);
+      } else if (parts[0].length === 4) {
+        year = parseInt(parts[0], 10);
+        month = parseInt(parts[1], 10) - 1;
+        day = parseInt(parts[2], 10);
+      }
+    }
+  }
+  
+  if (year === 0 || isNaN(year) || isNaN(month) || isNaN(day)) return false;
+  
+  const targetDate = new Date(year, month, day, 0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  return targetDate.getTime() === today.getTime();
+}
+
 function EditableCell({
   value,
   onSave,
@@ -2331,15 +2366,22 @@ export default function RecruitmentPage() {
 
                                 const isInterviewDate = col.key === "v1_interview_date" || col.key === "v2_interview_date";
                                 const isWarning = isInterviewDate && isOneDayBefore(cellValue);
+                                const isDanger = isInterviewDate && isToday(cellValue);
 
                                 return (
-                                  <td key={col.key} className={`p-0 border border-slate-100 ${isWarning ? "bg-[#FFEDD5] border-[#FED7AA]" : ""}`}>
+                                  <td key={col.key} className={`p-0 border border-slate-100 ${
+                                    isDanger ? "bg-[#FEE2E2] border-[#FCA5A5]" : 
+                                    isWarning ? "bg-[#FFEDD5] border-[#FED7AA]" : ""
+                                  }`}>
                                     <EditableCell
                                       value={cellValue}
                                       onSave={(newVal) => handleUpdateCandidateField(candidate.id, col.key, newVal)}
                                       readOnly={!canManage}
                                       type={col.type === "date" ? "date" : "text"}
-                                      className={isWarning ? "bg-[#FFEDD5] text-[#C2410C] font-semibold focus:bg-white" : ""}
+                                      className={
+                                        isDanger ? "bg-[#FEE2E2] text-[#B91C1C] font-semibold focus:bg-white" :
+                                        isWarning ? "bg-[#FFEDD5] text-[#C2410C] font-semibold focus:bg-white" : ""
+                                      }
                                     />
                                   </td>
                                 );

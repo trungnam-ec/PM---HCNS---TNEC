@@ -239,7 +239,10 @@ export default function CalendarPage() {
             e.role.toLowerCase().includes("phó phòng") || 
             e.role.toLowerCase().includes("pho phong") ||
             e.role.toLowerCase().includes("phó trưởng phòng") || 
-            e.role.toLowerCase().includes("pho truong phong")
+            e.role.toLowerCase().includes("pho truong phong") ||
+            e.role.toLowerCase().includes("leader") ||
+            e.name.toLowerCase().includes("hoành anh") ||
+            e.name.toLowerCase().includes("hoanh anh")
           )
         );
         if (deputies.length === 0) {
@@ -517,21 +520,37 @@ export default function CalendarPage() {
     const isUserManager = (currentUser.role || "").toLowerCase().includes("trưởng phòng") || 
                           (currentUser.role || "").toLowerCase().includes("truong phong") ||
                           (currentUser.role || "").toLowerCase().includes("giám đốc") ||
-                          (currentUser.role || "").toLowerCase().includes("giam doc");
+                          (currentUser.role || "").toLowerCase().includes("giam doc") ||
+                          (currentUser.role || "").toLowerCase().includes("quản lý") ||
+                          (currentUser.role || "").toLowerCase().includes("quan ly") ||
+                          (currentUser.role || "").toLowerCase().includes("quyền trưởng phòng") ||
+                          (currentUser.role || "").toLowerCase().includes("quyen truong phong");
 
     return tasks.filter(t => {
       if (t.status !== "pending_approval") return false;
-      const isLeave = t.title.toLowerCase().startsWith("nghỉ phép") || t.title.toLowerCase().includes("nghi phep");
-      const isTrip = t.title.toLowerCase().startsWith("công tác") || t.title.toLowerCase().includes("cong tac");
+      const titleLower = t.title.toLowerCase();
+      const isLeave = titleLower.startsWith("nghỉ phép") || titleLower.includes("nghi phep");
+      const isTrip = titleLower.startsWith("công tác") || titleLower.includes("cong tac");
       
       if (isLeave) {
         // Enforce leave approval rules:
         // 1. Explicitly designated approver in notes
         if (t.notes && t.notes.includes(`Người duyệt: ${currentUser.name}`)) return true;
+
+        const assigneeLower = t.assignee.toLowerCase();
+        const currentUserNameLower = currentUser.name.toLowerCase();
+
         // 2. Quỳnh approves Hằng's 1-day leave
-        if (currentUser.name.toLowerCase().includes("quỳnh") && t.assignee.toLowerCase().includes("hằng") && t.title.includes("1 ngày")) return true;
+        const isQuynh = currentUserNameLower.includes("quỳnh") || currentUserNameLower.includes("quynh");
+        const isHang = assigneeLower.includes("hằng") || assigneeLower.includes("hang");
+        const isOneDay = titleLower.includes("1 ngày") || titleLower.includes("1 ngay");
+        if (isQuynh && isHang && isOneDay) return true;
+
         // 3. Hoành Anh approves Quyên's 1-day leave
-        if (currentUser.name.toLowerCase().includes("hoành anh") && t.assignee.toLowerCase().includes("quuyên") && t.title.includes("1 ngày")) return true;
+        const isHoanhAnh = currentUserNameLower.includes("hoành anh") || currentUserNameLower.includes("hoanh anh");
+        const isQuyen = assigneeLower.includes("quyên") || assigneeLower.includes("quuyên") || assigneeLower.includes("quyen");
+        if (isHoanhAnh && isQuyen && isOneDay) return true;
+
         // 4. Managers/Admins can see and approve all leaves
         if (isUserAdmin || isUserManager) return true;
       }

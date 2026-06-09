@@ -1,7 +1,8 @@
 "use client";
 
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   LayoutDashboard,
   ClipboardList,
@@ -12,25 +13,116 @@ import {
   Briefcase,
   Users,
   CalendarRange,
-  X
+  X,
+  CheckSquare
 } from "lucide-react";
 import { useSidebar } from "./SidebarContext";
+import { supabase } from "@/lib/supabase";
 
-const NAV_ITEMS = [
-  { label: "Dashboard", href: "/", icon: LayoutDashboard },
-  { label: "Quản lý Công việc", href: "/tasks", icon: ClipboardList },
-  { label: "Lịch công việc", href: "/calendar", icon: CalendarRange },
-  { label: "Tuyển dụng", href: "/recruitment", icon: Briefcase },
-  { label: "Quản lý Nhân sự", href: "/employees", icon: Users },
-  { label: "Lương & Phúc lợi (C&B)", href: "/cb", icon: Calculator },
-  { label: "Hành chính & Tài sản", href: "/administration", icon: Building2 },
-  { label: "Văn Thư", href: "/document-control", icon: FileText },
-  { label: "Cài đặt hệ thống", href: "/settings", icon: Settings },
-];
+function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: boolean; pathname: string; setSidebarOpen: (o: boolean) => void }) {
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab");
+
+  const navItems = [
+    { label: "Dashboard", href: "/", icon: LayoutDashboard },
+    { label: "Quản lý Công việc", href: "/tasks", icon: ClipboardList },
+    { label: "Lịch công việc", href: "/calendar", icon: CalendarRange },
+    { label: "Tuyển dụng", href: "/recruitment", icon: Briefcase },
+    { label: "Quản lý Nhân sự", href: "/employees", icon: Users },
+    { label: "Lương & Phúc lợi (C&B)", href: "/cb", icon: Calculator },
+    { label: "Hành chính & Tài sản", href: "/administration", icon: Building2 },
+    { label: "Văn Thư", href: "/document-control", icon: FileText },
+    { label: "Cài đặt hệ thống", href: "/settings?tab=system", icon: Settings },
+  ];
+
+  if (isApprover) {
+    navItems.push({ label: "Duyệt yêu cầu", href: "/settings?tab=approvals", icon: CheckSquare });
+  }
+
+  return (
+    <>
+      {navItems.map((item) => {
+        const Icon = item.icon;
+        let isActive = false;
+
+        if (item.href.includes("?")) {
+          const [path, query] = item.href.split("?");
+          const urlParams = new URLSearchParams(query);
+          const tabParam = urlParams.get("tab");
+          const activeTab = currentTab || "system";
+          isActive = pathname === path && activeTab === tabParam;
+        } else {
+          isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href) && !pathname.startsWith("/settings"));
+        }
+
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={() => setSidebarOpen(false)}
+            className={`flex items-center gap-3 px-5 py-2.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-[0.97] hover:translate-x-1 border ${
+              isActive
+                ? "bg-[#1D1D1F] border-[#1D1D1F] text-white shadow-sm"
+                : "bg-[#EBEBEB]/70 border-slate-200/40 text-[#1D1D1F] hover:bg-slate-200/90"
+            }`}
+          >
+            <Icon size={15} className={isActive ? "text-white" : "text-slate-500"} />
+            <span>{item.label}</span>
+          </Link>
+        );
+      })}
+    </>
+  );
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { sidebarOpen, setSidebarOpen } = useSidebar();
+  const [isApprover, setIsApprover] = useState(false);
+
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session || !session.user) return;
+        const email = session.user.email || "";
+
+        // Check Admin
+        const { data: allowedData } = await supabase
+          .from("allowed_users")
+          .select("role")
+          .ilike("email", email)
+          .maybeSingle();
+        const isAdmin = allowedData?.role === "Admin";
+
+        // Check Employees
+        const { data: empData } = await supabase
+          .from("employees")
+          .select("role")
+          .ilike("email", email)
+          .maybeSingle();
+
+        const role = empData?.role || (isAdmin ? "Admin" : "Nhân viên");
+        const roleLower = role.toLowerCase();
+        const hasApprovalPrivileges = 
+          isAdmin ||
+          roleLower.includes("trưởng phòng") ||
+          roleLower.includes("truong phong") ||
+          roleLower.includes("phó phòng") ||
+          roleLower.includes("pho phong") ||
+          roleLower.includes("phó trưởng phòng") || 
+          roleLower.includes("pho truong phong") ||
+          roleLower.includes("giám đốc") ||
+          roleLower.includes("giam doc") ||
+          roleLower.includes("leader");
+
+        setIsApprover(hasApprovalPrivileges);
+      } catch (err) {
+        console.error("Error checking user approval privileges in sidebar:", err);
+      }
+    };
+    fetchUserRole();
+  }, []);
 
   return (
     <>
@@ -66,32 +158,16 @@ export default function Sidebar() {
           </button>
         </div>
 
-      {/* Navigation Links */}
-      <nav className="flex-1 px-4 py-6 space-y-2.5 overflow-y-auto">
-        <div className="px-3 mb-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
-          Chức năng chính
-        </div>
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.icon;
-          const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-5 py-2.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-[0.97] hover:translate-x-1 border ${
-                isActive
-                  ? "bg-[#1D1D1F] border-[#1D1D1F] text-white shadow-sm"
-                  : "bg-[#EBEBEB]/70 border-slate-200/40 text-[#1D1D1F] hover:bg-slate-200/90"
-              }`}
-            >
-              <Icon size={15} className={isActive ? "text-white" : "text-slate-500"} />
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
-    </aside>
+        {/* Navigation Links */}
+        <nav className="flex-1 px-4 py-6 space-y-2.5 overflow-y-auto">
+          <div className="px-3 mb-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+            Chức năng chính
+          </div>
+          <Suspense fallback={<div className="animate-pulse h-10 bg-slate-100 rounded-full" />}>
+            <SidebarLinks isApprover={isApprover} pathname={pathname} setSidebarOpen={setSidebarOpen} />
+          </Suspense>
+        </nav>
+      </aside>
     </>
   );
 }

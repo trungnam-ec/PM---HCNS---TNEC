@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, Search, Globe, ChevronDown, Menu } from "lucide-react";
+import { Bell, Search, Globe, ChevronDown, Menu, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useSidebar } from "./SidebarContext";
 
@@ -16,67 +16,181 @@ export default function Header({ title, subtitle }: Props) {
     role: "...",
     avatar: "HR"
   });
+  
+  const [currentUser, setCurrentUser] = useState<{
+    email: string;
+    name: string;
+    role: string;
+    department: string;
+    isAdmin: boolean;
+  } | null>(null);
+
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+
   const { toggleSidebar } = useSidebar();
 
-  useEffect(() => {
-    const fetchUserProfile = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session || !session.user) {
-          setProfile({ name: "Chưa đăng nhập", role: "...", avatar: "HR" });
-          return;
-        }
-
-        const user = session.user;
-        const email = user.email;
-
-        // 1. Try searching in employees first (regular employee profiles)
-        const { data: empData } = await supabase
-          .from("employees")
-          .select("name, role")
-          .ilike("email", email || "")
-          .maybeSingle();
-
-        if (empData) {
-          const initials = empData.name
-            .split(" ")
-            .map((n: string) => n[0])
-            .join("")
-            .toUpperCase()
-            .slice(0, 2);
-          setProfile({
-            name: empData.name,
-            role: empData.role || "Nhân viên",
-            avatar: initials
-          });
-          return;
-        }
-
-        // 2. Try allowed_users next (Admins not in employee list)
-        const { data: allowedData } = await supabase
-          .from("allowed_users")
-          .select("role")
-          .ilike("email", email || "")
-          .maybeSingle();
-
-        const googleName = user.user_metadata?.full_name || user.user_metadata?.name || email || "Người dùng";
-        const initials = googleName
-          .split(" ")
-          .map((n: string) => n[0])
-          .join("")
-          .toUpperCase()
-          .slice(0, 2);
-
-        setProfile({
-          name: googleName,
-          role: allowedData?.role === "Admin" ? "Quản trị viên" : "Tài khoản Quản trị",
-          avatar: initials
-        });
-      } catch (err) {
-        console.error("Error fetching user header profile:", err);
+  const fetchUserProfile = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !session.user) {
+        setProfile({ name: "Chưa đăng nhập", role: "...", avatar: "HR" });
+        return;
       }
-    };
 
+      const user = session.user;
+      const email = user.email || "";
+
+      // 1. Try searching in employees first (regular employee profiles)
+      const { data: empData } = await supabase
+        .from("employees")
+        .select("name, role, department")
+        .ilike("email", email)
+        .maybeSingle();
+
+      // 2. Check allowed_users for Admin
+      const { data: allowedData } = await supabase
+        .from("allowed_users")
+        .select("role")
+        .ilike("email", email)
+        .maybeSingle();
+
+      const isAdmin = allowedData?.role === "Admin";
+      const displayName = empData?.name || user.user_metadata?.full_name || user.user_metadata?.name || "Người dùng";
+      const userRole = empData?.role || (isAdmin ? "Admin" : "Nhân viên");
+
+      const initials = displayName
+        .split(" ")
+        .map((n: string) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2);
+
+      setProfile({
+        name: displayName,
+        role: userRole,
+        avatar: initials
+      });
+
+      setCurrentUser({
+        email,
+        name: displayName,
+        role: userRole,
+        department: empData?.department || "Chưa xếp phòng",
+        isAdmin
+      });
+    } catch (err) {
+      console.error("Error fetching user header profile:", err);
+    }
+  };
+
+  const fetchNotifications = async (userObj: any) => {
+    if (!userObj) return;
+    try {
+      const { data, error } = await supabase
+        .from("tasks")
+        .select("*")
+        .eq("status", "pending_approval")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      if (!data) return;
+
+      const isUserAdmin = userObj.isAdmin || (userObj.role || "").toLowerCase() === "admin";
+      const isUserManager = (userObj.role || "").toLowerCase().includes("trưởng phòng") || 
+                            (userObj.role || "").toLowerCase().includes("truong phong") ||
+                            (userObj.role || "").toLowerCase().includes("giám đốc") ||
+                            (userObj.role || "").toLowerCase().includes("giam doc") ||
+                            (userObj.role || "").toLowerCase().includes("quản lý") ||
+                            (userObj.role || "").toLowerCase().includes("quan ly") ||
+                            (userObj.role || "").toLowerCase().includes("quyền trưởng phòng") ||
+                            (userObj.role || "").toLowerCase().includes("quyen truong phong");
+
+      const isUserDeputy = (userObj.role || "").toLowerCase().includes("phó phòng") || 
+                           (userObj.role || "").toLowerCase().includes("pho phong") ||
+                           (userObj.role || "").toLowerCase().includes("phó trưởng phòng") || 
+                           (userObj.role || "").toLowerCase().includes("pho truong phong") ||
+                           (userObj.role || "").toLowerCase().includes("leader");
+
+      const hasApprovalPrivileges = isUserAdmin || isUserManager || isUserDeputy;
+      if (!hasApprovalPrivileges) {
+        setNotifications([]);
+        return;
+      }
+
+      const filtered = data.filter(t => {
+        const titleLower = t.title.toLowerCase();
+        const isLeave = titleLower.startsWith("nghỉ phép") || titleLower.includes("nghi phep");
+        const isTrip = titleLower.startsWith("công tác") || titleLower.includes("cong tac");
+
+        if (isLeave) {
+          // 1. Explicitly designated approver in notes
+          if (t.notes && t.notes.includes(`Người duyệt: ${userObj.name}`)) return true;
+
+          const assigneeLower = t.assignee.toLowerCase();
+          const currentUserNameLower = userObj.name.toLowerCase();
+
+          // 2. Quỳnh approves Hằng's 1-day leave
+          const isQuynh = currentUserNameLower.includes("quỳnh") || currentUserNameLower.includes("quynh");
+          const isHang = assigneeLower.includes("hằng") || assigneeLower.includes("hang");
+          const isOneDay = titleLower.includes("1 ngày") || titleLower.includes("1 ngay");
+          if (isQuynh && isHang && isOneDay) return true;
+
+          // 3. Hoành Anh approves Quyên's 1-day leave
+          const isHoanhAnh = currentUserNameLower.includes("hoành anh") || currentUserNameLower.includes("hoanh anh");
+          const isQuyen = assigneeLower.includes("quyên") || assigneeLower.includes("quuyên") || assigneeLower.includes("quyen");
+          if (isHoanhAnh && isQuyen && isOneDay) return true;
+
+          // 4. Managers/Admins see all leaves
+          if (isUserAdmin || isUserManager) return true;
+        }
+
+        if (isTrip) {
+          // Managers/Admins see all trips
+          if (isUserAdmin || isUserManager) return true;
+        }
+
+        return false;
+      });
+
+      const mapped = filtered.map(t => {
+        const titleLower = t.title.toLowerCase();
+        const isLeave = titleLower.startsWith("nghỉ phép") || titleLower.includes("nghi phep");
+        let typeText = isLeave ? "Đơn nghỉ phép" : "Yêu cầu công tác";
+        let messageText = "";
+
+        if (isLeave) {
+          let reason = "Xin nghỉ phép";
+          if (t.notes) {
+            const reasonMatch = t.notes.match(/Lý do:\s*(.*)/i);
+            if (reasonMatch) reason = reasonMatch[1].trim();
+          }
+          messageText = `${t.assignee} xin nghỉ phép (${t.title.replace(/^Nghỉ phép:\s*/i, "")}). Lý do: ${reason}`;
+        } else {
+          let dest = "Chưa xác định";
+          if (t.notes) {
+            const destMatch = t.notes.match(/-\s+\*\*Điểm công tác chính\*\*:\s*(.*)/i);
+            if (destMatch) dest = destMatch[1].trim();
+          }
+          messageText = `${t.assignee} xin đi công tác tại ${dest}`;
+        }
+
+        return {
+          id: t.id,
+          type: isLeave ? "leave" : "trip",
+          typeText,
+          message: messageText,
+          time: t.created_at ? new Date(t.created_at).toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit' }) + " " + new Date(t.created_at).toLocaleDateString("vi-VN") : ""
+        };
+      });
+
+      setNotifications(mapped);
+    } catch (err) {
+      console.error("Error fetching notifications for header:", err);
+    }
+  };
+
+  useEffect(() => {
     fetchUserProfile();
 
     // Listen for auth changes to update header
@@ -88,6 +202,27 @@ export default function Header({ title, subtitle }: Props) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchNotifications(currentUser);
+
+      const channel = supabase
+        .channel("tasks_realtime_header")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "tasks" },
+          () => {
+            fetchNotifications(currentUser);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [currentUser]);
 
   return (
     <header className="glass sticky top-0 z-30 flex items-center justify-between px-4 sm:px-8 py-4 gap-4">
@@ -119,17 +254,67 @@ export default function Header({ title, subtitle }: Props) {
         </div>
 
         {/* Global Notifications & Tools */}
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 relative">
           {/* Company Site Link */}
           <button className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-all" title="Cổng thông tin Công ty">
             <Globe size={16} />
           </button>
 
-          {/* Notifications */}
-          <button className="relative p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-all" title="Thông báo">
+          {/* Notifications Bell */}
+          <button 
+            onClick={() => setShowDropdown(!showDropdown)}
+            className="relative p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-all cursor-pointer" 
+            title="Thông báo"
+          >
             <Bell size={16} />
-            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+            {notifications.length > 0 && (
+              <span className="absolute top-1 right-1 bg-rose-500 text-white font-extrabold text-[8px] min-w-[14px] h-[14px] px-1 rounded-full flex items-center justify-center animate-pulse border border-white">
+                {notifications.length}
+              </span>
+            )}
           </button>
+
+          {/* Notifications Dropdown */}
+          {showDropdown && (
+            <div className="absolute right-0 top-12 w-80 bg-white rounded-2xl border border-slate-200/60 shadow-premium z-50 overflow-hidden text-xs text-slate-700 animate-in fade-in-50 slide-in-from-top-1 duration-150">
+              <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-150/60">
+                <span className="font-heading font-extrabold text-slate-800">Thông báo mới ({notifications.length})</span>
+                <button 
+                  onClick={() => setShowDropdown(false)}
+                  className="text-slate-450 hover:text-slate-600 transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
+                {notifications.length === 0 ? (
+                  <div className="p-6 text-center text-slate-400 italic">
+                    Không có thông báo phê duyệt mới.
+                  </div>
+                ) : (
+                  notifications.map((notif) => (
+                    <a
+                      key={notif.id}
+                      href="/settings?tab=approvals"
+                      onClick={() => setShowDropdown(false)}
+                      className="block p-4 hover:bg-slate-50/80 transition-colors space-y-1 text-left"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
+                          notif.type === "leave" ? "bg-emerald-50 text-emerald-700" : "bg-indigo-50 text-indigo-700"
+                        }`}>
+                          {notif.typeText}
+                        </span>
+                        <span className="text-[9px] text-slate-450 font-normal">{notif.time}</span>
+                      </div>
+                      <p className="font-semibold text-slate-700 leading-snug">{notif.message}</p>
+                    </a>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* User Info (Material 3 Profile Button) */}

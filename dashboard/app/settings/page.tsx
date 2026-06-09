@@ -1,12 +1,17 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import { Settings, Database, Info, Key, CheckCircle, ShieldAlert, Check, X, Calendar, Briefcase, User } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useSearchParams } from "next/navigation";
 
-export default function SettingsPage() {
+function SettingsContent() {
+  const searchParams = useSearchParams();
+  const activeTab = searchParams.get("tab") || "system";
+  const isApprovalsTab = activeTab === "approvals";
+
   const [apiKey, setApiKey] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [model, setModel] = useState("gpt-4o-mini");
@@ -138,7 +143,8 @@ export default function SettingsPage() {
       roleLower.includes("phó trưởng phòng") || 
       roleLower.includes("pho truong phong") ||
       roleLower.includes("giám đốc") ||
-      roleLower.includes("giam doc")
+      roleLower.includes("giam doc") ||
+      roleLower.includes("leader")
     );
   }, [currentUser]);
 
@@ -150,7 +156,11 @@ export default function SettingsPage() {
     const isUserManager = (currentUser.role || "").toLowerCase().includes("trưởng phòng") || 
                           (currentUser.role || "").toLowerCase().includes("truong phong") ||
                           (currentUser.role || "").toLowerCase().includes("giám đốc") ||
-                          (currentUser.role || "").toLowerCase().includes("giam doc");
+                          (currentUser.role || "").toLowerCase().includes("giam doc") ||
+                          (currentUser.role || "").toLowerCase().includes("quản lý") ||
+                          (currentUser.role || "").toLowerCase().includes("quan ly") ||
+                          (currentUser.role || "").toLowerCase().includes("quyền trưởng phòng") ||
+                          (currentUser.role || "").toLowerCase().includes("quyen truong phong");
 
     // Only Admin and Trưởng phòng can see/approve trips
     if (!isUserAdmin && !isUserManager) return [];
@@ -169,20 +179,33 @@ export default function SettingsPage() {
     const isUserManager = (currentUser.role || "").toLowerCase().includes("trưởng phòng") || 
                           (currentUser.role || "").toLowerCase().includes("truong phong") ||
                           (currentUser.role || "").toLowerCase().includes("giám đốc") ||
-                          (currentUser.role || "").toLowerCase().includes("giam doc");
+                          (currentUser.role || "").toLowerCase().includes("giam doc") ||
+                          (currentUser.role || "").toLowerCase().includes("quản lý") ||
+                          (currentUser.role || "").toLowerCase().includes("quan ly") ||
+                          (currentUser.role || "").toLowerCase().includes("quyền trưởng phòng") ||
+                          (currentUser.role || "").toLowerCase().includes("quyen truong phong");
 
     return tasks.filter(t => {
       if (t.status !== "pending_approval") return false;
-      if (!t.title.toLowerCase().startsWith("nghỉ phép") && !t.title.toLowerCase().includes("nghi phep")) return false;
+      const titleLower = t.title.toLowerCase();
+      if (!titleLower.startsWith("nghỉ phép") && !titleLower.includes("nghi phep")) return false;
 
       // 1. Explicitly designated approver
       if (t.notes && t.notes.includes(`Người duyệt: ${currentUser.name}`)) return true;
 
+      const assigneeLower = t.assignee.toLowerCase();
+      const currentUserNameLower = currentUser.name.toLowerCase();
+
       // 2. Quỳnh approves Hằng's 1-day leave
-      if (currentUser.name.toLowerCase().includes("quỳnh") && t.assignee.toLowerCase().includes("hằng") && t.title.includes("1 ngày")) return true;
+      const isQuynh = currentUserNameLower.includes("quỳnh") || currentUserNameLower.includes("quynh");
+      const isHang = assigneeLower.includes("hằng") || assigneeLower.includes("hang");
+      const isOneDay = titleLower.includes("1 ngày") || titleLower.includes("1 ngay");
+      if (isQuynh && isHang && isOneDay) return true;
 
       // 3. Hoành Anh approves Quyên's 1-day leave
-      if (currentUser.name.toLowerCase().includes("hoành anh") && t.assignee.toLowerCase().includes("quuyên") && t.title.includes("1 ngày")) return true;
+      const isHoanhAnh = currentUserNameLower.includes("hoành anh") || currentUserNameLower.includes("hoanh anh");
+      const isQuyen = assigneeLower.includes("quyên") || assigneeLower.includes("quuyên") || assigneeLower.includes("quyen");
+      if (isHoanhAnh && isQuyen && isOneDay) return true;
 
       // 4. Managers/Admins can see and approve all leaves
       if (isUserAdmin || isUserManager) return true;
@@ -202,11 +225,44 @@ export default function SettingsPage() {
     }
   };
 
+  if (currentUser && isApprovalsTab && !isApprover) {
+    return (
+      <div className="flex min-h-screen bg-[#F7F9FC]">
+        <Sidebar />
+        <div className="ml-60 flex-1 flex flex-col min-w-0">
+          <Header title="Duyệt yêu cầu" subtitle="Phê duyệt các yêu cầu đi công tác, nghỉ phép" />
+          <main className="flex-1 p-8 flex flex-col items-center justify-center max-w-4xl">
+            <div className="glass bg-white rounded-2xl p-8 border border-slate-200/50 shadow-premium text-center space-y-4 max-w-md">
+              <div className="w-16 h-16 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto shadow-sm">
+                <ShieldAlert size={32} />
+              </div>
+              <h2 className="font-heading font-extrabold text-slate-800 text-lg">Truy cập bị từ chối</h2>
+              <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                Tài khoản của bạn ({currentUser.email}) không có quyền truy cập chức năng phê duyệt yêu cầu. Vui lòng liên hệ với Ban giám đốc hoặc Quản trị viên hệ thống để biết thêm chi tiết.
+              </p>
+              <div className="pt-2">
+                <a
+                  href="/"
+                  className="inline-block px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow active:scale-95"
+                >
+                  Quay lại Dashboard
+                </a>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen bg-[#F7F9FC]">
       <Sidebar />
       <div className="ml-60 flex-1 flex flex-col min-w-0">
-        <Header title="Cài đặt hệ thống" subtitle="Cấu hình hệ thống, khoá bảo mật và kết nối Google Sheets" />
+        <Header 
+          title={isApprovalsTab ? "Phê duyệt yêu cầu" : "Cài đặt hệ thống"} 
+          subtitle={isApprovalsTab ? "Xem và phê duyệt các yêu cầu đi công tác, nghỉ phép của nhân sự" : "Cấu hình hệ thống, khoá bảo mật và kết nối Google Sheets"} 
+        />
 
         <main className="flex-1 p-8 space-y-6 overflow-y-auto max-w-4xl">
           {/* Toast Alert */}
@@ -219,8 +275,10 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* Setup Configuration Form */}
-          <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium">
+          {!isApprovalsTab && (
+            <>
+              {/* Setup Configuration Form */}
+              <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium">
             <h2 className="font-heading font-bold text-slate-800 text-sm flex items-center gap-2 mb-5">
               <Key size={18} className="text-blue-600" /> Cấu hình bảo mật & Kết nối
             </h2>
@@ -275,9 +333,11 @@ export default function SettingsPage() {
               </div>
             </form>
           </div>
+        </>
+      )}
 
           {/* Nhóm Duyệt Yêu Cầu */}
-          {isApprover && (
+          {isApprovalsTab && isApprover && (
             <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-3">
                 <h2 className="font-heading font-bold text-slate-800 text-sm flex items-center gap-2">
@@ -449,32 +509,48 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* System Info */}
-          <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-sm space-y-4">
-            <h2 className="font-heading font-bold text-slate-800 text-sm flex items-center gap-2">
-              <Info size={18} className="text-blue-600" /> Thông tin nền tảng
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-semibold text-slate-600">
-              <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
-                <p className="text-slate-400 text-[10px]">Phiên bản</p>
-                <p className="text-[#005BAC] font-bold">HRA Platform v2.5</p>
+          {!isApprovalsTab && (
+            <>
+              {/* System Info */}
+              <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-sm space-y-4">
+                <h2 className="font-heading font-bold text-slate-800 text-sm flex items-center gap-2">
+                  <Info size={18} className="text-blue-600" /> Thông tin nền tảng
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-semibold text-slate-600">
+                  <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
+                    <p className="text-slate-400 text-[10px]">Phiên bản</p>
+                    <p className="text-[#005BAC] font-bold">HRA Platform v2.5</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
+                    <p className="text-slate-400 text-[10px]">Phòng ban kết nối</p>
+                    <p className="text-emerald-600 font-bold">Hành Chính Nhân Sự</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
+                    <p className="text-slate-400 text-[10px]">Cơ sở dữ liệu</p>
+                    <p className="text-blue-600 font-bold">Google Sheets API</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
+                    <p className="text-slate-400 text-[10px]">Môi trường</p>
+                    <p className="text-emerald-600 font-bold">Online Production</p>
+                  </div>
+                </div>
               </div>
-              <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
-                <p className="text-slate-400 text-[10px]">Phòng ban kết nối</p>
-                <p className="text-emerald-600 font-bold">Hành Chính Nhân Sự</p>
-              </div>
-              <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
-                <p className="text-slate-400 text-[10px]">Cơ sở dữ liệu</p>
-                <p className="text-blue-600 font-bold">Google Sheets API</p>
-              </div>
-              <div className="bg-slate-50 rounded-xl p-4 space-y-0.5">
-                <p className="text-slate-400 text-[10px]">Môi trường</p>
-                <p className="text-emerald-600 font-bold">Online Production</p>
-              </div>
-            </div>
-          </div>
+            </>
+          )}
         </main>
       </div>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen bg-[#F7F9FC] items-center justify-center">
+        <span className="w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+      </div>
+    }>
+      <SettingsContent />
+    </Suspense>
   );
 }

@@ -227,7 +227,7 @@ export default function AdministrationPage() {
     department: string;
     isAdmin: boolean;
   } | null>(null);
-  const [deptRequests, setDeptRequests] = useState<DeptRequest[]>(INITIAL_DEPT_REQUESTS);
+  const [deptRequests, setDeptRequests] = useState<DeptRequest[]>([]);
   const [checklist, setChecklist] = useState<ChecklistItem[]>(INITIAL_CHECKLIST);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>(INITIAL_RECURRING);
@@ -416,6 +416,15 @@ export default function AdministrationPage() {
         setPendingPayments(JSON.parse(savedPayments));
       }
 
+      // Load Dept Requests
+      const savedRequests = localStorage.getItem("tnec_dept_requests");
+      if (savedRequests) {
+        setDeptRequests(JSON.parse(savedRequests));
+      } else {
+        setDeptRequests(INITIAL_DEPT_REQUESTS);
+        localStorage.setItem("tnec_dept_requests", JSON.stringify(INITIAL_DEPT_REQUESTS));
+      }
+
       fetchUserRoleAndDept();
     }
   }, []);
@@ -476,10 +485,23 @@ export default function AdministrationPage() {
     }
   }, [supplies]);
 
+  // Sync deptRequests to localStorage when changed
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("tnec_dept_requests", JSON.stringify(deptRequests));
+    }
+  }, [deptRequests]);
+
   // Delete Supply Handler
   const handleDeleteSupply = (name: string) => {
     if (!window.confirm(`Bạn có chắc chắn muốn xóa vật tư "${name}" khỏi danh mục kho không?`)) return;
     setSupplies(prev => prev.filter(s => s.name !== name));
+  };
+
+  const handleDeleteRequest = (reqId: string) => {
+    if (window.confirm("Bạn có chắc chắn muốn xóa yêu cầu cấp phát này không?")) {
+      setDeptRequests(prev => prev.filter(r => r.id !== reqId));
+    }
   };
 
   const saveSettings = (e: React.FormEvent) => {
@@ -2092,17 +2114,27 @@ export default function AdministrationPage() {
                                       {req.status}
                                     </span>
                                   </td>
-                                  <td className="py-3.5 px-4 text-center">
-                                    {req.status === "Chờ duyệt" ? (
+                                  <td className="py-3.5 px-4">
+                                    <div className="flex items-center justify-center gap-2">
+                                      {req.status === "Chờ duyệt" ? (
+                                        <button
+                                          onClick={() => handleApproveRequest(req.id)}
+                                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm shrink-0"
+                                        >
+                                          Duyệt & Cấp phát
+                                        </button>
+                                      ) : (
+                                        <span className="text-slate-350 text-[10px] font-normal italic shrink-0">Đã bàn giao</span>
+                                      )}
                                       <button
-                                        onClick={() => handleApproveRequest(req.id)}
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm"
+                                        type="button"
+                                        onClick={() => handleDeleteRequest(req.id)}
+                                        className="p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700 rounded-lg transition-colors cursor-pointer shrink-0"
+                                        title="Xóa yêu cầu"
                                       >
-                                        Duyệt & Cấp phát
+                                        <Trash2 size={13} />
                                       </button>
-                                    ) : (
-                                      <span className="text-slate-350 text-[10px] font-normal italic">Đã bàn giao</span>
-                                    )}
+                                    </div>
                                   </td>
                                 </tr>
                               ))}
@@ -2190,17 +2222,27 @@ export default function AdministrationPage() {
                                       {req.status}
                                     </span>
                                   </td>
-                                  <td className="py-3.5 px-4 text-center">
-                                    {req.status === "Chờ duyệt" ? (
+                                  <td className="py-3.5 px-4">
+                                    <div className="flex items-center justify-center gap-2">
+                                      {req.status === "Chờ duyệt" ? (
+                                        <button
+                                          onClick={() => handleApproveRequest(req.id)}
+                                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm shrink-0"
+                                        >
+                                          Duyệt & Cấp phát
+                                        </button>
+                                      ) : (
+                                        <span className="text-slate-350 text-[10px] font-normal italic shrink-0">Đã bàn giao</span>
+                                      )}
                                       <button
-                                        onClick={() => handleApproveRequest(req.id)}
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm"
+                                        type="button"
+                                        onClick={() => handleDeleteRequest(req.id)}
+                                        className="p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700 rounded-lg transition-colors cursor-pointer shrink-0"
+                                        title="Xóa yêu cầu"
                                       >
-                                        Duyệt & Cấp phát
+                                        <Trash2 size={13} />
                                       </button>
-                                    ) : (
-                                      <span className="text-slate-350 text-[10px] font-normal italic">Đã bàn giao</span>
-                                    )}
+                                    </div>
                                   </td>
                                 </tr>
                               ))}

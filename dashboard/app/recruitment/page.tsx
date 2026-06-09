@@ -458,16 +458,65 @@ function ResultCard({
 }
 
 // ─── HELPERS FOR TABLE VIEW ──────────────────────────────────────────────────
+function formatDateForDisplay(dateStr: string): string {
+  if (!dateStr) return "";
+  const parts = dateStr.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return dateStr;
+}
+
+function isOneDayBefore(dateStr: string): boolean {
+  if (!dateStr) return false;
+  let year = 0, month = 0, day = 0;
+  
+  if (dateStr.includes('-')) {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      year = parseInt(parts[0], 10);
+      month = parseInt(parts[1], 10) - 1;
+      day = parseInt(parts[2], 10);
+    }
+  } else if (dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      if (parts[2].length === 4) {
+        year = parseInt(parts[2], 10);
+        month = parseInt(parts[1], 10) - 1;
+        day = parseInt(parts[0], 10);
+      } else if (parts[0].length === 4) {
+        year = parseInt(parts[0], 10);
+        month = parseInt(parts[1], 10) - 1;
+        day = parseInt(parts[2], 10);
+      }
+    }
+  }
+  
+  if (year === 0 || isNaN(year) || isNaN(month) || isNaN(day)) return false;
+  
+  const targetDate = new Date(year, month, day, 0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const diffTime = targetDate.getTime() - today.getTime();
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  
+  return Math.round(diffTime / oneDayMs) === 1;
+}
+
 function EditableCell({
   value,
   onSave,
   type = "text",
-  readOnly = false
+  readOnly = false,
+  className = ""
 }: {
   value: string;
   onSave: (val: string) => void;
   type?: string;
   readOnly?: boolean;
+  className?: string;
 }) {
   const [val, setVal] = useState(value);
 
@@ -488,7 +537,8 @@ function EditableCell({
   };
 
   if (readOnly) {
-    return <span className="px-2 py-1 text-xs text-slate-700 block w-full whitespace-nowrap overflow-hidden text-ellipsis">{value}</span>;
+    const displayVal = type === "date" ? formatDateForDisplay(value) : value;
+    return <span className={`px-2 py-1 text-xs text-slate-700 block w-full whitespace-nowrap overflow-hidden text-ellipsis ${className}`}>{displayVal}</span>;
   }
 
   return (
@@ -498,7 +548,7 @@ function EditableCell({
       onChange={(e) => setVal(e.target.value)}
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
-      className="w-full bg-transparent px-2 py-1 outline-none border border-transparent hover:bg-slate-100/50 focus:border-blue-500 focus:bg-white rounded transition-all text-xs font-normal text-slate-700"
+      className={`w-full bg-transparent px-2 py-1 outline-none border border-transparent hover:bg-slate-100/50 focus:border-blue-500 focus:bg-white rounded transition-all text-xs font-normal text-slate-700 ${className}`}
     />
   );
 }
@@ -625,7 +675,8 @@ const getColumnsForTab = (tab: string) => {
       { key: "source", label: "Nguồn", width: "110px" },
       { key: "v1_interviewer", label: "Người PV V1", width: "130px" },
       { key: "v1_result", label: "Kết quả V1", width: "120px", type: "v1_result" },
-      { key: "notes", label: "Ghi chú", width: "180px" }
+      { key: "v1_interview_date", label: "Ngày PV", width: "110px", type: "date" },
+      { key: "v1_notes", label: "Ghi chú", width: "180px" }
     ];
   }
   if (tab === "vong_2") {
@@ -644,7 +695,8 @@ const getColumnsForTab = (tab: string) => {
       { key: "source", label: "Nguồn", width: "110px" },
       { key: "v2_interviewer", label: "Người PV V2", width: "130px" },
       { key: "v2_result", label: "Kết quả V2", width: "120px", type: "v2_result" },
-      { key: "notes", label: "Ghi chú", width: "180px" }
+      { key: "v2_interview_date", label: "Ngày PV", width: "110px", type: "date" },
+      { key: "v2_notes", label: "Ghi chú", width: "180px" }
     ];
   }
   // Thử việc
@@ -668,7 +720,7 @@ const getColumnsForTab = (tab: string) => {
     { key: "probation_end_date", label: "Hết hạn TV", width: "110px" },
     { key: "probation_salary", label: "Mức lương TV", width: "120px" },
     { key: "official_salary", label: "MỨC lương CT", width: "120px" },
-    { key: "notes", label: "Ghi chú", width: "180px" }
+    { key: "thuviec_notes", label: "Ghi chú", width: "180px" }
   ];
 };
 
@@ -2276,12 +2328,18 @@ export default function RecruitmentPage() {
                                   const day = String(d.getDate()).padStart(2, '0');
                                   cellValue = `${year}-${month}-${day}`;
                                 }
+
+                                const isInterviewDate = col.key === "v1_interview_date" || col.key === "v2_interview_date";
+                                const isWarning = isInterviewDate && isOneDayBefore(cellValue);
+
                                 return (
-                                  <td key={col.key} className="p-0 border border-slate-100">
+                                  <td key={col.key} className={`p-0 border border-slate-100 ${isWarning ? "bg-[#FFEDD5] border-[#FED7AA]" : ""}`}>
                                     <EditableCell
                                       value={cellValue}
                                       onSave={(newVal) => handleUpdateCandidateField(candidate.id, col.key, newVal)}
                                       readOnly={!canManage}
+                                      type={col.type === "date" ? "date" : "text"}
+                                      className={isWarning ? "bg-[#FFEDD5] text-[#C2410C] font-semibold focus:bg-white" : ""}
                                     />
                                   </td>
                                 );

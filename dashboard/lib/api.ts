@@ -23,6 +23,11 @@ export type Candidate = {
   "Nguồn": string;
   "Người đánh giá": string;
   "Ghi chú"?: string;
+  v1_interview_date?: string;
+  v2_interview_date?: string;
+  v1_notes?: string;
+  v2_notes?: string;
+  thuviec_notes?: string;
   [key: string]: unknown;
 };
 
@@ -87,12 +92,23 @@ export async function fetchCandidates(sheet = "Tổng Hợp"): Promise<Candidate
     "Kết quả V2": c.v2_result || "Chờ đánh giá",
     "Kết quả  V2": c.v2_result || "Chờ đánh giá",
     "Người PV": c.v1_interviewer || c.v2_interviewer || "",
+    "Ngày PV": (sheetLower === "vòng1" || sheetLower === "vong1") ? (c.v1_interview_date || "")
+             : (sheetLower === "vòng2" || sheetLower === "vong2") ? (c.v2_interview_date || "")
+             : "",
+    "v1_interview_date": c.v1_interview_date || "",
+    "v2_interview_date": c.v2_interview_date || "",
     "ONBOARD": c.onboard_date || "",
     "Hết hạn TV": c.probation_end_date || "",
     "Mức lương \nTV": c.probation_salary || "",
     "MỨC lương\nCT": c.official_salary || "",
     "Kết quả nhận việc": c.probation_result || "",
-    "Ghi chú": c.notes || ""
+    "Ghi chú": (sheetLower === "vòng1" || sheetLower === "vong1") ? (c.v1_notes || "")
+             : (sheetLower === "vòng2" || sheetLower === "vong2") ? (c.v2_notes || "")
+             : (sheetLower === "thửviệc" || sheetLower === "thuviec") ? (c.thuviec_notes || "")
+             : (c.notes || ""),
+    "v1_notes": c.v1_notes || "",
+    "v2_notes": c.v2_notes || "",
+    "thuviec_notes": c.thuviec_notes || ""
   }));
 }
 
@@ -199,7 +215,21 @@ export async function updateCandidate(
   if (updates["Vị trí"] !== undefined) mappedUpdates.role = updates["Vị trí"];
   if (updates["Nguồn"] !== undefined) mappedUpdates.source = updates["Nguồn"];
   if (updates["Người đánh giá"] !== undefined) mappedUpdates.reviewer = updates["Người đánh giá"];
-  if (updates["Ghi chú"] !== undefined) mappedUpdates.notes = updates["Ghi chú"];
+  if (updates["Ghi chú"] !== undefined) {
+    const sheetLower = sheet.toLowerCase().replace(/\s/g, "");
+    if (sheetLower === "vòng1" || sheetLower === "vong1") {
+      mappedUpdates.v1_notes = updates["Ghi chú"];
+    } else if (sheetLower === "vòng2" || sheetLower === "vong2") {
+      mappedUpdates.v2_notes = updates["Ghi chú"];
+    } else if (sheetLower === "thửviệc" || sheetLower === "thuviec") {
+      mappedUpdates.thuviec_notes = updates["Ghi chú"];
+    } else {
+      mappedUpdates.notes = updates["Ghi chú"];
+    }
+  }
+  if (updates["v1_notes"] !== undefined) mappedUpdates.v1_notes = updates["v1_notes"];
+  if (updates["v2_notes"] !== undefined) mappedUpdates.v2_notes = updates["v2_notes"];
+  if (updates["thuviec_notes"] !== undefined) mappedUpdates.thuviec_notes = updates["thuviec_notes"];
 
   if (updates["Trạng thái"] !== undefined) {
     const val = String(updates["Trạng thái"]).toUpperCase();
@@ -230,6 +260,19 @@ export async function updateCandidate(
       mappedUpdates.v2_date = updates["Ngày"];
     }
   }
+
+  if (updates["Ngày PV"] !== undefined) {
+    const sheetLower = sheet.toLowerCase().replace(/\s/g, "");
+    if (sheetLower === "vòng1" || sheetLower === "vong1") {
+      mappedUpdates.v1_interview_date = updates["Ngày PV"];
+    } else if (sheetLower === "vòng2" || sheetLower === "vong2") {
+      mappedUpdates.v2_interview_date = updates["Ngày PV"];
+    }
+  }
+  if (updates["v1_interview_date"] !== undefined) mappedUpdates.v1_interview_date = updates["v1_interview_date"];
+  if (updates["v2_interview_date"] !== undefined) mappedUpdates.v2_interview_date = updates["v2_interview_date"];
+  if (updates["v1_date"] !== undefined) mappedUpdates.v1_date = updates["v1_date"];
+  if (updates["v2_date"] !== undefined) mappedUpdates.v2_date = updates["v2_date"];
 
   // V2 Updates
   if (updates["Kết quả V2"] !== undefined || updates["Kết quả  V2"] !== undefined) {

@@ -1412,7 +1412,7 @@ export default function AdministrationPage() {
 
     // Sync to Supabase in background
     try {
-      const { id: _id, ...payload } = newRow;
+      const { id: _id, created_at: _ca, ...payload } = newRow;
       const { data, error } = await supabase
         .from("admin_monthly_reports")
         .insert(payload)
@@ -1420,13 +1420,27 @@ export default function AdministrationPage() {
 
       if (error) {
         console.error("Supabase insert error:", error);
-        // Keep the row in UI but warn
         return;
       }
       if (data && data[0]) {
-        // Replace temp ID with real ID from Supabase
-        setReportRows(prev => prev.map(r => r.id === tempId ? { ...data[0], is_custom: true } as AdminMonthlyReport : r));
-        setEditingCell(prev => prev?.rowId === tempId ? { rowId: data[0].id, field: prev.field } : prev);
+        const realId = data[0].id;
+        // Replace temp ID with real ID, but keep any local edits the user made during temp phase
+        setReportRows(prev => {
+          const localRow = prev.find(r => r.id === tempId);
+          if (!localRow) return prev;
+          const mergedRow: AdminMonthlyReport = { ...localRow, id: realId };
+          // Sync local edits to Supabase
+          const { id: _rid, created_at: _rca, ...updatePayload } = mergedRow;
+          supabase
+            .from("admin_monthly_reports")
+            .update(updatePayload)
+            .eq("id", realId)
+            .then(({ error: updateErr }) => {
+              if (updateErr) console.error("Failed to sync edits:", updateErr);
+            });
+          return prev.map(r => r.id === tempId ? mergedRow : r);
+        });
+        setEditingCell(prev => prev?.rowId === tempId ? { rowId: realId, field: prev.field } : prev);
       }
     } catch (err) {
       console.error("Failed to sync row to Supabase:", err);

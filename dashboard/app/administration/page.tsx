@@ -393,6 +393,91 @@ export default function AdministrationPage() {
   const [showAiSettingsModal, setShowAiSettingsModal] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
+  // Helper to parse tasks into DeptRequests
+  const parseVppTask = (t: any): DeptRequest => {
+    try {
+      if (t.notes && t.notes.startsWith("{")) {
+        const parsed = JSON.parse(t.notes);
+        return {
+          id: t.id,
+          dept: parsed.dept || parsed.targetName || t.assignee,
+          item: parsed.item,
+          qty: parsed.qty,
+          date: parsed.date || t.start_date,
+          status: t.status === "completed" ? "Đã cấp phát" : "Chờ duyệt",
+          target: parsed.target || "phongban",
+          targetName: parsed.targetName || t.assignee
+        };
+      }
+    } catch (e) {
+      console.error("Error parsing task notes as JSON:", e);
+    }
+    
+    // Fallback parsing from title: VPP: targetName | item | qty
+    const parts = t.title.split("|").map((p: string) => p.trim());
+    const targetName = (parts[0] || "").replace("VPP:", "").trim();
+    const item = parts[1] || "";
+    const qty = Number(parts[2]) || 1;
+    return {
+      id: t.id,
+      dept: targetName,
+      item: item,
+      qty: qty,
+      date: t.start_date || "",
+      status: t.status === "completed" ? "Đã cấp phát" : "Chờ duyệt",
+      target: t.title.includes("Ban điều hành") || t.title.includes("BĐH") ? "duan" : "phongban",
+      targetName: targetName
+    };
+  };
+
+  // Fetch VPP requests from Supabase
+  const fetchDeptRequests = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("tasks")
+        .select("*")
+        .ilike("title", "VPP:%");
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        // If empty in Supabase, seed with INITIAL_DEPT_REQUESTS!
+        const seedTasks = INITIAL_DEPT_REQUESTS.map(r => ({
+          title: `VPP: ${r.targetName} | ${r.item} | ${r.qty}`,
+          assignee: r.targetName,
+          start_date: r.date,
+          due_date: r.date,
+          priority: "Thấp",
+          progress: r.status === "Đã cấp phát" ? 100 : 0,
+          status: r.status === "Đã cấp phát" ? "completed" : "pending_approval",
+          notes: JSON.stringify({
+            dept: r.dept,
+            target: r.target,
+            targetName: r.targetName,
+            item: r.item,
+            qty: r.qty,
+            date: r.date
+          })
+        }));
+
+        const { data: insertedData, error: insertError } = await supabase
+          .from("tasks")
+          .insert(seedTasks)
+          .select();
+
+        if (insertError) throw insertError;
+
+        const mapped = (insertedData || []).map(t => parseVppTask(t));
+        setDeptRequests(mapped);
+      } else {
+        const mapped = data.map(t => parseVppTask(t));
+        setDeptRequests(mapped);
+      }
+    } catch (err) {
+      console.error("Error fetching dept requests from Supabase:", err);
+    }
+  };
+
   // Load API Settings on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -447,14 +532,8 @@ export default function AdministrationPage() {
         setPendingPayments(JSON.parse(savedPayments));
       }
 
-      // Load Dept Requests
-      const savedRequests = localStorage.getItem("tnec_dept_requests");
-      if (savedRequests) {
-        setDeptRequests(JSON.parse(savedRequests));
-      } else {
-        setDeptRequests(INITIAL_DEPT_REQUESTS);
-        localStorage.setItem("tnec_dept_requests", JSON.stringify(INITIAL_DEPT_REQUESTS));
-      }
+      // Fetch Dept Requests from Supabase
+      fetchDeptRequests();
 
       fetchUserRoleAndDept();
     }
@@ -531,12 +610,7 @@ export default function AdministrationPage() {
     }
   }, [supplies]);
 
-  // Sync deptRequests to localStorage when changed
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("tnec_dept_requests", JSON.stringify(deptRequests));
-    }
-  }, [deptRequests]);
+  // Sync deptRequests is now handled directly by Supabase
 
   // Delete Supply Handler
   const handleDeleteSupply = (name: string) => {
@@ -544,9 +618,22 @@ export default function AdministrationPage() {
     setSupplies(prev => prev.filter(s => s.name !== name));
   };
 
-  const handleDeleteRequest = (reqId: string) => {
+  const handleDeleteRequest = async (reqId: string) => {
     if (window.confirm("Bạn có chắc chắn muốn xóa yêu cầu cấp phát này không?")) {
-      setDeptRequests(prev => prev.filter(r => r.id !== reqId));
+      try {
+        const { error } = await supabase
+          .from("tasks")
+          .delete()
+          .eq("id", reqId);
+
+        if (error) throw error;
+
+        alert("Đã xóa yêu cầu cấp phát thành công.");
+        fetchDeptRequests();
+      } catch (err: any) {
+        console.error("Error deleting VPP request from Supabase:", err);
+        alert("Lỗi khi xóa yêu cầu: " + (err.message || err));
+      }
     }
   };
 
@@ -1014,7 +1101,7 @@ export default function AdministrationPage() {
   };
 
   // Department Allocation handler
-  const handleApproveRequest = (reqId: string) => {
+  const handleApproveRequest = async (reqId: string) => {
     const request = deptRequests.find(r => r.id === reqId);
     if (!request || request.status === "Đã cấp phát") return;
 
@@ -1027,23 +1114,37 @@ export default function AdministrationPage() {
       if (!confirmProceed) return;
     }
 
-    // Deduct stock if supply exists
-    setSupplies(prev => prev.map(s => {
-      if (s.name === request.item) {
-        const newStock = Math.max(0, s.stock - request.qty);
-        return {
-          ...s,
-          stock: newStock,
-          allocated: s.allocated + request.qty,
-          alert: newStock < 15 ? "Cảnh báo" : "Bình thường"
-        };
-      }
-      return s;
-    }));
+    try {
+      // Update status in Supabase
+      const { error } = await supabase
+        .from("tasks")
+        .update({ status: "completed", progress: 100 })
+        .eq("id", reqId);
 
-    // Update status
-    setDeptRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: "Đã cấp phát" } : r));
-    alert(`Đã duyệt cấp phát ${request.qty} ${request.item} cho ${request.dept}. Tồn kho đã tự động khấu trừ.`);
+      if (error) throw error;
+
+      // Deduct stock if supply exists
+      setSupplies(prev => prev.map(s => {
+        if (s.name === request.item) {
+          const newStock = Math.max(0, s.stock - request.qty);
+          return {
+            ...s,
+            stock: newStock,
+            allocated: s.allocated + request.qty,
+            alert: newStock < 15 ? "Cảnh báo" : "Bình thường"
+          };
+        }
+        return s;
+      }));
+
+      alert(`Đã duyệt cấp phát ${request.qty} ${request.item} cho ${request.dept}. Tồn kho đã tự động khấu trừ.`);
+      
+      // Refresh list from Supabase
+      fetchDeptRequests();
+    } catch (err: any) {
+      console.error("Error approving request in Supabase:", err);
+      alert("Lỗi khi phê duyệt cấp phát: " + (err.message || err));
+    }
   };
 
   // VPP Inventory add supply handler
@@ -1098,7 +1199,7 @@ export default function AdministrationPage() {
   };
 
   // VPP Create new PYC handler
-  const handleCreatePYC = (e: React.FormEvent) => {
+  const handleCreatePYC = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPYCTargetName || !newPYCItem || newPYCQty <= 0) {
       alert("Vui lòng điền đầy đủ thông tin yêu cầu.");
@@ -1106,24 +1207,45 @@ export default function AdministrationPage() {
     }
 
     const deptName = newPYCTarget === "phongban" ? newPYCTargetName : `Ban điều hành ${newPYCTargetName}`;
-    const newReq: DeptRequest = {
-      id: `REQ-${Date.now().toString().slice(-4)}`,
-      dept: deptName,
-      item: newPYCItem,
-      qty: Number(newPYCQty),
-      date: new Date().toISOString().split("T")[0],
-      status: "Chờ duyệt",
-      target: newPYCTarget,
-      targetName: newPYCTargetName
-    };
+    const dateStr = new Date().toISOString().split("T")[0];
 
-    setDeptRequests(prev => [newReq, ...prev]);
-    setShowNewPYCModal(false);
-    
-    // Reset fields
-    setNewPYCItem("");
-    setNewPYCQty(1);
-    alert(`Đã tạo thành công Phiếu yêu cầu ${newReq.id} cho ${deptName}.`);
+    try {
+      const { data, error } = await supabase
+        .from("tasks")
+        .insert([{
+          title: `VPP: ${newPYCTargetName} | ${newPYCItem} | ${newPYCQty}`,
+          assignee: newPYCTargetName,
+          start_date: dateStr,
+          due_date: dateStr,
+          priority: "Thấp",
+          progress: 0,
+          status: "pending_approval",
+          notes: JSON.stringify({
+            dept: deptName,
+            target: newPYCTarget,
+            targetName: newPYCTargetName,
+            item: newPYCItem,
+            qty: Number(newPYCQty),
+            date: dateStr
+          })
+        }])
+        .select();
+
+      if (error) throw error;
+
+      alert(`Đã tạo thành công Phiếu yêu cầu thành công cho ${deptName}.`);
+      setShowNewPYCModal(false);
+      
+      // Reset fields
+      setNewPYCItem("");
+      setNewPYCQty(1);
+      
+      // Refresh list from Supabase
+      fetchDeptRequests();
+    } catch (err: any) {
+      console.error("Error creating PYC in Supabase:", err);
+      alert("Lỗi khi tạo phiếu yêu cầu: " + (err.message || err));
+    }
   };
 
   // Add Allocation Target Handler

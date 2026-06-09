@@ -1106,6 +1106,40 @@ export default function AdministrationPage() {
     setTempEndDate(toISO(end));
   };
 
+  const handleExportChecklistExcel = () => {
+    try {
+      let csvContent = "\uFEFF";
+      
+      csvContent += `"BÁO CÁO CHECKLIST PHÂN VIỆC ĐỊNH KỲ"\n`;
+      csvContent += `"Ngày xuất báo cáo:","${new Date().toLocaleDateString("vi-VN")}"\n\n`;
+      
+      csvContent += `"STT","Tên công việc","Người thực hiện","Tần suất","Trạng thái","Mức độ ưu tiên","Ngày tạo"\n`;
+      
+      checklist.forEach((item, index) => {
+        const task = (item.task || "").replace(/"/g, '""');
+        const assignee = (item.assignee || "").replace(/"/g, '""');
+        const freq = (item.frequency || "").replace(/"/g, '""');
+        const status = (item.status || "").replace(/"/g, '""');
+        const priority = (item.priority || "Trung bình").replace(/"/g, '""');
+        const dateStr = item.date ? new Date(item.date).toLocaleDateString("vi-VN") : "";
+        
+        csvContent += `"${index + 1}","${task}","${assignee}","${freq}","${status}","${priority}","${dateStr}"\n`;
+      });
+      
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Bao_cao_checklist_cong_viec_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert("Lỗi khi kết xuất báo cáo: " + err.message);
+    }
+  };
+
   const handleExportReportExcel = (startDate: string, endDate: string) => {
     try {
       const { combinedItems, totalAmount, invoiceCount, recurringCount, categoriesMap } = getReportData(startDate, endDate);
@@ -3169,12 +3203,20 @@ export default function AdministrationPage() {
                       <h3 className="font-heading font-bold text-slate-800 text-sm">Checklist phân việc định kỳ</h3>
                       <p className="text-slate-400 text-[10px] font-semibold mt-1">Phân công công việc định kỳ hàng ngày/tuần/tháng cho nhân sự hành chính & văn thư</p>
                     </div>
-                    <button 
-                      onClick={() => setShowAddTask(!showAddTask)}
-                      className="flex items-center gap-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all shadow"
-                    >
-                      <Plus size={13} /> {showAddTask ? "Đóng lại" : "Thêm công việc"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={handleExportChecklistExcel}
+                        className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all active:scale-95 shadow"
+                      >
+                        <FileSpreadsheet size={13} /> Báo Cáo
+                      </button>
+                      <button 
+                        onClick={() => setShowAddTask(!showAddTask)}
+                        className="flex items-center gap-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all shadow"
+                      >
+                        <Plus size={13} /> {showAddTask ? "Đóng lại" : "Thêm công việc"}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Add Task Form */}

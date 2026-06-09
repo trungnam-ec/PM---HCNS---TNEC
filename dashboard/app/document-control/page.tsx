@@ -7,7 +7,6 @@ import { supabase } from "@/lib/supabase";
 import {
   FileDown,
   FileUp,
-  FileCheck,
   Search,
   Plus,
   RefreshCw,
@@ -65,14 +64,8 @@ interface BatchItem {
   saved: boolean;
 }
 
-const TIMELINE_EVENTS = [
-  { id: "e1", doc: "Tờ trình phê duyệt vật tư xây dựng Q2", step: "Hành chính trình nộp", time: "09:30 AM", date: "Jun 04", status: "completed" },
-  { id: "e2", doc: "Tờ trình phê duyệt vật tư xây dựng Q2", step: "Trưởng phòng HCNS ký duyệt", time: "11:15 AM", date: "Jun 04", status: "completed" },
-  { id: "e3", doc: "Tờ trình phê duyệt vật tư xây dựng Q2", step: "Ban Tổng Giám đốc xem xét", time: "Đang chờ", date: "Hôm nay", status: "pending" }
-];
-
 export default function DocumentControlPage() {
-  const [activeTab, setActiveTab] = useState<string>("incoming"); // incoming, outgoing_1, outgoing_2, outgoing_hdqt, timeline, settings
+  const [activeTab, setActiveTab] = useState<string>("incoming"); // incoming, outgoing_1, outgoing_2, outgoing_hdqt, settings
   const [docs, setDocs] = useState<ClericalDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -256,7 +249,7 @@ export default function DocumentControlPage() {
 
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get("tab");
-      if (tabParam && ["incoming", "outgoing_1", "outgoing_2", "outgoing_hdqt", "timeline", "settings"].includes(tabParam)) {
+      if (tabParam && ["incoming", "outgoing_1", "outgoing_2", "outgoing_hdqt", "settings"].includes(tabParam)) {
         setActiveTab(tabParam);
       }
     }
@@ -876,7 +869,6 @@ export default function DocumentControlPage() {
               { id: "outgoing_1", label: "Công văn đi 1", icon: FileUp },
               { id: "outgoing_2", label: "Công văn đi 2", icon: FileUp },
               { id: "outgoing_hdqt", label: "Công văn HĐQT", icon: FileText },
-              { id: "timeline", label: "Trình duyệt & Ký số", icon: FileCheck },
               { id: "settings", label: "Cấu hình API", icon: Settings },
             ].map((tab) => {
               const Icon = tab.icon;
@@ -901,7 +893,7 @@ export default function DocumentControlPage() {
           {/* AI Quick Upload Dropzone removed from main views */}
 
           {/* Search bar & Action */}
-          {activeTab !== "settings" && activeTab !== "timeline" && (
+          {activeTab !== "settings" && (
             <div className="flex justify-between items-center gap-4">
               <div className="relative w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
@@ -1083,55 +1075,7 @@ export default function DocumentControlPage() {
             </div>
           )}
 
-          {/* Approval Timeline Tab */}
-          {activeTab === "timeline" && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Approval List */}
-              <div className="lg:col-span-2 space-y-4">
-                <h3 className="font-heading font-bold text-slate-800 text-sm">Yêu cầu trình duyệt đang xử lý</h3>
-                {[
-                  { name: "Tờ trình mua sắm laptop quý 2", booker: "Hành chính", date: "Hôm nay", status: "pending", desc: "Hành chính xin phê duyệt cấp ngân sách 120.000.000 VNĐ để mua sắm thiết bị làm việc." },
-                  { name: "Hồ sơ thanh toán nghiệm thu gói thầu phụ", booker: "Phòng Dự Án", date: "2 ngày trước", status: "rejected", desc: "Thanh quyết toán đợt 3 cho nhà thầu thi công hạ tầng đường." }
-                ].map((item, idx) => (
-                  <div key={idx} className="glass bg-white rounded-2xl p-5 border border-slate-200/40 hover-elevate space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-heading font-bold text-slate-800 text-xs">{item.name}</h4>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${
-                        item.status === "pending" ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700"
-                      }`}>
-                        {item.status === "pending" ? "Đang chờ duyệt" : "Yêu cầu chỉnh sửa"}
-                      </span>
-                    </div>
-                    <p className="text-slate-500 text-[11px] leading-relaxed font-medium">{item.desc}</p>
-                    <div className="flex justify-between items-center text-[10px] text-slate-400 pt-2 border-t border-slate-100">
-                      <span>Người tạo: <strong>{item.booker}</strong></span>
-                      <span>Ngày gửi: {item.date}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
 
-              {/* Timeline Flow */}
-              <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-sm space-y-6">
-                <h3 className="font-heading font-bold text-slate-800 text-sm">Lịch sử phê duyệt gần đây</h3>
-                <div className="relative border-l border-slate-200 pl-4 ml-2 space-y-6">
-                  {TIMELINE_EVENTS.map((event) => (
-                    <div key={event.id} className="relative space-y-1">
-                      {/* Event dot */}
-                      <span className={`absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white ${
-                        event.status === "completed" ? "bg-emerald-500" : "bg-amber-400"
-                      }`} />
-                      <div className="flex justify-between items-start">
-                        <p className="font-heading font-bold text-slate-800 text-xs leading-none">{event.step}</p>
-                        <span className="text-slate-400 text-[9px]">{event.time}</span>
-                      </div>
-                      <p className="text-slate-400 text-[10px] font-semibold">{event.doc}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* API Configuration & Batch AI Upload Tab */}
           {activeTab === "settings" && (

@@ -1390,15 +1390,12 @@ export default function AdministrationPage() {
   };
 
   const handleAddReportRow = async (type: "office" | "project") => {
-    const content = window.prompt("Nhập tên hạng mục mới:");
-    if (!content || !content.trim()) return;
-
-    const stt = window.prompt("Nhập số thứ tự (STT) (ví dụ: 12, 13.5):") || "";
-
     try {
+      const existingOfType = reportRows.filter(r => r.category_type === type);
+      const nextNum = existingOfType.length + 1;
       const newRow = {
-        stt: stt.trim(),
-        content: content.trim(),
+        stt: String(nextNum),
+        content: type === "office" ? `Hạng mục VP mới ${nextNum}` : `Hạng mục DA mới ${nextNum}`,
         category_type: type,
         is_custom: true,
         m1: 0, m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0, m8: 0, m9: 0, m10: 0, m11: 0, m12: 0,
@@ -1413,10 +1410,11 @@ export default function AdministrationPage() {
       if (error) throw error;
       if (data) {
         setReportRows(prev => [...prev, data[0]]);
+        // Auto-focus the new row's content cell for immediate editing
+        setTimeout(() => setEditingCell({ rowId: data[0].id, field: "content" }), 100);
       }
     } catch (err) {
       console.error("Failed to add custom row:", err);
-      alert("Lỗi khi thêm hạng mục!");
     }
   };
 
@@ -4691,10 +4689,10 @@ export default function AdministrationPage() {
                   return (
                     <tr key={row.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-100">
                       <td className="py-2 px-3 text-center text-slate-400 sticky left-0 bg-white z-10 border-r border-slate-200 font-mono text-[10px]">
-                        {row.stt}
+                        {row.is_custom ? renderEditableCell(row, "stt", row.stt, "text") : row.stt}
                       </td>
                       <td className={`py-2 px-3 sticky left-[60px] bg-white z-10 border-r border-slate-200 text-[11px] max-w-[280px] truncate ${isChild ? "pl-6 text-slate-500 font-medium" : "text-slate-800 font-bold"}`}>
-                        {row.content}
+                        {row.is_custom ? renderEditableCell(row, "content", row.content, "text") : row.content}
                       </td>
                       <td className="py-2 px-3 text-right bg-slate-50/40 border-r border-slate-200 font-mono text-slate-800 font-extrabold text-[11px]">
                         {rowTotal > 0 ? rowTotal.toLocaleString("vi-VN") : "-"}

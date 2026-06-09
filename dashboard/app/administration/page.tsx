@@ -452,10 +452,9 @@ export default function AdministrationPage() {
       const { data, error } = await supabase
         .from("tasks")
         .select("*")
-        .eq("title", "VPP_INVENTORY_CATALOG")
-        .single();
+        .eq("title", "VPP_INVENTORY_CATALOG");
 
-      if (error && error.code !== "PGRST116") {
+      if (error) {
         throw error;
       }
 
@@ -475,33 +474,49 @@ export default function AdministrationPage() {
         }
       }
 
-      if (data && data.notes) {
-        const parsedServer = JSON.parse(data.notes);
-        if (Array.isArray(parsedServer)) {
-          // Merge server items and local items (items in local that aren't on the server are added)
-          const mergedSupplies = [...parsedServer];
-          let hasMergedNew = false;
-          
-          for (const localItem of localItems) {
-            const existsOnServer = parsedServer.some(s => s.name.trim().toLowerCase() === localItem.name.trim().toLowerCase());
-            if (!existsOnServer && localItem.name.trim() !== "") {
-              mergedSupplies.push(localItem);
-              hasMergedNew = true;
+      if (data && data.length > 0) {
+        const primaryRecord = data[0];
+        
+        // Background cleanup of any duplicates
+        if (data.length > 1) {
+          const idsToDelete = data.slice(1).map(r => r.id);
+          supabase
+            .from("tasks")
+            .delete()
+            .in("id", idsToDelete)
+            .then(({ error: delErr }) => {
+              if (delErr) console.error("Error deleting duplicate catalogs:", delErr);
+            });
+        }
+
+        if (primaryRecord.notes) {
+          const parsedServer = JSON.parse(primaryRecord.notes);
+          if (Array.isArray(parsedServer)) {
+            // Merge server items and local items (items in local that aren't on the server are added)
+            const mergedSupplies = [...parsedServer];
+            let hasMergedNew = false;
+            
+            for (const localItem of localItems) {
+              const existsOnServer = parsedServer.some(s => s.name.trim().toLowerCase() === localItem.name.trim().toLowerCase());
+              if (!existsOnServer && localItem.name.trim() !== "") {
+                mergedSupplies.push(localItem);
+                hasMergedNew = true;
+              }
+            }
+            
+            setSupplies(mergedSupplies);
+            localStorage.setItem("tnec_supplies", JSON.stringify(mergedSupplies));
+            
+            // If local machine had newer items, sync them back to Supabase
+            if (hasMergedNew) {
+              await supabase
+                .from("tasks")
+                .update({ notes: JSON.stringify(mergedSupplies) })
+                .eq("id", primaryRecord.id);
             }
           }
-          
-          setSupplies(mergedSupplies);
-          localStorage.setItem("tnec_supplies", JSON.stringify(mergedSupplies));
-          
-          // If local machine had newer items, sync them back to Supabase
-          if (hasMergedNew) {
-            await supabase
-              .from("tasks")
-              .update({ notes: JSON.stringify(mergedSupplies) })
-              .eq("title", "VPP_INVENTORY_CATALOG");
-          }
         }
-      } else if (!data) {
+      } else {
         // Seed in Supabase with current localStorage if it exists to prevent losing entered items, otherwise fallback to INITIAL_SUPPLIES
         let seedData = INITIAL_SUPPLIES;
         if (localItems.length > 0) {

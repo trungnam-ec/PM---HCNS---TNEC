@@ -414,7 +414,28 @@ export default function AdministrationPage() {
       // Load Allocation Targets
       const savedTargets = localStorage.getItem("tnec_allocation_targets");
       if (savedTargets) {
-        setAllocationTargets(JSON.parse(savedTargets));
+        try {
+          const parsed = JSON.parse(savedTargets);
+          let changed = false;
+          const updated = [...parsed];
+          INITIAL_ALLOCATION_TARGETS.forEach(initItem => {
+            const exists = parsed.some(
+              (p: any) => p.name.toLowerCase() === initItem.name.toLowerCase() && p.type === initItem.type
+            );
+            if (!exists) {
+              updated.push(initItem);
+              changed = true;
+            }
+          });
+          if (changed) {
+            localStorage.setItem("tnec_allocation_targets", JSON.stringify(updated));
+          }
+          setAllocationTargets(updated);
+        } catch (err) {
+          console.error("Error parsing savedTargets:", err);
+          setAllocationTargets(INITIAL_ALLOCATION_TARGETS);
+          localStorage.setItem("tnec_allocation_targets", JSON.stringify(INITIAL_ALLOCATION_TARGETS));
+        }
       } else {
         setAllocationTargets(INITIAL_ALLOCATION_TARGETS);
         localStorage.setItem("tnec_allocation_targets", JSON.stringify(INITIAL_ALLOCATION_TARGETS));

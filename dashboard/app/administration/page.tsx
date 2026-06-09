@@ -459,27 +459,53 @@ export default function AdministrationPage() {
         throw error;
       }
 
+      // Read current local storage items to merge
+      let localItems: SupplyItem[] = [];
+      if (typeof window !== "undefined") {
+        const localSaved = localStorage.getItem("tnec_supplies");
+        if (localSaved) {
+          try {
+            const parsed = JSON.parse(localSaved);
+            if (Array.isArray(parsed)) {
+              localItems = parsed;
+            }
+          } catch (e) {
+            console.error("Error parsing local supplies for merge:", e);
+          }
+        }
+      }
+
       if (data && data.notes) {
-        const parsed = JSON.parse(data.notes);
-        if (Array.isArray(parsed)) {
-          setSupplies(parsed);
-          localStorage.setItem("tnec_supplies", JSON.stringify(parsed));
+        const parsedServer = JSON.parse(data.notes);
+        if (Array.isArray(parsedServer)) {
+          // Merge server items and local items (items in local that aren't on the server are added)
+          const mergedSupplies = [...parsedServer];
+          let hasMergedNew = false;
+          
+          for (const localItem of localItems) {
+            const existsOnServer = parsedServer.some(s => s.name.trim().toLowerCase() === localItem.name.trim().toLowerCase());
+            if (!existsOnServer && localItem.name.trim() !== "") {
+              mergedSupplies.push(localItem);
+              hasMergedNew = true;
+            }
+          }
+          
+          setSupplies(mergedSupplies);
+          localStorage.setItem("tnec_supplies", JSON.stringify(mergedSupplies));
+          
+          // If local machine had newer items, sync them back to Supabase
+          if (hasMergedNew) {
+            await supabase
+              .from("tasks")
+              .update({ notes: JSON.stringify(mergedSupplies) })
+              .eq("title", "VPP_INVENTORY_CATALOG");
+          }
         }
       } else if (!data) {
         // Seed in Supabase with current localStorage if it exists to prevent losing entered items, otherwise fallback to INITIAL_SUPPLIES
         let seedData = INITIAL_SUPPLIES;
-        if (typeof window !== "undefined") {
-          const localSaved = localStorage.getItem("tnec_supplies");
-          if (localSaved) {
-            try {
-              const parsedLocal = JSON.parse(localSaved);
-              if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
-                seedData = parsedLocal;
-              }
-            } catch (e) {
-              console.error("Error parsing local supplies for seeding:", e);
-            }
-          }
+        if (localItems.length > 0) {
+          seedData = localItems;
         }
 
         const { error: insertError } = await supabase

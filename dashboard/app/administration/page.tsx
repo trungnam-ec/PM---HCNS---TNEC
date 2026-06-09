@@ -405,6 +405,7 @@ export default function AdministrationPage() {
     unit: string;
     qty: number;
   }>>([]);
+  const [isSuppliesLoadedFromServer, setIsSuppliesLoadedFromServer] = useState(false);
 
   // Helper to parse tasks into DeptRequests
   const parseVppTask = (t: any): DeptRequest => {
@@ -443,6 +444,47 @@ export default function AdministrationPage() {
       target: t.title.includes("Ban điều hành") || t.title.includes("BĐH") ? "duan" : "phongban",
       targetName: targetName
     };
+  };
+
+  // Fetch VPP supplies catalog from Supabase
+  const fetchSuppliesCatalog = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("tasks")
+        .select("*")
+        .eq("title", "VPP_INVENTORY_CATALOG")
+        .single();
+
+      if (error && error.code !== "PGRST116") {
+        throw error;
+      }
+
+      if (data && data.notes) {
+        const parsed = JSON.parse(data.notes);
+        if (Array.isArray(parsed)) {
+          setSupplies(parsed);
+          localStorage.setItem("tnec_supplies", JSON.stringify(parsed));
+        }
+      } else if (!data) {
+        // Seed INITIAL_SUPPLIES in Supabase!
+        const { error: insertError } = await supabase
+          .from("tasks")
+          .insert([{
+            title: "VPP_INVENTORY_CATALOG",
+            assignee: "Hành chính",
+            status: "completed",
+            notes: JSON.stringify(INITIAL_SUPPLIES)
+          }]);
+
+        if (insertError) throw insertError;
+        setSupplies(INITIAL_SUPPLIES);
+        localStorage.setItem("tnec_supplies", JSON.stringify(INITIAL_SUPPLIES));
+      }
+    } catch (err) {
+      console.error("Error fetching supplies catalog from Supabase:", err);
+    } finally {
+      setIsSuppliesLoadedFromServer(true);
+    }
   };
 
   // Fetch VPP requests from Supabase
@@ -547,8 +589,9 @@ export default function AdministrationPage() {
         setPendingPayments(JSON.parse(savedPayments));
       }
 
-      // Fetch Dept Requests from Supabase
+      // Fetch Dept Requests and Supplies Catalog from Supabase
       fetchDeptRequests();
+      fetchSuppliesCatalog();
 
       fetchUserRoleAndDept();
     }
@@ -618,12 +661,28 @@ export default function AdministrationPage() {
     currentUser.department.toLowerCase().includes("hanh chinh")
   ));
 
-  // Sync supplies to localStorage when changed
+  // Sync supplies to Supabase and localStorage when changed
   useEffect(() => {
     if (typeof window !== "undefined") {
       localStorage.setItem("tnec_supplies", JSON.stringify(supplies));
+
+      // Only sync if the catalog has been fetched from the server.
+      // This prevents overwriting the database with default/stale local values on mount.
+      if (isSuppliesLoadedFromServer) {
+        const syncSuppliesToSupabase = async () => {
+          try {
+            await supabase
+              .from("tasks")
+              .update({ notes: JSON.stringify(supplies) })
+              .eq("title", "VPP_INVENTORY_CATALOG");
+          } catch (err) {
+            console.error("Error syncing supplies to Supabase:", err);
+          }
+        };
+        syncSuppliesToSupabase();
+      }
     }
-  }, [supplies]);
+  }, [supplies, isSuppliesLoadedFromServer]);
 
   // Sync deptRequests is now handled directly by Supabase
 

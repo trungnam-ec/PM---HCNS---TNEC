@@ -104,6 +104,7 @@ interface Supplier {
   account: string;
   bank: string;
   service: string;
+  project_name?: string;
 }
 
 interface SupplierPayment {
@@ -117,6 +118,7 @@ interface SupplierPayment {
   content: string;
   month: string;
   fileUrl?: string;
+  project_name?: string;
 }
 
 // ─── INITIAL MOCK DATA ────────────────────────────────────────────────────────
@@ -199,13 +201,13 @@ const INITIAL_RECURRING: RecurringPayment[] = [
 ];
 
 const INITIAL_SUPPLIERS: Supplier[] = [
-  { id: "NCC-01", name: "CÔNG TY CỔ PHẦN AN CƯ ĐỨC PHÚ", account: "520052868", bank: "TP BANK - PGD Kỳ Hòa - CN Sài Gòn", service: "Thuê văn phòng HCM" },
-  { id: "NCC-02", name: "CÔNG TY CỔ PHẦN ĐẦU TƯ THỊNH VƯỢNG HVC", account: "334818", bank: "ACB - CN Tân Bình", service: "Lắp máy lạnh văn phòng" },
-  { id: "NCC-03", name: "CÔNG TY CỔ PHẦN HAI BỐN BẢY", account: "14020592925013", bank: "NH TMCP Kỹ Thương VN - CN Quang Trung", service: "Chuyển phát nhanh" },
-  { id: "NCC-04", name: "CÔNG TY CỔ PHẦN THƯƠNG MẠI XÂY DỰNG HPK", account: "3181551718", bank: "NH ACB - CN Gò Vấp", service: "Thi công sửa chữa văn phòng" },
-  { id: "NCC-05", name: "Nguyễn Bích Như Quỳnh", account: "11112857", bank: "Ngân hàng ACB", service: "" },
-  { id: "NCC-06", name: "Nguyễn Ngọc Thanh Hằng", account: "02597652501", bank: "Ngân hàng Tiên Phong (TP BANK)", service: "" },
-  { id: "NCC-07", name: "TRẦN NGHIỆP QUANG", account: "0942870512", bank: "Ngân hàng SHB", service: "Thuê nhà Vàm Lẽo" },
+  { id: "NCC-01", name: "CÔNG TY CỔ PHẦN AN CƯ ĐỨC PHÚ", account: "520052868", bank: "TP BANK - PGD Kỳ Hòa - CN Sài Gòn", service: "Thuê văn phòng HCM", project_name: "Văn phòng HCM" },
+  { id: "NCC-02", name: "CÔNG TY CỔ PHẦN ĐẦU TƯ THỊNH VƯỢNG HVC", account: "334818", bank: "ACB - CN Tân Bình", service: "Lắp máy lạnh văn phòng", project_name: "Văn phòng HCM" },
+  { id: "NCC-03", name: "CÔNG TY CỔ PHẦN HAI BỐN BẢY", account: "14020592925013", bank: "NH TMCP Kỹ Thương VN - CN Quang Trung", service: "Chuyển phát nhanh", project_name: "Văn phòng HCM" },
+  { id: "NCC-04", name: "CÔNG TY CỔ PHẦN THƯƠNG MẠI XÂY DỰNG HPK", account: "3181551718", bank: "NH ACB - CN Gò Vấp", service: "Thi công sửa chữa văn phòng", project_name: "Văn phòng HCM" },
+  { id: "NCC-05", name: "Nguyễn Bích Như Quỳnh", account: "11112857", bank: "Ngân hàng ACB", service: "", project_name: "Văn phòng HCM" },
+  { id: "NCC-06", name: "Nguyễn Ngọc Thanh Hằng", account: "02597652501", bank: "Ngân hàng Tiên Phong (TP BANK)", service: "", project_name: "Văn phòng HCM" },
+  { id: "NCC-07", name: "TRẦN NGHIỆP QUANG", account: "0942870512", bank: "Ngân hàng SHB", service: "Thuê nhà Vàm Lẽo", project_name: "Vàm Lẽo" },
 ];
 
 interface AdminMonthlyReport {
@@ -337,6 +339,7 @@ export default function AdministrationPage() {
   const [supplierAccountState, setSupplierAccountState] = useState("");
   const [supplierBankState, setSupplierBankState] = useState("");
   const [supplierServiceState, setSupplierServiceState] = useState("");
+  const [supplierProjectState, setSupplierProjectState] = useState("Văn phòng HCM");
 
   // Form states for creating pending payment
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
@@ -860,7 +863,8 @@ export default function AdministrationPage() {
       name: supplierNameState.trim(),
       account: supplierAccountState.trim(),
       bank: supplierBankState.trim(),
-      service: supplierServiceState.trim()
+      service: supplierServiceState.trim(),
+      project_name: supplierProjectState
     };
 
     try {
@@ -888,6 +892,7 @@ export default function AdministrationPage() {
     setSupplierAccountState("");
     setSupplierBankState("");
     setSupplierServiceState("");
+    setSupplierProjectState("Văn phòng HCM");
   };
 
   const handleDeleteSupplier = async (id: string) => {
@@ -944,7 +949,8 @@ export default function AdministrationPage() {
           amount: Number(payAmount),
           beneficiary_name: supp.name,
           bank_account: supp.account,
-          bank_name_branch: supp.bank
+          bank_name_branch: supp.bank,
+          project_name: supp.project_name || "Văn phòng HCM"
         }])
         .select();
       if (error) throw error;
@@ -990,7 +996,8 @@ export default function AdministrationPage() {
       service: supp.service,
       amount: Number(payAmount),
       content: payContent || `Thanh toán định kỳ ${supp.name}`,
-      month: payMonth || "06/2026"
+      month: payMonth || "06/2026",
+      project_name: supp.project_name || "Văn phòng HCM"
     };
 
     const updated = [...pendingPayments, newPayment];
@@ -1037,6 +1044,9 @@ export default function AdministrationPage() {
 
     setExportLoading(true);
     try {
+      const expEmployeeName = currentUser?.name || employeeName;
+      const expEmployeeDept = currentUser?.department || employeeDept;
+
       for (const p of currentMonthPayments) {
         const response = await fetch("/api/export-invoice-payment", {
           method: "POST",
@@ -1044,10 +1054,10 @@ export default function AdministrationPage() {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            employeeName,
-            employeeDept,
+            employeeName: expEmployeeName,
+            employeeDept: expEmployeeDept,
             mission: p.content,
-            projectName: "Văn phòng HCM",
+            projectName: p.project_name || "Văn phòng HCM",
             supplierName: p.supplierName,
             bankAccount: p.account,
             bankNameBranch: p.bank,
@@ -4393,6 +4403,20 @@ export default function AdministrationPage() {
                             />
                           </div>
 
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase block">Dự án / Văn phòng phụ trách</label>
+                            <select
+                              value={supplierProjectState}
+                              onChange={(e) => setSupplierProjectState(e.target.value)}
+                              className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
+                            >
+                              <option value="Văn phòng HCM">Văn phòng HCM</option>
+                              {PROJECTS.map(p => (
+                                <option key={p} value={p}>{p}</option>
+                              ))}
+                            </select>
+                          </div>
+
                           <button
                             type="submit"
                             className="w-full py-2.5 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer shadow"
@@ -4413,6 +4437,7 @@ export default function AdministrationPage() {
                                 <th className="py-2.5 px-3">Tài Khoản</th>
                                 <th className="py-2.5 px-3">Ngân Hàng Thụ Hưởng</th>
                                 <th className="py-2.5 px-3">Hàng Hóa / Dịch Vụ</th>
+                                <th className="py-2.5 px-3">Dự án / Bộ phận</th>
                                 <th className="py-2.5 px-3 w-12 text-center">Xóa</th>
                               </tr>
                             </thead>
@@ -4424,6 +4449,7 @@ export default function AdministrationPage() {
                                   <td className="py-3 px-3 font-mono font-bold text-slate-800 text-[11px]">{s.account}</td>
                                   <td className="py-3 px-3 text-slate-500 text-[11px] leading-snug">{s.bank}</td>
                                   <td className="py-3 px-3 text-slate-400 italic text-[11px]">{s.service || "—"}</td>
+                                  <td className="py-3 px-3 text-slate-600 font-bold text-[11px]">{s.project_name || "Văn phòng HCM"}</td>
                                   <td className="py-3 px-3 text-center">
                                     <button
                                       onClick={() => handleDeleteSupplier(s.id)}
@@ -4437,7 +4463,7 @@ export default function AdministrationPage() {
                               ))}
                               {suppliers.length === 0 && (
                                 <tr>
-                                  <td colSpan={6} className="py-10 text-center text-slate-400 italic">Danh sách NCC trống. Hãy thêm nhà cung cấp mới.</td>
+                                  <td colSpan={7} className="py-10 text-center text-slate-400 italic">Danh sách NCC trống. Hãy thêm nhà cung cấp mới.</td>
                                 </tr>
                               )}
                             </tbody>

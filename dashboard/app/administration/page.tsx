@@ -1390,31 +1390,43 @@ export default function AdministrationPage() {
   };
 
   const handleAddReportRow = async (type: "office" | "project") => {
-    try {
-      const existingOfType = reportRows.filter(r => r.category_type === type);
-      const nextNum = existingOfType.length + 1;
-      const newRow = {
-        stt: String(nextNum),
-        content: type === "office" ? `Hạng mục VP mới ${nextNum}` : `Hạng mục DA mới ${nextNum}`,
-        category_type: type,
-        is_custom: true,
-        m1: 0, m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0, m8: 0, m9: 0, m10: 0, m11: 0, m12: 0,
-        notes: ""
-      };
+    const existingOfType = reportRows.filter(r => r.category_type === type);
+    const nextNum = existingOfType.length + 1;
+    const tempId = `temp-${Date.now()}`;
+    const newRow: AdminMonthlyReport = {
+      id: tempId,
+      stt: String(nextNum),
+      content: type === "office" ? `Hạng mục VP mới ${nextNum}` : `Hạng mục DA mới ${nextNum}`,
+      category_type: type,
+      is_custom: true,
+      m1: 0, m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0, m8: 0, m9: 0, m10: 0, m11: 0, m12: 0,
+      notes: ""
+    };
 
+    // Optimistic: add to UI immediately
+    setReportRows(prev => [...prev, newRow]);
+    setTimeout(() => setEditingCell({ rowId: tempId, field: "content" }), 100);
+
+    // Sync to Supabase in background
+    try {
+      const { id: _id, ...payload } = newRow;
       const { data, error } = await supabase
         .from("admin_monthly_reports")
-        .insert(newRow)
+        .insert(payload)
         .select();
 
-      if (error) throw error;
-      if (data) {
-        setReportRows(prev => [...prev, data[0]]);
-        // Auto-focus the new row's content cell for immediate editing
-        setTimeout(() => setEditingCell({ rowId: data[0].id, field: "content" }), 100);
+      if (error) {
+        console.error("Supabase insert error:", error);
+        // Keep the row in UI but warn
+        return;
+      }
+      if (data && data[0]) {
+        // Replace temp ID with real ID from Supabase
+        setReportRows(prev => prev.map(r => r.id === tempId ? { ...data[0], is_custom: true } as AdminMonthlyReport : r));
+        setEditingCell(prev => prev?.rowId === tempId ? { rowId: data[0].id, field: prev.field } : prev);
       }
     } catch (err) {
-      console.error("Failed to add custom row:", err);
+      console.error("Failed to sync row to Supabase:", err);
     }
   };
 

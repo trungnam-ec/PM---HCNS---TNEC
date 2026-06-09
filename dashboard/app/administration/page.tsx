@@ -33,7 +33,7 @@ import {
   Building2,
   Briefcase
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { docSoVietNam, exportDeNghiChuyenTien, downloadDocFile } from "@/lib/wordExporter";
 import { supabase } from "@/lib/supabase";
 
@@ -305,6 +305,16 @@ export default function AdministrationPage() {
   const [newSupplyCat, setNewSupplyCat] = useState("Giấy in");
   const [newSupplyUnit, setNewSupplyUnit] = useState("");
   const [newSupplyStock, setNewSupplyStock] = useState(0);
+
+  // Dynamic unique categories extracted from supplies list
+  const uniqueCategories = useMemo(() => {
+    const cats = supplies.map(s => s.cat).filter(Boolean);
+    if (cats.length === 0) {
+      return ["Giấy in", "Bút viết", "Dụng cụ lưu trữ", "Khác"];
+    }
+    return Array.from(new Set(cats));
+  }, [supplies]);
+
 
   // State for Allocation Targets Directory (Danh mục cấp phát)
   const [allocationTargets, setAllocationTargets] = useState<AllocationTarget[]>(INITIAL_ALLOCATION_TARGETS);
@@ -1730,8 +1740,12 @@ export default function AdministrationPage() {
                           <button 
                             type="button"
                             onClick={() => {
-                              setShowAllocationDirectory(!showAllocationDirectory);
+                              const nextState = !showAllocationDirectory;
+                              setShowAllocationDirectory(nextState);
                               setShowAddSupply(false);
+                              if (nextState) {
+                                setNewSupplyCat(""); // Reset to empty string so user can type a custom category
+                              }
                             }}
                             className={`flex items-center gap-1.5 text-xs font-bold px-4 py-2.5 rounded-xl shadow hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 ${
                               showAllocationDirectory 
@@ -1745,8 +1759,12 @@ export default function AdministrationPage() {
                           <button 
                             type="button"
                             onClick={() => {
-                              setShowAddSupply(!showAddSupply);
+                              const nextState = !showAddSupply;
+                              setShowAddSupply(nextState);
                               setShowAllocationDirectory(false);
+                              if (nextState && uniqueCategories.length > 0) {
+                                setNewSupplyCat(uniqueCategories[0]);
+                              }
                             }}
                             className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
                           >
@@ -1785,17 +1803,15 @@ export default function AdministrationPage() {
                                 </div>
 
                                 <div className="space-y-1">
-                                  <label className="text-[10px] font-black text-slate-400 uppercase block">Danh mục</label>
-                                  <select
+                                  <label className="text-[10px] font-black text-slate-400 uppercase block">Danh mục <span className="text-rose-500">*</span></label>
+                                  <input
+                                    type="text"
+                                    required
                                     value={newSupplyCat}
                                     onChange={(e) => setNewSupplyCat(e.target.value)}
-                                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800 cursor-pointer"
-                                  >
-                                    <option value="Giấy in">Giấy in</option>
-                                    <option value="Bút viết">Bút viết</option>
-                                    <option value="Dụng cụ lưu trữ">Dụng cụ lưu trữ</option>
-                                    <option value="Khác">Vật tư khác</option>
-                                  </select>
+                                    placeholder="Ví dụ: Giấy in, Bút viết, Đồng phục..."
+                                    className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs font-semibold text-slate-800"
+                                  />
                                 </div>
 
                                 <div className="space-y-1">
@@ -1906,12 +1922,11 @@ export default function AdministrationPage() {
                               <select
                                 value={newSupplyCat}
                                 onChange={(e) => setNewSupplyCat(e.target.value)}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold bg-white focus:border-blue-500 focus:outline-none"
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold bg-white focus:border-blue-500 focus:outline-none cursor-pointer"
                               >
-                                <option value="Giấy in">Giấy in</option>
-                                <option value="Bút viết">Bút viết</option>
-                                <option value="Dụng cụ lưu trữ">Dụng cụ lưu trữ</option>
-                                <option value="Khác">Vật tư khác</option>
+                                {uniqueCategories.map((cat, idx) => (
+                                  <option key={idx} value={cat}>{cat}</option>
+                                ))}
                               </select>
                             </div>
                             <div className="space-y-1">

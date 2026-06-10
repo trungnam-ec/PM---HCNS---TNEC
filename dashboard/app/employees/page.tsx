@@ -19,7 +19,8 @@ import {
   Loader2,
   X,
   Upload,
-  Check
+  Check,
+  Settings
 } from "lucide-react";
 
 interface Employee {
@@ -63,6 +64,14 @@ export default function EmployeeManagementPage() {
   const [previewEmployees, setPreviewEmployees] = useState<ExtractedEmployee[]>([]);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Drag & Drop State
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Settings State
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState("");
+  const [tempModel, setTempModel] = useState("gpt-4o-mini");
 
   // Fetch employees from Supabase
   const fetchEmployees = async () => {
@@ -145,12 +154,10 @@ export default function EmployeeManagementPage() {
     fetchEmployees();
   }, []);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Retrieve OpenAI key from localStorage
+  const processUploadedFile = async (file: File) => {
+    // Retrieve OpenAI key and model from localStorage
     const customKey = localStorage.getItem("openai_api_key") || "";
+    const selectedModel = localStorage.getItem("openai_model_nhan_su") || "gpt-4o-mini";
 
     setIsAnalyzing(true);
     const formData = new FormData();
@@ -162,6 +169,7 @@ export default function EmployeeManagementPage() {
         method: "POST",
         headers: {
           "Authorization": customKey ? `Bearer ${customKey}` : "",
+          "x-openai-model": selectedModel
         },
         body: formData,
       });
@@ -183,9 +191,51 @@ export default function EmployeeManagementPage() {
       alert("Lỗi phân tích file nhân sự: " + err.message);
     } finally {
       setIsAnalyzing(false);
-      // Reset file input
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processUploadedFile(file);
+    }
+    // Reset file input
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  // Drag & Drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processUploadedFile(file);
+    }
+  };
+
+  // Settings handlers
+  const openSettings = () => {
+    setTempApiKey(localStorage.getItem("openai_api_key") || "");
+    setTempModel(localStorage.getItem("openai_model_nhan_su") || "gpt-4o-mini");
+    setShowSettingsModal(true);
+  };
+
+  const handleSaveSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    localStorage.setItem("openai_api_key", tempApiKey.trim());
+    localStorage.setItem("openai_model_nhan_su", tempModel);
+    setShowSettingsModal(false);
+    alert("Đã lưu cấu hình AI thành công!");
   };
 
   const handleSaveImportedEmployees = async () => {
@@ -196,6 +246,7 @@ export default function EmployeeManagementPage() {
       // Format payload for employees table
       const insertPayload = previewEmployees.map(emp => {
         const avatarStr = emp.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+        const hasValidStart = emp.start && emp.start !== "" && !isNaN(Date.parse(emp.start));
         return {
           name: emp.name,
           department: emp.department,
@@ -204,7 +255,7 @@ export default function EmployeeManagementPage() {
           email: emp.email || "N/A",
           status: emp.status || "Chính thức",
           avatar: avatarStr,
-          created_at: emp.start ? new Date(emp.start).toISOString() : new Date().toISOString()
+          created_at: hasValidStart ? new Date(emp.start).toISOString() : new Date().toISOString()
         };
       });
 
@@ -330,7 +381,10 @@ export default function EmployeeManagementPage() {
   });
 
   return (
-    <div className="flex min-h-screen bg-[#F7F9FC]">
+    <div 
+      className="flex min-h-screen bg-[#F7F9FC]"
+      onDragOver={handleDragOver}
+    >
       <Sidebar />
       <div className="ml-60 flex-1 flex flex-col min-w-0">
         <Header title="Quản lý Nhân sự" subtitle="Quản lý thông tin hồ sơ nhân sự, phòng ban và chức vụ" />
@@ -388,6 +442,13 @@ export default function EmployeeManagementPage() {
               >
                 <Upload size={13} className="text-slate-500" />
                 Danh sách nhân sự
+              </button>
+              <button
+                onClick={openSettings}
+                className="p-2.5 bg-white border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 transition-all shadow-sm cursor-pointer inline-flex items-center justify-center"
+                title="Cấu hình OpenAI API Key & Model AI"
+              >
+                <Settings size={14} />
               </button>
               {currentUser && (currentUser.isAdmin || 
                                currentUser.role.toLowerCase() === "admin" ||
@@ -702,6 +763,85 @@ export default function EmployeeManagementPage() {
           <div className="text-center space-y-1">
             <h3 className="font-heading font-extrabold text-white text-sm">AI đang xử lý tài liệu</h3>
             <p className="text-xs text-blue-100/70 font-medium">Vui lòng chờ, hệ thống đang bóc tách thông tin nhân sự...</p>
+          </div>
+        </div>
+      )}
+      {/* AI Settings Modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="glass bg-white rounded-2xl w-full max-w-md overflow-hidden p-6 space-y-4 border border-white text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Settings size={16} className="text-[#005BAC]" />
+                <h3 className="font-heading font-extrabold text-slate-800 text-sm">Cấu hình AI trích xuất</h3>
+              </div>
+              <button onClick={() => setShowSettingsModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={16} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSaveSettings} className="space-y-4 font-semibold text-slate-600">
+              <div className="space-y-1">
+                <label className="text-slate-500">OpenAI API Key (Dùng chung)</label>
+                <input
+                  type="password"
+                  value={tempApiKey}
+                  onChange={(e) => setTempApiKey(e.target.value)}
+                  placeholder="sk-proj-xxxxxxxxxxxxxxxxxxxxxxxx"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs"
+                />
+                <p className="text-[10px] text-slate-400 font-medium mt-1">Cung cấp API Key để sử dụng các tính năng trích xuất danh sách tự động.</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-500">Mô hình AI (Model)</label>
+                <select
+                  value={tempModel}
+                  onChange={(e) => setTempModel(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 bg-white"
+                >
+                  <option value="gpt-4o-mini">gpt-4o-mini (Nhanh & Tiết kiệm chi phí)</option>
+                  <option value="gpt-4o">gpt-4o (Thông minh & Đọc file chính xác hơn)</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 justify-end pt-4 border-t border-slate-100">
+                <button
+                  type="button" onClick={() => setShowSettingsModal(false)}
+                  className="px-4 py-2 border border-slate-200 text-slate-500 font-bold rounded-xl text-xs hover:bg-slate-50 transition-all"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl text-xs active:scale-95 transition-all shadow"
+                >
+                  Lưu cấu hình
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Drag & Drop Overlay */}
+      {isDragging && (
+        <div 
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[999] flex flex-col items-center justify-center p-6 transition-all duration-300"
+        >
+          <div className="border-4 border-dashed border-[#005BAC] bg-white/95 rounded-3xl p-12 flex flex-col items-center justify-center gap-4 max-w-lg shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-5 bg-blue-50 text-[#005BAC] rounded-full animate-bounce">
+              <Upload size={32} />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="font-heading font-black text-slate-800 text-base">Thả file vào đây</h3>
+              <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                Hỗ trợ các file Excel, Word, PDF hoặc Hình ảnh chứa danh sách nhân viên để AI tự động phân tích
+              </p>
+            </div>
           </div>
         </div>
       )}

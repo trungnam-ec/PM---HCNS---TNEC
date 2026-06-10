@@ -67,7 +67,6 @@ export default function EmployeeManagementPage() {
 
   // Drag & Drop State
   const [isDragging, setIsDragging] = useState(false);
-  const dragCounter = useRef(0);
 
   // Settings State
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -244,40 +243,56 @@ export default function EmployeeManagementPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // Drag & Drop handlers
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current++;
-    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-      setIsDragging(true);
-    }
-  };
+  // Drag & Drop — use native window-level events for reliable detection
+  const processUploadedFilesRef = useRef(processUploadedFiles);
+  processUploadedFilesRef.current = processUploadedFiles;
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
+  useEffect(() => {
+    let counter = 0;
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current--;
-    if (dragCounter.current <= 0) {
+    const onDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      counter++;
+      if (counter === 1) {
+        setIsDragging(true);
+      }
+    };
+
+    const onDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+
+    const onDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      counter--;
+      if (counter <= 0) {
+        counter = 0;
+        setIsDragging(false);
+      }
+    };
+
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      counter = 0;
       setIsDragging(false);
-    }
-  };
+      const files = e.dataTransfer?.files;
+      if (files && files.length > 0) {
+        processUploadedFilesRef.current(files);
+      }
+    };
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    dragCounter.current = 0;
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      processUploadedFiles(files);
-    }
-  };
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, []);
 
   // Settings handlers
   const openSettings = () => {
@@ -439,10 +454,6 @@ export default function EmployeeManagementPage() {
   return (
     <div 
       className="flex min-h-screen bg-[#F7F9FC] relative"
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
     >
       <Sidebar />
       <div className="ml-60 flex-1 flex flex-col min-w-0">

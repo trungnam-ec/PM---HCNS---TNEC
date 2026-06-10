@@ -199,6 +199,11 @@ export default function CBPage() {
   // Search keyword
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Authorization states
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [hasFullAccess, setHasFullAccess] = useState(false);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
     if (tabId === "employee_profile") setActiveSubTab("personal");
@@ -208,8 +213,63 @@ export default function CBPage() {
     else if (tabId === "org_chart") setActiveSubTab("chart");
   };
 
-  // Fetch employees from Supabase
-  const fetchEmployees = async () => {
+  const checkAccessAndLoad = async () => {
+    try {
+      setLoadingAuth(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !session.user) {
+        setLoadingAuth(false);
+        return;
+      }
+      
+      const email = session.user.email || "";
+      
+      // 1. Query employees table for current employee info
+      const { data: empData } = await supabase
+        .from("employees")
+        .select("*")
+        .eq("email", email)
+        .maybeSingle();
+        
+      // 2. Query allowed_users for role info
+      const { data: allowedData } = await supabase
+        .from("allowed_users")
+        .select("role")
+        .eq("email", email)
+        .maybeSingle();
+
+      const isAdmin = allowedData?.role === "Admin" || empData?.role?.toLowerCase() === "admin";
+      const isLanPhương = empData?.name === "Lại Nguyễn Lan Phương" || 
+                          session.user.user_metadata?.full_name === "Lại Nguyễn Lan Phương" || 
+                          session.user.user_metadata?.name === "Lại Nguyễn Lan Phương";
+      const isTPHCNS = empData?.role?.toLowerCase()?.includes("trưởng phòng") && 
+                       (empData?.department?.toLowerCase()?.includes("hành chính") || empData?.department?.toLowerCase()?.includes("hcns"));
+                       
+      const fullAccess = !!(isAdmin || isLanPhương || isTPHCNS);
+      setHasFullAccess(fullAccess);
+      
+      const userInfo = {
+        email,
+        name: empData?.name || session.user.user_metadata?.full_name || session.user.user_metadata?.name || "Người dùng",
+        role: empData?.role || (isAdmin ? "Admin" : "Nhân viên"),
+        department: empData?.department || "Chưa xếp phòng",
+        isAdmin,
+        empId: empData?.id
+      };
+      setCurrentUser(userInfo);
+
+      // Now load employees and contracts
+      await loadEmployeesData(email, fullAccess, userInfo.name, empData);
+      await fetchContracts();
+    } catch (err) {
+      console.error("Error checking user access:", err);
+    } finally {
+      setLoadingAuth(false);
+    }
+  };
+
+  // Fetch employees from Supabase with access filters
+  const loadEmployeesData = async (email: string, fullAccess: boolean, userName: string, empRecord: any) => {
     try {
       setLoadingEmployees(true);
       const { data, error } = await supabase
@@ -218,9 +278,30 @@ export default function CBPage() {
         .order("name", { ascending: true });
       if (error) throw error;
       if (data) {
-        setEmployees(data as Employee[]);
-        if (data.length > 0) {
-          setSelectedEmp(data[0] as Employee);
+        let finalEmployees = data as Employee[];
+        if (!fullAccess) {
+          finalEmployees = (data as Employee[]).filter(e => e.email === email || e.name === userName);
+          if (finalEmployees.length === 0) {
+            const dummyEmp: Employee = {
+              id: empRecord?.id || "dummy-id",
+              name: userName,
+              email: email,
+              phone: empRecord?.phone || "",
+              department: empRecord?.department || "Chưa xếp phòng",
+              role: empRecord?.role || "Nhân viên",
+              status: "Chính thức",
+              avatar: userName.slice(0, 2).toUpperCase(),
+              kpi: 100,
+              completed_tasks: 0,
+              pending_tasks: 0,
+              created_at: empRecord?.created_at || new Date().toISOString()
+            };
+            finalEmployees = [dummyEmp];
+          }
+        }
+        setEmployees(finalEmployees);
+        if (finalEmployees.length > 0) {
+          setSelectedEmp(finalEmployees[0]);
         }
       }
     } catch (err) {
@@ -228,6 +309,10 @@ export default function CBPage() {
     } finally {
       setLoadingEmployees(false);
     }
+  };
+
+  const fetchEmployees = async () => {
+    await checkAccessAndLoad();
   };
 
   // Fetch contracts from Supabase
@@ -250,8 +335,7 @@ export default function CBPage() {
   };
 
   useEffect(() => {
-    fetchEmployees();
-    fetchContracts();
+    checkAccessAndLoad();
   }, []);
 
   // Sync fingerprint machine mock
@@ -287,6 +371,42 @@ export default function CBPage() {
       emp.role.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [employees, searchQuery]);
+
+  const filteredAttendanceLogs = useMemo(() => {
+    return MOCK_ATTENDANCE_LOGS.filter(log => hasFullAccess || log.name === currentUser?.name);
+  }, [hasFullAccess, currentUser]);
+
+  const filteredExplanations = useMemo(() => {
+    return MOCK_EXPLANATIONS.filter(e => hasFullAccess || e.name === currentUser?.name);
+  }, [hasFullAccess, currentUser]);
+
+  const filteredLeaves = useMemo(() => {
+    return MOCK_LEAVES.filter(l => hasFullAccess || l.name === currentUser?.name);
+  }, [hasFullAccess, currentUser]);
+
+  const filteredTravels = useMemo(() => {
+    return MOCK_TRAVELS.filter(t => hasFullAccess || t.name === currentUser?.name);
+  }, [hasFullAccess, currentUser]);
+
+  const filteredRegimes = useMemo(() => {
+    return MOCK_REGIMES.filter(r => hasFullAccess || r.name === currentUser?.name);
+  }, [hasFullAccess, currentUser]);
+
+  const filteredSalaryInfo = useMemo(() => {
+    return MOCK_SALARY_INFO.filter(s => hasFullAccess || s.name === currentUser?.name);
+  }, [hasFullAccess, currentUser]);
+
+  const filteredBhxhLogs = useMemo(() => {
+    return MOCK_BHXH_LOGS.filter(b => hasFullAccess || b.name === currentUser?.name);
+  }, [hasFullAccess, currentUser]);
+
+  const filteredBirthdays = useMemo(() => {
+    return MOCK_BIRTHDAYS.filter(b => hasFullAccess || b.name === currentUser?.name);
+  }, [hasFullAccess, currentUser]);
+
+  const filteredFuneralsWeddings = useMemo(() => {
+    return MOCK_FUNERALS_WEDDINGS.filter(fw => hasFullAccess || fw.name === currentUser?.name);
+  }, [hasFullAccess, currentUser]);
 
   // --- HELPER FUNCTIONS FOR PREMIUM EMPLOYEE PROFILE VIEW ---
   const calculateTenure = (emp: Employee) => {
@@ -376,6 +496,13 @@ export default function CBPage() {
         />
 
         <main className="flex-1 p-8 space-y-6 overflow-y-auto text-slate-800">
+          {loadingAuth ? (
+            <div className="flex-1 flex flex-col items-center justify-center py-20 text-slate-400 gap-2">
+              <Loader2 className="animate-spin text-[#005BAC]" size={28} />
+              <span className="text-[11px] font-semibold text-slate-500">Đang tải thông tin và kiểm tra quyền truy cập...</span>
+            </div>
+          ) : (
+            <>
           
           {/* ─── 5 MAIN TABS NAVIGATOR ─── */}
           <div className="flex border-b border-slate-200 bg-white p-1 rounded-xl shadow-sm space-x-1 shrink-0 overflow-x-auto">
@@ -467,7 +594,7 @@ export default function CBPage() {
               <div className="xl:col-span-1 glass bg-white rounded-2xl p-5 border-transparent shadow-premium flex flex-col space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <h3 className="font-heading font-extrabold text-slate-800 text-xs uppercase tracking-wider">Nhân viên ({filteredEmployees.length})</h3>
-                  <button onClick={fetchEmployees} className="text-slate-400 hover:text-[#005BAC] cursor-pointer">
+                  <button onClick={checkAccessAndLoad} className="text-slate-400 hover:text-[#005BAC] cursor-pointer">
                     <RefreshCw size={14} className={loadingEmployees ? "animate-spin" : ""} />
                   </button>
                 </div>
@@ -1049,21 +1176,23 @@ export default function CBPage() {
                       <h3 className="font-heading font-extrabold text-slate-800 text-sm">ĐỒNG BỘ DỮ LIỆU TỪ MÁY CHẤM CÔNG VÂN TAY / FINGERPRINT</h3>
                       <p className="text-slate-400 text-[10px] font-semibold mt-1">Kết nối mạng TCP/IP trực tiếp với máy chấm công tại văn phòng và công trường</p>
                     </div>
-                    <button
-                      onClick={handleSyncBiometricMachine}
-                      disabled={isSyncingMachine}
-                      className="flex items-center justify-center gap-2 px-4 py-2 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer shadow disabled:opacity-50"
-                    >
-                      {isSyncingMachine ? (
-                        <>
-                          <Loader2 size={13} className="animate-spin" /> Đang đồng bộ...
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw size={13} /> Lấy dữ liệu công máy chấm công
-                        </>
-                      )}
-                    </button>
+                    {hasFullAccess && (
+                      <button
+                        onClick={handleSyncBiometricMachine}
+                        disabled={isSyncingMachine}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer shadow disabled:opacity-50"
+                      >
+                        {isSyncingMachine ? (
+                          <>
+                            <Loader2 size={13} className="animate-spin" /> Đang đồng bộ...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw size={13} /> Lấy dữ liệu công máy chấm công
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
 
                   {syncedCount > 0 && (
@@ -1087,7 +1216,7 @@ export default function CBPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                          {MOCK_ATTENDANCE_LOGS.map((log, idx) => (
+                          {filteredAttendanceLogs.map((log, idx) => (
                             <tr key={idx} className="hover:bg-slate-50/50">
                               <td className="py-3 px-3 font-semibold">{new Date(log.date).toLocaleDateString("vi-VN")}</td>
                               <td className="py-3 px-3 font-bold text-slate-800">{log.name}</td>
@@ -1126,7 +1255,7 @@ export default function CBPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                        {MOCK_EXPLANATIONS.map((e, idx) => (
+                        {filteredExplanations.map((e, idx) => (
                           <tr key={idx} className="hover:bg-slate-50/50">
                             <td className="py-3.5 px-3 font-semibold">{new Date(e.date).toLocaleDateString("vi-VN")}</td>
                             <td className="py-3.5 px-3 text-slate-800 font-bold">{e.name}</td>
@@ -1165,7 +1294,7 @@ export default function CBPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                        {MOCK_LEAVES.map((l, idx) => (
+                        {filteredLeaves.map((l, idx) => (
                           <tr key={idx} className="hover:bg-slate-50/50">
                             <td className="py-3.5 px-3 text-slate-800 font-bold">{l.name}</td>
                             <td className="py-3.5 px-3 text-blue-600 font-bold">{l.type}</td>
@@ -1206,7 +1335,7 @@ export default function CBPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                        {MOCK_TRAVELS.map((t, idx) => (
+                        {filteredTravels.map((t, idx) => (
                           <tr key={idx} className="hover:bg-slate-50/50">
                             <td className="py-3.5 px-3 text-slate-800 font-bold">{t.name}</td>
                             <td className="py-3.5 px-3 text-[#005BAC] font-bold">{t.dest}</td>
@@ -1244,7 +1373,7 @@ export default function CBPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                        {MOCK_REGIMES.map((r, idx) => (
+                        {filteredRegimes.map((r, idx) => (
                           <tr key={idx} className="hover:bg-slate-50/50">
                             <td className="py-3.5 px-3 text-slate-800 font-bold">{r.name}</td>
                             <td className="py-3.5 px-3 text-indigo-600 font-bold">{r.type}</td>
@@ -1316,7 +1445,7 @@ export default function CBPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                          {MOCK_SALARY_INFO.map(s => {
+                          {filteredSalaryInfo.map(s => {
                             const deductions = s.insurance * 0.105;
                             const tax = s.base * 0.05; // mock tax
                             const netPay = s.total - deductions - tax;
@@ -1378,7 +1507,7 @@ export default function CBPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                        {MOCK_BHXH_LOGS.map((b, idx) => (
+                        {filteredBhxhLogs.map((b, idx) => (
                           <tr key={idx} className="hover:bg-slate-50/50">
                             <td className="py-3.5 px-3 text-slate-800 font-bold">{b.name}</td>
                             <td className="py-3.5 px-3 font-mono font-bold text-slate-500">{b.code}</td>
@@ -1414,7 +1543,7 @@ export default function CBPage() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {MOCK_BIRTHDAYS.map((b, idx) => (
+                    {filteredBirthdays.map((b, idx) => (
                       <div key={idx} className="flex items-center justify-between p-4 bg-gradient-to-r from-pink-50/20 to-indigo-50/10 rounded-2xl border border-pink-100/50 hover-elevate transition-all">
                         <div className="flex items-center gap-3">
                           <div className="w-11 h-11 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center font-bold text-sm">
@@ -1453,7 +1582,7 @@ export default function CBPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                        {MOCK_FUNERALS_WEDDINGS.map((fw, idx) => (
+                        {filteredFuneralsWeddings.map((fw, idx) => (
                           <tr key={idx} className="hover:bg-slate-50/50">
                             <td className="py-3.5 px-3 text-slate-800 font-bold">{fw.name}</td>
                             <td className="py-3.5 px-3 text-[#005BAC] font-bold">{fw.event}</td>
@@ -1508,10 +1637,8 @@ export default function CBPage() {
               )}
             </div>
           )}
-
-                    
-
-
+          </>
+          )}
         </main>
       </div>
     </div>

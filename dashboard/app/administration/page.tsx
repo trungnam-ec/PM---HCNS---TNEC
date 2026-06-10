@@ -1810,17 +1810,7 @@ export default function AdministrationPage() {
   // Download Excel VPP Allocation Slip handler
   const handleDownloadExcel = async (targetName: string, type: "phongban" | "duan") => {
     try {
-      // 1. Fetch template as array buffer
-      const response = await fetch("/templates/phieu_cap_phat_vpp.xlsx");
-      if (!response.ok) throw new Error("Không thể tải file template từ hệ thống.");
-      const arrayBuffer = await response.arrayBuffer();
-
-      // 2. Parse workbook
-      const workbook = XLSX.read(arrayBuffer, { type: "array" });
-      const originalSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[originalSheetName];
-
-      // 3. Filter approved requests for this target
+      // 1. Filter approved requests for this target
       const filteredRequests = deptRequests.filter(
         r => r.target === type && r.targetName === targetName && r.status === "Đã cấp phát"
       );
@@ -1830,86 +1820,43 @@ export default function AdministrationPage() {
         return;
       }
 
-      // 4. Fill metadata
-      const now = new Date();
-      const monthStr = `Tháng ${now.getMonth() + 1}`;
-      
       // Get receiver from allocationTargets
       const targetInfo = allocationTargets.find(t => t.type === type && t.name === targetName);
       const receiverName = targetInfo ? targetInfo.receiver : "";
 
-      worksheet["C9"] = { t: "s", v: monthStr };
-      worksheet["C10"] = { t: "s", v: receiverName };
-      worksheet["E10"] = { t: "s", v: `Bộ phận: ${targetName}` };
-
-      // 5. Clear rows 14 to 30 (0-indexed 13 to 29)
-      for (let r = 13; r <= 29; r++) {
-        const colKeys = ["A", "B", "C", "D", "E", "F", "G"];
-        colKeys.forEach(col => {
-          delete worksheet[`${col}${r + 1}`];
-        });
-      }
-
-      // 6. Write new items starting from row 14 (index 13)
-      filteredRequests.forEach((req, idx) => {
-        const rowIndex = 14 + idx;
+      // Format items to send to the server
+      const itemsToSend = filteredRequests.map(req => {
         const supplyItem = findMatchingSupply(req.item);
         const unit = supplyItem ? supplyItem.unit : "Cái";
-
-        worksheet[`A${rowIndex}`] = { t: "n", v: idx + 1 };
-        worksheet[`B${rowIndex}`] = { t: "s", v: req.item };
-        worksheet[`C${rowIndex}`] = { t: "s", v: unit };
-        worksheet[`D${rowIndex}`] = { t: "n", v: req.qty };
-        worksheet[`E${rowIndex}`] = { t: "s", v: "" };
-        worksheet[`F${rowIndex}`] = { t: "s", v: "" };
-        worksheet[`G${rowIndex}`] = { t: "s", v: "Đã duyệt cấp phát" };
+        return {
+          name: req.item,
+          unit: unit,
+          qty: req.qty,
+          notes: "Đã duyệt cấp phát"
+        };
       });
 
-      // 7. Write total sum, date, and signatures
-      const lastItemRowIndex = 14 + filteredRequests.length - 1;
-      const sumRowIndex = lastItemRowIndex + 2;
+      // 2. Post to the server API endpoint
+      const response = await fetch("/api/export-vpp-template", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          targetName,
+          type,
+          receiverName,
+          items: itemsToSend
+        })
+      });
 
-      // Clean old signature areas to prevent overlap
-      for (let r = sumRowIndex; r <= sumRowIndex + 20; r++) {
-        const colKeys = ["A", "B", "C", "D", "E", "F", "G"];
-        colKeys.forEach(col => {
-          delete worksheet[`${col}${r}`];
-        });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Lỗi khi xuất file Excel từ server.");
       }
 
-      // Write Date
-      const dateRowIndex = sumRowIndex + 2;
-      const dayStr = String(now.getDate()).padStart(2, "0");
-      const monthNumStr = String(now.getMonth() + 1).padStart(2, "0");
-      const yearStr = String(now.getFullYear());
-      worksheet[`F${dateRowIndex}`] = {
-        t: "s",
-        v: `TPHCM, ngày ${dayStr} tháng ${monthNumStr} năm ${yearStr}`
-      };
-
-      // Write Signatures
-      const sigRowIndex = sumRowIndex + 4;
-      worksheet[`A${sigRowIndex}`] = { t: "s", v: "NGƯỜI NHẬN" };
-      worksheet[`F${sigRowIndex}`] = { t: "s", v: "NGƯỜI LẬP" };
-
-      // Set print area ref
-      worksheet["!ref"] = `A1:G${sigRowIndex + 5}`;
-
-      // 8. Update Sheet Name to match Target Name
-      const cleanSheetName = targetName.replace(/Phòng\s+/i, "P. ").slice(0, 30);
-      workbook.SheetNames[0] = cleanSheetName;
-      workbook.Sheets[cleanSheetName] = worksheet;
-
-      // 9. Export
-      const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "binary" });
-      const s2ab = (s: string) => {
-        const buf = new ArrayBuffer(s.length);
-        const view = new Uint8Array(buf);
-        for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xff;
-        return buf;
-      };
-
-      const blob = new Blob([s2ab(wbout)], { type: "application/octet-stream" });
+      // 3. Download the returned file buffer
+      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

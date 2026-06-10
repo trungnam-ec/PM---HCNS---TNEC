@@ -2542,8 +2542,8 @@ export default function AdministrationPage() {
               {/* ─── TAB 5: VPP (Văn phòng phẩm) ─── */}
               {activeTab === "vpp" && (
                 <div className="space-y-6 animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
-                  {/* KPI Cards (4 Columns with Modern Gradients & Shadow Glows) */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  {/* KPI Cards (5 Columns with Modern Gradients & Shadow Glows) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                     {/* Tồn kho Card */}
                     <div className="relative overflow-hidden glass bg-gradient-to-br from-blue-50/40 to-indigo-50/20 rounded-2xl p-5 border border-blue-100/50 shadow-sm flex items-center gap-4 group hover:shadow-md transition-all duration-300">
                       <div className="p-3 bg-gradient-to-br from-blue-500 to-[#005BAC] text-white rounded-xl shadow-lg shadow-blue-500/25">
@@ -2551,7 +2551,7 @@ export default function AdministrationPage() {
                       </div>
                       <div className="z-10">
                         <p className="text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">Tồn kho Hành chính</p>
-                        <p className="font-heading font-black text-xl text-slate-800 mt-1">
+                        <p className="font-heading font-black text-3xl text-slate-800 mt-1">
                           {supplies.reduce((sum, item) => sum + item.stock, 0)} <span className="text-xs font-semibold text-slate-500">vật tư</span>
                         </p>
                         <p className="text-[10px] text-slate-400 font-semibold">{supplies.length} danh mục hàng hóa</p>
@@ -2568,7 +2568,7 @@ export default function AdministrationPage() {
                       </div>
                       <div className="z-10">
                         <p className="text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">Cấp Phòng Ban VP</p>
-                        <p className="font-heading font-black text-xl text-emerald-700 mt-1">
+                        <p className="font-heading font-black text-3xl text-emerald-700 mt-1">
                           {deptRequests.filter(r => r.target === "phongban" && r.status === "Đã cấp phát").reduce((sum, r) => sum + r.qty, 0)} <span className="text-xs font-semibold text-slate-500">cái/ram</span>
                         </p>
                         <p className="text-[10px] text-slate-400 font-semibold">
@@ -2587,7 +2587,7 @@ export default function AdministrationPage() {
                       </div>
                       <div className="z-10">
                         <p className="text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">Cấp Ban ĐH Dự Án</p>
-                        <p className="font-heading font-black text-xl text-purple-700 mt-1">
+                        <p className="font-heading font-black text-3xl text-purple-700 mt-1">
                           {deptRequests.filter(r => r.target === "duan" && r.status === "Đã cấp phát").reduce((sum, r) => sum + r.qty, 0)} <span className="text-xs font-semibold text-slate-500">cái/ram</span>
                         </p>
                         <p className="text-[10px] text-slate-400 font-semibold">
@@ -2599,6 +2599,23 @@ export default function AdministrationPage() {
                       </div>
                     </div>
 
+                    {/* Còn lại Card */}
+                    <div className="relative overflow-hidden glass bg-gradient-to-br from-sky-50/40 to-cyan-50/20 rounded-2xl p-5 border border-sky-100/50 shadow-sm flex items-center gap-4 group hover:shadow-md transition-all duration-300">
+                      <div className="p-3 bg-gradient-to-br from-sky-500 to-cyan-600 text-white rounded-xl shadow-lg shadow-sky-500/25">
+                        <CheckCircle size={20} />
+                      </div>
+                      <div className="z-10">
+                        <p className="text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">Còn lại trong kho</p>
+                        <p className="font-heading font-black text-3xl text-sky-700 mt-1">
+                          {supplies.reduce((sum, item) => sum + (item.stock - item.allocated), 0)} <span className="text-xs font-semibold text-slate-500">vật tư</span>
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-semibold">Khả dụng cấp phát</p>
+                      </div>
+                      <div className="absolute -right-6 -bottom-6 text-sky-500/5 opacity-10 group-hover:scale-110 transition-transform duration-300 pointer-events-none">
+                        <CheckCircle size={80} />
+                      </div>
+                    </div>
+
                     {/* Yêu cầu chờ duyệt Card */}
                     <div className="relative overflow-hidden glass bg-gradient-to-br from-amber-50/40 to-orange-50/20 rounded-2xl p-5 border border-amber-100/50 shadow-sm flex items-center gap-4 group hover:shadow-md transition-all duration-300">
                       <div className="p-3 bg-gradient-to-br from-amber-500 to-orange-550 text-white rounded-xl shadow-lg shadow-amber-500/25">
@@ -2606,7 +2623,7 @@ export default function AdministrationPage() {
                       </div>
                       <div className="z-10">
                         <p className="text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">Yêu cầu chờ duyệt</p>
-                        <p className="font-heading font-black text-xl text-amber-700 mt-1">
+                        <p className="font-heading font-black text-3xl text-amber-700 mt-1">
                           {deptRequests.filter(r => r.status === "Chờ duyệt").length} <span className="text-xs font-semibold text-slate-500">phiếu</span>
                         </p>
                         <p className="text-[10px] text-slate-400 font-semibold">Trừ kho khi phê duyệt</p>

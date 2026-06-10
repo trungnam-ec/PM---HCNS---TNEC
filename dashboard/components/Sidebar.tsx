@@ -28,7 +28,7 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
     { label: "Quản lý Công việc", href: "/tasks", icon: ClipboardList },
     { label: "Lịch công việc", href: "/calendar", icon: CalendarRange },
     { label: "Tuyển dụng", href: "/recruitment", icon: Briefcase },
-    { label: "Quản lý Nhân sự", href: "/employees", icon: Users },
+    { label: "Danh sách nhân viên", href: "/employees", icon: Users },
     { label: "Lương & Phúc lợi (C&B)", href: "/cb", icon: Calculator },
     { label: "Hành chính & Tài sản", href: "/administration", icon: Building2 },
     { label: "Văn Thư", href: "/document-control", icon: FileText },

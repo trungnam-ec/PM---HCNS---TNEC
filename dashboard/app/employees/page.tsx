@@ -44,7 +44,8 @@ const BDH_OPTIONS = [
   "BĐH Chống Hạn Ninh Thuận",
   "BĐH Tỉnh Lộ 8",
   "BĐH Cầu Mã Đà",
-  "BĐH ĐMT Trà Vinh 2"
+  "BĐH ĐMT Trà Vinh 2",
+  "BĐH Hương Lộ 11"
 ];
 
 interface Employee {

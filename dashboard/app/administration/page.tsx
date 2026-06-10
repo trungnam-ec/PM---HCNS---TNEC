@@ -555,78 +555,29 @@ export default function AdministrationPage() {
     let found = supplies.find(s => s.name.trim().toLowerCase() === normalizedSearch);
     if (found) return found;
     
-    // 2. Try common VPP item mapping rules for TNEC
-    if (normalizedSearch.includes("bút bi tl") || normalizedSearch.includes("bút bi thiên long") || normalizedSearch.includes("bút tl")) {
-      if (normalizedSearch.includes("đen")) {
-        const match = supplies.find(s => s.name.toLowerCase().includes("bút tl đen") || (s.name.toLowerCase().includes("bút tl") && s.name.toLowerCase().includes("đen")));
-        if (match) return match;
-      }
-      if (normalizedSearch.includes("đỏ")) {
-        const match = supplies.find(s => s.name.toLowerCase().includes("bút tl đỏ") || (s.name.toLowerCase().includes("bút tl") && s.name.toLowerCase().includes("đỏ")));
-        if (match) return match;
-      }
-      // Default to Thiên Long xanh or Bút TL-025
-      const mainPen = supplies.find(s => s.name.includes("Bút TL-025") || s.name.includes("Bút bi Thiên Long"));
-      if (mainPen) return mainPen;
-    }
-    
-    if (normalizedSearch.includes("giấy a4 excel") || normalizedSearch.includes("giấy a4 exel")) {
-      const match = supplies.find(s => s.name.trim().toLowerCase().includes("giấy a4 excel"));
-      if (match) return match;
-    }
-    
-    if (normalizedSearch.includes("highlight") || normalizedSearch.includes("da quang") || normalizedSearch.includes("dạ quang")) {
-      const match = supplies.find(s => s.name.trim().toLowerCase().includes("highlight") || s.name.trim().toLowerCase().includes("dạ quang"));
-      if (match) return match;
-    }
-    
-    if (normalizedSearch.includes("chuốt chì") || normalizedSearch.includes("gọt chì")) {
-      const match = supplies.find(s => s.name.trim().toLowerCase().includes("chì"));
-      if (match) return match;
-    }
-    
-    if (normalizedSearch.includes("gỡ kim") || normalizedSearch.includes("bấm kim") || normalizedSearch.includes("ghim")) {
-      const match = supplies.find(s => s.name.trim().toLowerCase().includes("bấm kim") || s.name.trim().toLowerCase().includes("ghim") || s.name.trim().toLowerCase().includes("kẹp giấy"));
-      if (match) return match;
-    }
-
-    // 3. Substring / cleaning match
-    const clean = (str: string) => str
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    // 2. Try accent-insensitive and symbol-insensitive exact match
+    const cleanForComparison = (str: string) => str
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // remove Vietnamese accents
       .toLowerCase()
-      .replace(/màu/g, "")
-      .replace(/cỡ/g, "")
-      .replace(/size/g, "")
-      .replace(/văn phòng/g, "")
+      .replace(/[^a-z0-9]/g, "") // remove all symbols and spaces
       .trim();
-    
-    const cleanSearch = clean(normalizedSearch);
-    
-    found = supplies.find(s => {
-      const cleanCatalog = clean(s.name);
-      return cleanCatalog.includes(cleanSearch) || cleanSearch.includes(cleanCatalog);
-    });
+
+    const cleanSearch = cleanForComparison(normalizedSearch);
+    if (!cleanSearch) return null;
+
+    found = supplies.find(s => cleanForComparison(s.name) === cleanSearch);
     if (found) return found;
 
-    // 4. Word overlap matching (match if at least 2 words overlap)
-    const searchWords = cleanSearch.split(/\s+/).filter(w => w.length > 2);
-    if (searchWords.length > 0) {
-      let bestMatch: SupplyItem | null = null;
-      let maxOverlap = 0;
-      
-      for (const s of supplies) {
-        const cleanCatalog = clean(s.name);
-        const catalogWords = cleanCatalog.split(/\s+/);
-        const overlap = searchWords.filter(w => catalogWords.includes(w)).length;
-        if (overlap > maxOverlap) {
-          maxOverlap = overlap;
-          bestMatch = s;
-        }
-      }
-      
-      if (maxOverlap >= 2 || (searchWords.length === 1 && maxOverlap === 1)) {
-        return bestMatch;
-      }
+    // 3. Special mapping rules for closely related equivalents
+    // Excel paper variations
+    if (cleanSearch === "giaya4excel80" || cleanSearch === "giaya4excel70") {
+      const match = supplies.find(s => cleanForComparison(s.name) === "giaya4excel");
+      if (match) return match;
+    }
+    if (cleanSearch === "giaya3excel80" || cleanSearch === "giaya3excel70") {
+      const match = supplies.find(s => cleanForComparison(s.name) === "giaya3excel");
+      if (match) return match;
     }
 
     return null;
@@ -914,6 +865,44 @@ export default function AdministrationPage() {
   const handleDeleteSupply = (name: string) => {
     if (!window.confirm(`Bạn có chắc chắn muốn xóa vật tư "${name}" khỏi danh mục kho không?`)) return;
     setSupplies(prev => prev.filter(s => s.name !== name));
+  };
+
+  // VPP Inventory quick add unregistered item handler
+  const handleQuickAddSupply = (itemName: string) => {
+    if (!itemName || !itemName.trim()) return;
+    const cleanName = itemName.trim();
+    if (supplies.some(s => s.name.toLowerCase() === cleanName.toLowerCase())) {
+      alert(`Vật tư "${cleanName}" đã tồn tại trong danh mục.`);
+      return;
+    }
+    
+    // Automatically guess category based on name keywords
+    let guessedCat = "Khác";
+    const lowerName = cleanName.toLowerCase();
+    if (lowerName.includes("giấy") || lowerName.includes("paper")) guessedCat = "Giấy in";
+    else if (lowerName.includes("bút") || lowerName.includes("highlight") || lowerName.includes("chì") || lowerName.includes("viết") || lowerName.includes("pen")) guessedCat = "Bút viết";
+    else if (lowerName.includes("kẹp") || lowerName.includes("bìa") || lowerName.includes("file") || lowerName.includes("hộp")) guessedCat = "Dụng cụ lưu trữ";
+    
+    // Automatically guess unit based on name keywords
+    let guessedUnit = "cái";
+    if (lowerName.includes("giấy a4") || lowerName.includes("giấy a3")) guessedUnit = "ram";
+    else if (lowerName.includes("bút") || lowerName.includes("highlight") || lowerName.includes("kéo") || lowerName.includes("thước") || lowerName.includes("dao")) guessedUnit = "cây";
+    else if (lowerName.includes("kẹp bướm") || lowerName.includes("ghim") || lowerName.includes("mực")) guessedUnit = "hộp";
+    else if (lowerName.includes("băng keo")) guessedUnit = "cuộn";
+    else if (lowerName.includes("giấy note") || lowerName.includes("trình ký")) guessedUnit = "xấp";
+    else if (lowerName.includes("pin")) guessedUnit = "cục";
+
+    const newSupply: SupplyItem = {
+      name: cleanName,
+      cat: guessedCat,
+      unit: guessedUnit,
+      stock: 0, // Quick added has 0 stock initially
+      allocated: 0,
+      alert: "Cảnh báo" // 0 stock is Alert
+    };
+
+    setSupplies(prev => [...prev, newSupply]);
+    alert(`Đã thêm nhanh vật tư "${cleanName}" (Đơn vị: ${guessedUnit}, Danh mục: ${guessedCat}) vào danh mục tồn kho hành chính với số lượng tồn kho mặc định là 0. Bạn có thể nhấp vào biểu tượng bút chì để cập nhật số lượng tồn kho!`);
   };
 
   const handleDeleteRequest = async (reqId: string) => {
@@ -3255,9 +3244,19 @@ export default function AdministrationPage() {
                                           {(() => {
                                             if (!supplyItem) {
                                               return (
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200">
-                                                  Chưa có trong kho
-                                                </span>
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200">
+                                                    Chưa có trong kho
+                                                  </span>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleQuickAddSupply(req.item)}
+                                                    className="p-1 text-amber-500 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-all cursor-pointer shadow-sm"
+                                                    title={`Nhấp để thêm nhanh "${req.item}" vào danh mục tồn kho hành chính`}
+                                                  >
+                                                    <AlertTriangle size={12} className="animate-pulse" />
+                                                  </button>
+                                                </div>
                                               );
                                             }
                                             
@@ -3490,9 +3489,19 @@ export default function AdministrationPage() {
                                           {(() => {
                                             if (!supplyItem) {
                                               return (
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200">
-                                                  Chưa có trong kho
-                                                </span>
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200">
+                                                    Chưa có trong kho
+                                                  </span>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleQuickAddSupply(req.item)}
+                                                    className="p-1 text-amber-500 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-all cursor-pointer shadow-sm"
+                                                    title={`Nhấp để thêm nhanh "${req.item}" vào danh mục tồn kho hành chính`}
+                                                  >
+                                                    <AlertTriangle size={12} className="animate-pulse" />
+                                                  </button>
+                                                </div>
                                               );
                                             }
                                             

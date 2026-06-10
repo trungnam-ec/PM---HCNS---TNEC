@@ -130,7 +130,7 @@ Hãy trích xuất thông tin dạng JSON gồm: targetType, targetName, request
       ];
     } else if (fileType.endsWith(".pdf")) {
       const base64Pdf = fileBuffer.toString("base64");
-      const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o";
+      const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o-mini";
       try {
         // Try the responses API first (if available in the library)
         if (typeof (openai as any).responses?.create === "function") {

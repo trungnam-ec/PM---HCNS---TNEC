@@ -1811,6 +1811,75 @@ export default function AdministrationPage() {
     }
   };
 
+  const handleApproveAllRequests = async (type: "phongban" | "duan") => {
+    const filterVal = type === "phongban" ? selectedDeptFilter : selectedProjectFilter;
+    const pendingReqs = deptRequests.filter(
+      r => r.target === type &&
+           r.status === "Chờ duyệt" &&
+           (filterVal === "Tất cả" || r.targetName === filterVal)
+    );
+
+    if (pendingReqs.length === 0) {
+      alert("Không có yêu cầu cấp phát nào đang chờ duyệt.");
+      return;
+    }
+
+    // Check if any request exceeds stock
+    let hasInsufficientStock = false;
+    let warningDetails = "";
+    pendingReqs.forEach(req => {
+      const supply = findMatchingSupply(req.item);
+      if (supply && supply.stock < req.qty) {
+        hasInsufficientStock = true;
+        warningDetails += `\n- ${req.item}: Cần ${req.qty}, chỉ còn ${supply.stock} ${supply.unit}`;
+      }
+    });
+
+    if (hasInsufficientStock) {
+      const confirmProceed = window.confirm(
+        `Cảnh báo: Có một số vật tư yêu cầu vượt quá lượng tồn kho thực tế:${warningDetails}\n\nBạn vẫn muốn tiếp tục phê duyệt tất cả và đưa tồn kho về 0?`
+      );
+      if (!confirmProceed) return;
+    } else {
+      const confirmProceed = window.confirm(`Bạn có chắc chắn muốn phê duyệt toàn bộ ${pendingReqs.length} yêu cầu đang chờ duyệt của bộ phận này không?`);
+      if (!confirmProceed) return;
+    }
+
+    try {
+      const ids = pendingReqs.map(r => r.id);
+      const { error } = await supabase
+        .from("tasks")
+        .update({ status: "completed", progress: 100 })
+        .in("id", ids);
+
+      if (error) throw error;
+
+      // Deduct stock locally
+      setSupplies(prev => prev.map(s => {
+        let updatedStock = s.stock;
+        let updatedAllocated = s.allocated;
+        pendingReqs.forEach(req => {
+          if (req.item.trim().toLowerCase() === s.name.trim().toLowerCase()) {
+            updatedStock = Math.max(0, updatedStock - req.qty);
+            updatedAllocated += req.qty;
+          }
+        });
+        return {
+          ...s,
+          stock: updatedStock,
+          allocated: updatedAllocated,
+          alert: updatedStock < 15 ? "Cảnh báo" : "Bình thường"
+        };
+      }));
+
+      alert(`Đã phê duyệt cấp phát thành công ${pendingReqs.length} yêu cầu.`);
+      fetchDeptRequests();
+    } catch (err: any) {
+      console.error("Error approving all requests in Supabase:", err);
+      alert("Lỗi khi phê duyệt tất cả: " + (err.message || err));
+    }
+  };
+
   // Download Excel VPP Allocation Slip handler
   const handleDownloadExcel = async (targetName: string, type: "phongban" | "duan") => {
     try {
@@ -3248,6 +3317,16 @@ export default function AdministrationPage() {
                           >
                             <Eye size={14} /> Xem trước phiếu cấp phát
                           </button>
+
+                          {canApproveRequests && (
+                            <button
+                              type="button"
+                              onClick={() => handleApproveAllRequests("phongban")}
+                              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+                            >
+                              <CheckCircle size={14} /> Duyệt tất cả
+                            </button>
+                          )}
                           
                           <button
                             type="button"
@@ -3505,6 +3584,16 @@ export default function AdministrationPage() {
                           >
                             <Eye size={14} /> Xem trước phiếu cấp phát
                           </button>
+
+                          {canApproveRequests && (
+                            <button
+                              type="button"
+                              onClick={() => handleApproveAllRequests("duan")}
+                              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+                            >
+                              <CheckCircle size={14} /> Duyệt tất cả
+                            </button>
+                          )}
                           
                           <button
                             type="button"

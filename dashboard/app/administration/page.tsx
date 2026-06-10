@@ -458,6 +458,7 @@ export default function AdministrationPage() {
   const [isExtractingBatch, setIsExtractingBatch] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [activePreviewInvoice, setActivePreviewInvoice] = useState<Invoice | null>(null);
   const [showRecurringPreviewModal, setShowRecurringPreviewModal] = useState(false);
   const [selectedRecurringPreviewIdx, setSelectedRecurringPreviewIdx] = useState(0);
   const [activePreviewPayment, setActivePreviewPayment] = useState<SupplierPayment | null>(null);
@@ -2215,7 +2216,15 @@ export default function AdministrationPage() {
 
   // Export word document from selected success items
   const exportInvoicePaymentRequest = async () => {
-    const successItems = invoiceQueue.filter(item => item.status === "success");
+    const successItems = activePreviewInvoice 
+      ? [{
+          number: activePreviewInvoice.number,
+          date: activePreviewInvoice.date,
+          desc: activePreviewInvoice.desc,
+          amount: activePreviewInvoice.amount
+        }]
+      : invoiceQueue.filter(item => item.status === "success");
+
     if (successItems.length === 0) return;
 
     setExportLoading(true);
@@ -2228,18 +2237,13 @@ export default function AdministrationPage() {
         body: JSON.stringify({
           employeeName,
           employeeDept,
-          mission: paymentMission,
+          mission: activePreviewInvoice ? activePreviewInvoice.desc : paymentMission,
           projectName,
-          supplierName,
-          bankAccount,
-          bankNameBranch,
+          supplierName: activePreviewInvoice ? (activePreviewInvoice.beneficiary_name || "") : supplierName,
+          bankAccount: activePreviewInvoice ? (activePreviewInvoice.bank_account || "") : bankAccount,
+          bankNameBranch: activePreviewInvoice ? (activePreviewInvoice.bank_name_branch || "") : bankNameBranch,
           templateType: documentType,
-          items: successItems.map(item => ({
-            number: item.number,
-            date: item.date,
-            desc: item.desc,
-            amount: item.amount
-          }))
+          items: successItems
         })
       });
 
@@ -4353,20 +4357,32 @@ export default function AdministrationPage() {
                                 </span>
                               </td>
                               <td className="p-3 text-center">
-                                {inv.file_url ? (
+                                <div className="flex items-center justify-center gap-1.5">
+                                  {inv.file_url ? (
+                                    <button
+                                      onClick={() => {
+                                        setPreviewFileUrl(inv.file_url || "");
+                                        setPreviewFileName(`Hóa đơn số ${inv.number}`);
+                                      }}
+                                      className="text-blue-600 hover:text-blue-800 transition-colors p-1.5 rounded-lg hover:bg-blue-50 cursor-pointer inline-flex items-center justify-center bg-transparent border-none"
+                                      title="Xem file gốc"
+                                    >
+                                      <Eye size={14} />
+                                    </button>
+                                  ) : (
+                                    <span className="text-slate-300">-</span>
+                                  )}
                                   <button
                                     onClick={() => {
-                                      setPreviewFileUrl(inv.file_url || "");
-                                      setPreviewFileName(`Hóa đơn số ${inv.number}`);
+                                      setActivePreviewInvoice(inv);
+                                      setShowPreviewModal(true);
                                     }}
-                                    className="text-blue-600 hover:text-blue-800 transition-colors p-1.5 rounded-lg hover:bg-blue-50 cursor-pointer inline-flex items-center justify-center bg-transparent border-none"
-                                    title="Xem file gốc"
+                                    className="text-emerald-600 hover:text-emerald-800 transition-colors p-1.5 rounded-lg hover:bg-emerald-50 cursor-pointer inline-flex items-center justify-center bg-transparent border-none"
+                                    title="Xem trước Giấy đề nghị chuyển tiền / thanh toán"
                                   >
-                                    <Eye size={14} />
+                                    <FileText size={14} />
                                   </button>
-                                ) : (
-                                  <span className="text-slate-300">-</span>
-                                )}
+                                </div>
                               </td>
                               <td className="p-3 text-center">
                                 <button
@@ -5295,7 +5311,10 @@ export default function AdministrationPage() {
             
             {/* Close Button */}
             <button
-              onClick={() => setShowPreviewModal(false)}
+              onClick={() => {
+                setShowPreviewModal(false);
+                setActivePreviewInvoice(null);
+              }}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors p-1.5 hover:bg-slate-100 rounded-full cursor-pointer"
             >
               <X size={16} />
@@ -5355,18 +5374,18 @@ export default function AdministrationPage() {
                   <span className="underline">Bộ phận</span>: <span className="font-bold">{employeeDept}</span>
                 </div>
                 <div>
-                  <span className="underline">{documentType === "payment" ? "Nội dung thanh toán" : "Lý do xin đề nghị chuyển tiền"}</span>: <span>{paymentMission}</span>
+                  <span className="underline">{documentType === "payment" ? "Nội dung thanh toán" : "Lý do xin đề nghị chuyển tiền"}</span>: <span>{activePreviewInvoice ? activePreviewInvoice.desc : paymentMission}</span>
                 </div>
-                {documentType === "transfer" && (
+                {(documentType === "transfer" || activePreviewInvoice) && (
                   <>
                     <div>
                       <span className="underline">Tên dự án</span>: <span className="font-bold">{projectName}</span>
                     </div>
                     <div>
-                      <span className="underline">Tên đơn vị thụ hưởng</span>: <span className="font-bold">{supplierName}</span>
+                      <span className="underline">Tên đơn vị thụ hưởng</span>: <span className="font-bold">{activePreviewInvoice ? activePreviewInvoice.beneficiary_name : supplierName}</span>
                     </div>
                     <div>
-                      <span className="underline">Số tài khoản</span>: <span className="font-bold">{bankAccount}</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; tại Ngân hàng <span className="font-bold">{bankNameBranch}</span>
+                      <span className="underline">Số tài khoản</span>: <span className="font-bold">{activePreviewInvoice ? activePreviewInvoice.bank_account : bankAccount}</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; tại Ngân hàng <span className="font-bold">{activePreviewInvoice ? activePreviewInvoice.bank_name_branch : bankNameBranch}</span>
                     </div>
                   </>
                 )}
@@ -5390,27 +5409,42 @@ export default function AdministrationPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {invoiceQueue
-                    .filter(item => item.status === "success")
-                    .map((item, idx) => (
-                      <tr key={item.id} className="border-b border-slate-900">
-                        <td className="border border-slate-900 p-1 text-center">{idx + 1}</td>
-                        <td className="border border-slate-900 p-1 font-mono font-bold text-center">{item.number}</td>
-                        <td className="border border-slate-900 p-1 text-center">{item.date ? new Date(item.date).toLocaleDateString("vi-VN") : ""}</td>
-                        <td className="border border-slate-900 p-1">{item.desc}</td>
-                        <td className="border border-slate-900 p-1 text-right font-mono font-bold">
-                          {item.amount.toLocaleString("vi-VN")}
-                        </td>
-                        <td className="border border-slate-900 p-1"></td>
-                      </tr>
-                    ))}
+                  {activePreviewInvoice ? (
+                    <tr className="border-b border-slate-900">
+                      <td className="border border-slate-900 p-1 text-center">1</td>
+                      <td className="border border-slate-900 p-1 font-mono font-bold text-center">{activePreviewInvoice.number}</td>
+                      <td className="border border-slate-900 p-1 text-center">{activePreviewInvoice.date ? new Date(activePreviewInvoice.date).toLocaleDateString("vi-VN") : ""}</td>
+                      <td className="border border-slate-900 p-1">{activePreviewInvoice.desc}</td>
+                      <td className="border border-slate-900 p-1 text-right font-mono font-bold">
+                        {activePreviewInvoice.amount.toLocaleString("vi-VN")}
+                      </td>
+                      <td className="border border-slate-900 p-1"></td>
+                    </tr>
+                  ) : (
+                    invoiceQueue
+                      .filter(item => item.status === "success")
+                      .map((item, idx) => (
+                        <tr key={item.id} className="border-b border-slate-900">
+                          <td className="border border-slate-900 p-1 text-center">{idx + 1}</td>
+                          <td className="border border-slate-900 p-1 font-mono font-bold text-center">{item.number}</td>
+                          <td className="border border-slate-900 p-1 text-center">{item.date ? new Date(item.date).toLocaleDateString("vi-VN") : ""}</td>
+                          <td className="border border-slate-900 p-1">{item.desc}</td>
+                          <td className="border border-slate-900 p-1 text-right font-mono font-bold">
+                            {item.amount.toLocaleString("vi-VN")}
+                          </td>
+                          <td className="border border-slate-900 p-1"></td>
+                        </tr>
+                      ))
+                  )}
                   <tr className="font-bold border-b border-slate-900">
                     <td className="border border-slate-900 p-1 text-center" colSpan={4}>Tổng cộng</td>
                     <td className="border border-slate-900 p-1 text-right font-mono font-bold">
-                      {invoiceQueue
-                        .filter(item => item.status === "success")
-                        .reduce((sum, item) => sum + item.amount, 0)
-                        .toLocaleString("vi-VN")}
+                      {(activePreviewInvoice 
+                        ? activePreviewInvoice.amount 
+                        : invoiceQueue
+                            .filter(item => item.status === "success")
+                            .reduce((sum, item) => sum + item.amount, 0)
+                      ).toLocaleString("vi-VN")}
                     </td>
                     <td className="border border-slate-900 p-1"></td>
                   </tr>
@@ -5422,9 +5456,11 @@ export default function AdministrationPage() {
                 <div className="italic">
                   <span className="font-bold">Bằng chữ: </span>
                   {docSoVietNam(
-                    invoiceQueue
-                      .filter(item => item.status === "success")
-                      .reduce((sum, item) => sum + item.amount, 0)
+                    activePreviewInvoice 
+                      ? activePreviewInvoice.amount 
+                      : invoiceQueue
+                          .filter(item => item.status === "success")
+                          .reduce((sum, item) => sum + item.amount, 0)
                   )}
                 </div>
                 <div>
@@ -5454,15 +5490,19 @@ export default function AdministrationPage() {
             {/* Modal Actions */}
             <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
               <button
-                onClick={() => setShowPreviewModal(false)}
+                onClick={() => {
+                  setShowPreviewModal(false);
+                  setActivePreviewInvoice(null);
+                }}
                 className="px-4 py-2 border border-slate-200 text-slate-500 font-bold rounded-xl text-xs hover:bg-slate-50 transition-all cursor-pointer"
               >
                 Đóng lại
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
+                  await exportInvoicePaymentRequest();
                   setShowPreviewModal(false);
-                  exportInvoicePaymentRequest();
+                  setActivePreviewInvoice(null);
                 }}
                 className="flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs active:scale-95 transition-all shadow cursor-pointer"
               >

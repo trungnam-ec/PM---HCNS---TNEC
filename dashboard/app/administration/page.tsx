@@ -3131,6 +3131,7 @@ export default function AdministrationPage() {
                               <th className="py-3 px-4 w-44">Thời gian cấp phát</th>
                               <th className="py-3 px-4">Phòng ban</th>
                               <th className="py-3 px-4">Vật tư yêu cầu</th>
+                              <th className="py-3 px-4 text-center w-32">Số lượng tồn kho</th>
                               <th className="py-3 px-4 text-center w-24">Số lượng</th>
                               <th className="py-3 px-4">Ngày yêu cầu</th>
                               <th className="py-3 px-4">Trạng thái</th>
@@ -3153,6 +3154,23 @@ export default function AdministrationPage() {
                                   </td>
                                   <td className="py-3.5 px-4 text-slate-800 font-bold">{req.targetName}</td>
                                   <td className="py-3.5 px-4 text-slate-600">{req.item}</td>
+                                  <td className="py-2 px-4 text-center">
+                                    {(() => {
+                                      const supplyItem = supplies.find(s => s.name === req.item);
+                                      const stockQty = supplyItem ? supplyItem.stock : 0;
+                                      const unit = supplyItem ? supplyItem.unit : "";
+                                      const isLowStock = stockQty < req.qty;
+                                      return (
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                          isLowStock
+                                            ? "text-rose-600 bg-rose-50 border border-rose-100 animate-pulse"
+                                            : "text-slate-600 bg-slate-50 border border-slate-200"
+                                        }`}>
+                                          {stockQty} {unit}
+                                        </span>
+                                      );
+                                    })()}
+                                  </td>
                                   <td className="py-2 px-4 text-center">
                                     <input
                                       type="number"
@@ -3200,7 +3218,7 @@ export default function AdministrationPage() {
                               ))}
                             {deptRequests.filter(r => r.target === "phongban" && (selectedDeptFilter === "Tất cả" || r.targetName === selectedDeptFilter)).length === 0 && (
                               <tr>
-                                <td colSpan={7} className="py-8 text-center text-slate-400 font-medium italic">
+                                <td colSpan={8} className="py-8 text-center text-slate-400 font-medium italic">
                                   Không có yêu cầu cấp phát nào của phòng ban phù hợp với bộ lọc.
                                 </td>
                               </tr>
@@ -3285,6 +3303,7 @@ export default function AdministrationPage() {
                               <th className="py-3 px-4 w-44">Thời gian cấp phát</th>
                               <th className="py-3 px-4">Dự án</th>
                               <th className="py-3 px-4">Vật tư yêu cầu</th>
+                              <th className="py-3 px-4 text-center w-32">Số lượng tồn kho</th>
                               <th className="py-3 px-4 text-center w-24">Số lượng</th>
                               <th className="py-3 px-4">Ngày yêu cầu</th>
                               <th className="py-3 px-4">Trạng thái</th>
@@ -3307,6 +3326,23 @@ export default function AdministrationPage() {
                                   </td>
                                   <td className="py-3.5 px-4 text-slate-800 font-bold">{req.dept}</td>
                                   <td className="py-3.5 px-4 text-slate-600">{req.item}</td>
+                                  <td className="py-2 px-4 text-center">
+                                    {(() => {
+                                      const supplyItem = supplies.find(s => s.name === req.item);
+                                      const stockQty = supplyItem ? supplyItem.stock : 0;
+                                      const unit = supplyItem ? supplyItem.unit : "";
+                                      const isLowStock = stockQty < req.qty;
+                                      return (
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                          isLowStock
+                                            ? "text-rose-600 bg-rose-50 border border-rose-100 animate-pulse"
+                                            : "text-slate-600 bg-slate-50 border border-slate-200"
+                                        }`}>
+                                          {stockQty} {unit}
+                                        </span>
+                                      );
+                                    })()}
+                                  </td>
                                   <td className="py-2 px-4 text-center">
                                     <input
                                       type="number"
@@ -3354,7 +3390,7 @@ export default function AdministrationPage() {
                               ))}
                             {deptRequests.filter(r => r.target === "duan" && (selectedProjectFilter === "Tất cả" || r.targetName === selectedProjectFilter)).length === 0 && (
                               <tr>
-                                <td colSpan={7} className="py-8 text-center text-slate-400 font-medium italic">
+                                <td colSpan={8} className="py-8 text-center text-slate-400 font-medium italic">
                                   Không có yêu cầu cấp phát nào của dự án phù hợp với bộ lọc.
                                 </td>
                               </tr>

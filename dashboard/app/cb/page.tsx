@@ -224,24 +224,27 @@ export default function CBPage() {
       
       const email = session.user.email || "";
       
-      // 1. Query employees table for current employee info
-      const { data: empData } = await supabase
+      // 1. Query employees table for current employee info using ilike to support comma-separated emails
+      const { data: empList } = await supabase
         .from("employees")
         .select("*")
-        .eq("email", email)
-        .maybeSingle();
+        .ilike("email", `%${email}%`);
+      const empData = empList && empList.length > 0 ? empList[0] : null;
         
-      // 2. Query allowed_users for role info
-      const { data: allowedData } = await supabase
+      // 2. Query allowed_users for role info using ilike to support comma-separated emails
+      const { data: allowedList } = await supabase
         .from("allowed_users")
         .select("role")
-        .eq("email", email)
-        .maybeSingle();
+        .ilike("email", `%${email}%`);
+      const allowedData = allowedList && allowedList.length > 0 ? allowedList[0] : null;
 
       const isAdmin = allowedData?.role === "Admin" || empData?.role?.toLowerCase() === "admin";
       const isLanPhương = empData?.name === "Lại Nguyễn Lan Phương" || 
                           session.user.user_metadata?.full_name === "Lại Nguyễn Lan Phương" || 
-                          session.user.user_metadata?.name === "Lại Nguyễn Lan Phương";
+                          session.user.user_metadata?.name === "Lại Nguyễn Lan Phương" ||
+                          empData?.role === "CV Nhân sự" ||
+                          (empData?.role?.toLowerCase()?.includes("nhân sự") && 
+                           (empData?.department?.toLowerCase()?.includes("hành chính") || empData?.department?.toLowerCase()?.includes("hcns")));
       const isTPHCNS = empData?.role?.toLowerCase()?.includes("trưởng phòng") && 
                        (empData?.department?.toLowerCase()?.includes("hành chính") || empData?.department?.toLowerCase()?.includes("hcns"));
                        
@@ -280,7 +283,11 @@ export default function CBPage() {
       if (data) {
         let finalEmployees = data as Employee[];
         if (!fullAccess) {
-          finalEmployees = (data as Employee[]).filter(e => e.email === email || e.name === userName);
+          finalEmployees = (data as Employee[]).filter(e => {
+            if (!e.email) return e.name === userName;
+            const employeeEmails = e.email.split(',').map(s => s.trim().toLowerCase());
+            return employeeEmails.includes(email.toLowerCase()) || e.name === userName;
+          });
           if (finalEmployees.length === 0) {
             const dummyEmp: Employee = {
               id: empRecord?.id || "dummy-id",

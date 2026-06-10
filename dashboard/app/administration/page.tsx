@@ -426,6 +426,10 @@ export default function AdministrationPage() {
   const [editingSupplyName, setEditingSupplyName] = useState<string | null>(null);
   const [editingStockVal, setEditingStockVal] = useState(0);
 
+  // State for editing category directly
+  const [editingSupplyCatName, setEditingSupplyCatName] = useState<string | null>(null);
+  const [editingCatVal, setEditingCatVal] = useState("");
+
   // States for PYC (phiếu yêu cầu)
   const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>("Tất cả");
   const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>("Tất cả");
@@ -1150,7 +1154,8 @@ export default function AdministrationPage() {
         beneficiary: inv.beneficiary_name || "N/A",
         desc: inv.desc || "",
         amount: inv.amount || 0,
-        category: getCategory(inv.desc || "")
+        category: getCategory(inv.desc || ""),
+        file_url: inv.file_url
       })),
       ...filteredPayments.map(p => ({
         id: p.id,
@@ -1160,7 +1165,8 @@ export default function AdministrationPage() {
         beneficiary: p.supplierName || "N/A",
         desc: p.content || "",
         amount: p.amount || 0,
-        category: getCategory(p.content || p.service || "")
+        category: getCategory(p.content || p.service || ""),
+        file_url: p.fileUrl
       }))
     ];
 
@@ -1763,6 +1769,25 @@ export default function AdministrationPage() {
       return s;
     }));
     setEditingSupplyName(null);
+  };
+
+  // VPP Edit category handlers
+  const handleStartEditCat = (item: SupplyItem) => {
+    setEditingSupplyCatName(item.name);
+    setEditingCatVal(item.cat);
+  };
+
+  const handleSaveCat = (name: string) => {
+    setSupplies(prev => prev.map(s => {
+      if (s.name === name) {
+        return {
+          ...s,
+          cat: editingCatVal
+        };
+      }
+      return s;
+    }));
+    setEditingSupplyCatName(null);
   };
 
   // VPP Create new PYC handler
@@ -2890,6 +2915,7 @@ export default function AdministrationPage() {
                               <th className="py-3 px-4">Đơn vị</th>
                               <th className="py-3 px-4">Số lượng tồn kho</th>
                               <th className="py-3 px-4">Đã cấp phát</th>
+                              <th className="py-3 px-4">Số lượng còn lại</th>
                               <th className="py-3 px-4">Trạng thái tồn kho</th>
                               {canDeleteSupplies && <th className="py-3 px-4 w-16 text-center">Thao tác</th>}
                             </tr>
@@ -2900,7 +2926,43 @@ export default function AdministrationPage() {
                               .map((item, idx) => (
                                 <tr key={idx} className="hover:bg-slate-50/50 hover:translate-x-[2px] transition-all duration-150">
                                   <td className="py-3.5 px-4 font-bold text-slate-800">{item.name}</td>
-                                  <td className="py-3.5 px-4 text-slate-500">{item.cat}</td>
+                                  <td className="py-3.5 px-4 text-slate-500">
+                                    {editingSupplyCatName === item.name ? (
+                                      <div className="flex items-center gap-1.5">
+                                        <input
+                                          type="text"
+                                          value={editingCatVal}
+                                          onChange={(e) => setEditingCatVal(e.target.value)}
+                                          className="w-28 px-2 py-0.5 border border-slate-300 rounded text-xs font-semibold focus:border-blue-500 focus:outline-none"
+                                        />
+                                        <button
+                                          onClick={() => handleSaveCat(item.name)}
+                                          className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-all"
+                                          title="Lưu"
+                                        >
+                                          <Check size={12} />
+                                        </button>
+                                        <button
+                                          onClick={() => setEditingSupplyCatName(null)}
+                                          className="p-1 text-rose-600 hover:bg-rose-50 rounded transition-all"
+                                          title="Hủy"
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-2">
+                                        <span>{item.cat}</span>
+                                        <button
+                                          onClick={() => handleStartEditCat(item)}
+                                          className="text-slate-400 hover:text-blue-600 p-1 bg-slate-50 hover:bg-blue-50 border border-slate-200/50 rounded-lg transition-all"
+                                          title="Sửa danh mục"
+                                        >
+                                          <Pencil size={10} />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </td>
                                   <td className="py-3.5 px-4 font-mono text-slate-500">{item.unit}</td>
                                   <td className="py-3.5 px-4 text-slate-800 font-bold">
                                     {editingSupplyName === item.name ? (
@@ -2941,6 +3003,7 @@ export default function AdministrationPage() {
                                     )}
                                   </td>
                                   <td className="py-3.5 px-4 text-slate-400">{item.allocated}</td>
+                                  <td className="py-3.5 px-4 text-slate-800 font-bold">{item.stock - item.allocated}</td>
                                   <td className="py-3.5 px-4">
                                     <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${
                                       item.stock < 15 ? "bg-amber-100 text-amber-700 animate-pulse" : "bg-emerald-100 text-emerald-700"
@@ -5135,6 +5198,7 @@ export default function AdministrationPage() {
                               <th className="py-2.5 px-4">Đơn vị thụ hưởng</th>
                               <th className="py-2.5 px-4">Nội dung</th>
                               <th className="py-2.5 px-4">Phân loại</th>
+                              <th className="py-2.5 px-4 text-center w-24">File gốc</th>
                               <th className="py-2.5 px-4 text-right w-36">Số tiền</th>
                             </tr>
                           </thead>
@@ -5162,13 +5226,29 @@ export default function AdministrationPage() {
                                     {item.category}
                                   </span>
                                 </td>
+                                <td className="py-2.5 px-4 text-center">
+                                  {item.file_url ? (
+                                    <button
+                                      onClick={() => {
+                                        setPreviewFileUrl(item.file_url || "");
+                                        setPreviewFileName(item.type === "Hóa đơn" ? `Hóa đơn số ${item.code}` : `Thanh toán ${item.beneficiary}`);
+                                      }}
+                                      className="text-blue-600 hover:text-blue-800 transition-colors p-1.5 rounded-lg hover:bg-blue-50 cursor-pointer inline-flex items-center justify-center bg-transparent border-none"
+                                      title="Xem file gốc"
+                                    >
+                                      <Eye size={14} />
+                                    </button>
+                                  ) : (
+                                    <span className="text-slate-300">-</span>
+                                  )}
+                                </td>
                                 <td className="py-2.5 px-4 text-right font-extrabold text-slate-800 font-mono">{item.amount.toLocaleString("vi-VN")} đ</td>
                               </tr>
                             ))}
 
                             {combinedItems.length === 0 && (
                               <tr>
-                                <td colSpan={8} className="py-12 text-center text-slate-400 italic">
+                                <td colSpan={9} className="py-12 text-center text-slate-400 italic">
                                   Không có dữ liệu chi phí nào cho kỳ {formatDateVN(reportStartDate)} → {formatDateVN(reportEndDate)}.
                                 </td>
                               </tr>

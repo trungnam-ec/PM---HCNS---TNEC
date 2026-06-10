@@ -12,7 +12,7 @@ if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8')
 
 def main():
-    print("🚀 AI CV Scorer is starting...")
+    print("🚀 PM-HCNS-TNEC is starting...")
     load_dotenv()
     
     api_key = os.getenv("OPENAI_API_KEY")

@@ -1,6 +1,6 @@
 /**
  * ╔══════════════════════════════════════════════════════════════╗
- * ║  AI CV Scorer V2 + Dashboard API – Google Apps Script       ║
+ * ║  PM-HCNS-TNEC V2 + Dashboard API – Google Apps Script       ║
  * ║  doGet  → Trả dữ liệu JSON (Read, Dashboard API)            ║
  * ║  doPost → Append / Update / Delete row (Write, CRUD)        ║
  * ╚══════════════════════════════════════════════════════════════╝

@@ -35,6 +35,18 @@ const DEPARTMENTS = [
   "Phòng Thư Ký, Trợ Lý"
 ];
 
+const BDH_OPTIONS = [
+  "BĐH Vàm Lẽo",
+  "BĐH Rạch Xuyên Tâm",
+  "BĐH Thường Phước",
+  "BĐH XLNT Tây Ninh",
+  "BĐH KCN Cà Ná",
+  "BĐH Chống Hạn Ninh Thuận",
+  "BĐH Tỉnh Lộ 8",
+  "BĐH Cầu Mã Đà",
+  "BĐH ĐMT Trà Vinh 2"
+];
+
 interface Employee {
   id: string;
   employee_code: string;
@@ -58,6 +70,7 @@ export default function EmployeeManagementPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterDept, setFilterDept] = useState("all");
+  const [filterBdh, setFilterBdh] = useState("all");
   const [showAddModal, setShowAddModal] = useState(false);
   
   // New Employee Form State
@@ -471,8 +484,9 @@ export default function EmployeeManagementPage() {
                         emp.id.toLowerCase().includes(search.toLowerCase()) ||
                         emp.email.toLowerCase().includes(search.toLowerCase());
     const matchDept = filterDept === "all" || emp.department === filterDept;
+    const matchBdh = filterBdh === "all" || emp.department === filterBdh;
     
-    if (!matchSearch || !matchDept) return false;
+    if (!matchSearch || !matchDept || !matchBdh) return false;
 
     if (!currentUser) return false;
 
@@ -553,7 +567,12 @@ export default function EmployeeManagementPage() {
                 <Filter size={13} className="text-slate-400" />
                 <select
                   value={filterDept}
-                  onChange={(e) => setFilterDept(e.target.value)}
+                  onChange={(e) => {
+                    setFilterDept(e.target.value);
+                    if (e.target.value !== "all") {
+                      setFilterBdh("all");
+                    }
+                  }}
                   className="text-xs text-slate-600 bg-transparent outline-none font-semibold cursor-pointer"
                 >
                   <option value="all">Tất cả phòng ban</option>
@@ -566,6 +585,26 @@ export default function EmployeeManagementPage() {
                   <option value="Phòng An Toàn Lao Động">Phòng An Toàn Lao Động</option>
                   <option value="Phòng Quản Lý Dự Án">Phòng Quản Lý Dự Án</option>
                   <option value="Phòng Thư Ký, Trợ Lý">Phòng Thư Ký, Trợ Lý</option>
+                </select>
+              </div>
+
+              {/* BDH Filter */}
+              <div className="flex items-center gap-2 bg-white px-3 py-1.5 border border-slate-200 rounded-xl shadow-sm">
+                <Filter size={13} className="text-slate-400" />
+                <select
+                  value={filterBdh}
+                  onChange={(e) => {
+                    setFilterBdh(e.target.value);
+                    if (e.target.value !== "all") {
+                      setFilterDept("all");
+                    }
+                  }}
+                  className="text-xs text-slate-600 bg-transparent outline-none font-semibold cursor-pointer"
+                >
+                  <option value="all">Tất cả Ban điều hành</option>
+                  {BDH_OPTIONS.map((bdh) => (
+                    <option key={bdh} value={bdh}>{bdh}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -664,7 +703,7 @@ export default function EmployeeManagementPage() {
                         <td className="px-4 py-1 text-xs text-slate-500 font-medium">
                           <EditableSelect
                             value={emp.department}
-                            options={DEPARTMENTS}
+                            options={[...DEPARTMENTS, ...BDH_OPTIONS]}
                             onSave={(val) => handleUpdateEmployeeField(emp.id, "department", val)}
                             readOnly={!canEdit}
                           />
@@ -781,15 +820,17 @@ export default function EmployeeManagementPage() {
                     value={newDept} onChange={(e) => setNewDept(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 bg-white"
                   >
-                    <option value="Phòng Hành Chính Nhân Sự">Phòng Hành Chính Nhân Sự</option>
-                    <option value="Phòng Tài Chính Kế Toán">Phòng Tài Chính Kế Toán</option>
-                    <option value="Phòng Vật Tư Thiết Bị">Phòng Vật Tư Thiết Bị</option>
-                    <option value="Phòng Thị Trường">Phòng Thị Trường</option>
-                    <option value="Phòng Kế Hoạch Đấu Thầu">Phòng Kế Hoạch Đấu Thầu</option>
-                    <option value="Phòng Kỹ Thuật">Phòng Kỹ Thuật</option>
-                    <option value="Phòng An Toàn Lao Động">Phòng An Toàn Lao Động</option>
-                    <option value="Phòng Quản Lý Dự Án">Phòng Quản Lý Dự Án</option>
-                    <option value="Phòng Thư Ký, Trợ Lý">Phòng Thư Ký, Trợ Lý</option>
+                    <option value="">-- Chọn Phòng ban / Dự án --</option>
+                    <optgroup label="Khối Văn phòng">
+                      {DEPARTMENTS.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Ban điều hành dự án">
+                      {BDH_OPTIONS.map(b => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </optgroup>
                   </select>
                 </div>
 

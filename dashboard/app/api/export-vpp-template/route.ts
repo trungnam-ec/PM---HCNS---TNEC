@@ -41,9 +41,9 @@ export async function POST(request: NextRequest) {
     // E10 is Department/Project
     worksheet.getCell("E10").value = `Bộ phận: ${targetName}`;
 
-    // 4. Clear existing template items (from row 14 to row 31)
-    // Clear rows 14 to 31 completely of values but keep structure and formatting
-    for (let r = 14; r <= 31; r++) {
+    // 4. Clear existing template items (from row 14 to row 30)
+    // Clear rows 14 to 30 completely of values but keep structure and formatting
+    for (let r = 14; r <= 30; r++) {
       const row = worksheet.getRow(r);
       for (let c = 1; c <= 7; c++) {
         row.getCell(c).value = "";
@@ -64,30 +64,11 @@ export async function POST(request: NextRequest) {
       row.getCell(7).value = item.notes || "Đã duyệt cấp phát"; // Ghi chú
     });
 
-    // 6. Write Date and Signature
-    const lastItemRowIndex = 14 + items.length - 1;
-    const sumRowIndex = lastItemRowIndex + 2;
-
-    // Clean old signature areas below the table to prevent overlap
-    for (let r = sumRowIndex; r <= sumRowIndex + 10; r++) {
-      const row = worksheet.getRow(r);
-      for (let c = 1; c <= 7; c++) {
-        row.getCell(c).value = "";
-      }
-    }
-
-    // Write TPHCM date in F(sumRowIndex + 2)
-    const dateRowIndex = sumRowIndex + 2;
+    // 6. Overwrite the Date directly in Cell F34 (fixed template location)
     const dayStr = String(now.getDate()).padStart(2, "0");
     const monthNumStr = String(now.getMonth() + 1).padStart(2, "0");
     const yearStr = String(now.getFullYear());
-    
-    worksheet.getCell(`F${dateRowIndex}`).value = `TPHCM, ngày ${dayStr} tháng ${monthNumStr} năm ${yearStr}`;
-
-    // Write Signatures
-    const sigRowIndex = dateRowIndex + 2;
-    worksheet.getCell(`A${sigRowIndex}`).value = "NGƯỜI NHẬN";
-    worksheet.getCell(`F${sigRowIndex}`).value = "NGƯỜI LẬP";
+    worksheet.getCell("F34").value = `TPHCM, ngày ${dayStr} tháng ${monthNumStr} năm ${yearStr}`;
 
     // Set Sheet Name (max 31 characters, remove "Phòng " prefix for brevity if needed)
     const cleanSheetName = targetName.replace(/Phòng\s+/i, "P. ").slice(0, 30);

@@ -3156,18 +3156,71 @@ export default function AdministrationPage() {
                                   <td className="py-3.5 px-4 text-slate-600">{req.item}</td>
                                   <td className="py-2 px-4 text-center">
                                     {(() => {
-                                      const supplyItem = supplies.find(s => s.name === req.item);
-                                      const stockQty = supplyItem ? supplyItem.stock : 0;
-                                      const unit = supplyItem ? supplyItem.unit : "";
+                                      const supplyItem = supplies.find(
+                                        s => s.name.trim().toLowerCase() === req.item.trim().toLowerCase()
+                                      );
+                                      if (!supplyItem) {
+                                        return (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200">
+                                            Chưa có trong kho
+                                          </span>
+                                        );
+                                      }
+                                      
+                                      const isEditing = editingSupplyName === supplyItem.name;
+                                      
+                                      if (isEditing) {
+                                        return (
+                                          <div className="flex items-center justify-center gap-1.5">
+                                            <input
+                                              type="number"
+                                              value={editingStockVal}
+                                              onChange={(e) => setEditingStockVal(Number(e.target.value))}
+                                              className="w-16 px-2 py-0.5 border border-slate-300 rounded text-xs font-semibold focus:border-blue-500 focus:outline-none bg-white text-slate-800"
+                                              min={0}
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => handleSaveStock(supplyItem.name)}
+                                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-all cursor-pointer"
+                                              title="Lưu"
+                                            >
+                                              <Check size={12} />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setEditingSupplyName(null)}
+                                              className="p-1 text-rose-600 hover:bg-rose-50 rounded transition-all cursor-pointer"
+                                              title="Hủy"
+                                            >
+                                              <X size={12} />
+                                            </button>
+                                          </div>
+                                        );
+                                      }
+                                      
+                                      const stockQty = supplyItem.stock;
+                                      const unit = supplyItem.unit;
                                       const isLowStock = stockQty < req.qty;
+                                      
                                       return (
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                                          isLowStock
-                                            ? "text-rose-600 bg-rose-50 border border-rose-100 animate-pulse"
-                                            : "text-slate-600 bg-slate-50 border border-slate-200"
-                                        }`}>
-                                          {stockQty} {unit}
-                                        </span>
+                                        <div className="flex items-center justify-center gap-2">
+                                          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                            isLowStock
+                                              ? "text-rose-600 bg-rose-50 border border-rose-100 animate-pulse"
+                                              : "text-slate-600 bg-slate-50 border border-slate-200"
+                                          }`}>
+                                            {stockQty} {unit}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleStartEditStock(supplyItem)}
+                                            className="text-slate-400 hover:text-blue-600 p-1 bg-slate-50 hover:bg-blue-50 border border-slate-200/50 rounded-lg transition-all cursor-pointer"
+                                            title="Sửa số lượng tồn"
+                                          >
+                                            <Pencil size={10} />
+                                          </button>
+                                        </div>
                                       );
                                     })()}
                                   </td>
@@ -3328,18 +3381,71 @@ export default function AdministrationPage() {
                                   <td className="py-3.5 px-4 text-slate-600">{req.item}</td>
                                   <td className="py-2 px-4 text-center">
                                     {(() => {
-                                      const supplyItem = supplies.find(s => s.name === req.item);
-                                      const stockQty = supplyItem ? supplyItem.stock : 0;
-                                      const unit = supplyItem ? supplyItem.unit : "";
+                                      const supplyItem = supplies.find(
+                                        s => s.name.trim().toLowerCase() === req.item.trim().toLowerCase()
+                                      );
+                                      if (!supplyItem) {
+                                        return (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200">
+                                            Chưa có trong kho
+                                          </span>
+                                        );
+                                      }
+                                      
+                                      const isEditing = editingSupplyName === supplyItem.name;
+                                      
+                                      if (isEditing) {
+                                        return (
+                                          <div className="flex items-center justify-center gap-1.5">
+                                            <input
+                                              type="number"
+                                              value={editingStockVal}
+                                              onChange={(e) => setEditingStockVal(Number(e.target.value))}
+                                              className="w-16 px-2 py-0.5 border border-slate-300 rounded text-xs font-semibold focus:border-blue-500 focus:outline-none bg-white text-slate-800"
+                                              min={0}
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => handleSaveStock(supplyItem.name)}
+                                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-all cursor-pointer"
+                                              title="Lưu"
+                                            >
+                                              <Check size={12} />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setEditingSupplyName(null)}
+                                              className="p-1 text-rose-600 hover:bg-rose-50 rounded transition-all cursor-pointer"
+                                              title="Hủy"
+                                            >
+                                              <X size={12} />
+                                            </button>
+                                          </div>
+                                        );
+                                      }
+                                      
+                                      const stockQty = supplyItem.stock;
+                                      const unit = supplyItem.unit;
                                       const isLowStock = stockQty < req.qty;
+                                      
                                       return (
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                                          isLowStock
-                                            ? "text-rose-600 bg-rose-50 border border-rose-100 animate-pulse"
-                                            : "text-slate-600 bg-slate-50 border border-slate-200"
-                                        }`}>
-                                          {stockQty} {unit}
-                                        </span>
+                                        <div className="flex items-center justify-center gap-2">
+                                          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                            isLowStock
+                                              ? "text-rose-600 bg-rose-50 border border-rose-100 animate-pulse"
+                                              : "text-slate-600 bg-slate-50 border border-slate-200"
+                                          }`}>
+                                            {stockQty} {unit}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleStartEditStock(supplyItem)}
+                                            className="text-slate-400 hover:text-blue-600 p-1 bg-slate-50 hover:bg-blue-50 border border-slate-200/50 rounded-lg transition-all cursor-pointer"
+                                            title="Sửa số lượng tồn"
+                                          >
+                                            <Pencil size={10} />
+                                          </button>
+                                        </div>
                                       );
                                     })()}
                                   </td>

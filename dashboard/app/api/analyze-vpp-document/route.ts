@@ -93,12 +93,35 @@ export async function POST(req: NextRequest) {
     const filenameInfo = originalFilename ? `Tên file tài liệu gốc: "${originalFilename}"` : `Tên file tài liệu: "${file.name}"`;
     const promptText = `Hãy phân tích tài liệu yêu cầu VPP này. 
 ${filenameInfo}
-Hãy trích xuất thông tin dạng JSON gồm: targetType, targetName, requesterName, items.`;
+Hãy trích xuất thông tin dạng JSON gồm: targetType, targetName, requesterName, items.
+LƯU Ý QUAN TRỌNG: Nếu tài liệu chứa cả phần hướng dẫn/ví dụ mẫu (chứa thông tin mẫu tĩnh, ví dụ tên người yêu cầu là 'Nguyễn Thị Hồng Hạnh') và phần yêu cầu thực tế (ví dụ tên người yêu cầu là 'Trần Thùy Dương'), hãy BỎ QUA phần ví dụ mẫu và CHỈ trích xuất thông tin từ phần yêu cầu thực tế của nhân viên.`;
 
     if (fileType.endsWith(".xlsx") || fileType.endsWith(".xls")) {
       const workbook = XLSX.read(fileBuffer, { type: "buffer" });
       let excelText = "";
-      for (const sheetName of workbook.SheetNames) {
+      
+      // Filter sheet names to prioritize actual requests if there are multiple sheets
+      const validSheets = workbook.SheetNames.filter(name => {
+        if (workbook.SheetNames.length <= 1) return true;
+        const normalized = name.toLowerCase().trim();
+        return !(
+          normalized.includes("hướng dẫn") ||
+          normalized.includes("huong dan") ||
+          normalized.includes("ví dụ") ||
+          normalized.includes("vi du") ||
+          normalized.includes("mẫu") ||
+          normalized.includes("mau") ||
+          normalized.includes("template") ||
+          normalized.includes("example") ||
+          normalized === "vd" ||
+          normalized === "hd"
+        );
+      });
+
+      // If all sheets were filtered out, fallback to all sheets
+      const sheetsToProcess = validSheets.length > 0 ? validSheets : workbook.SheetNames;
+
+      for (const sheetName of sheetsToProcess) {
         const sheet = workbook.Sheets[sheetName];
         const csv = XLSX.utils.sheet_to_csv(sheet);
         // Filter out empty rows or rows that contain only commas/semicolons/quotes and whitespace

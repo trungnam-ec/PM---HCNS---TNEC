@@ -5,13 +5,14 @@ import * as XLSX from "xlsx";
 
 const DEPARTMENTS = [
   "Phòng Hành Chính Nhân Sự",
-  "Phòng Kế Toán",
+  "Phòng Tài Chính Kế Toán",
   "Phòng Vật Tư Thiết Bị",
   "Phòng Thị Trường",
   "Phòng Kế Hoạch Đấu Thầu",
   "Phòng Kỹ Thuật",
   "Phòng An Toàn Lao Động",
-  "Phòng Quản Lý Dự Án"
+  "Phòng Quản Lý Dự Án",
+  "Phòng Thư Ký, Trợ Lý"
 ];
 
 const SYSTEM_PROMPT = `
@@ -21,38 +22,51 @@ Nhiệm vụ của bạn là đọc và trích xuất danh sách thông tin nhâ
 Hãy trích xuất và chuyển đổi các thông tin thành định dạng JSON chứa một danh sách các nhân viên.
 
 Mỗi nhân viên cần có các trường dữ liệu sau:
-1. "name": Họ và tên đầy đủ của nhân viên. Viết hoa các chữ cái đầu (ví dụ: "Nguyễn Văn A").
-2. "department": Tên phòng ban làm việc. PHẢI được ánh xạ chính xác về một trong các phòng ban hợp lệ dưới đây:
+1. "employee_code": Mã nhân viên (ví dụ: "NV001", "TNEC-001"). Nếu không có, để trống "".
+2. "name": Họ và tên đầy đủ của nhân viên. Viết hoa các chữ cái đầu (ví dụ: "Nguyễn Văn A").
+3. "department": Tên phòng ban làm việc. PHẢI được ánh xạ chính xác về một trong các phòng ban hợp lệ dưới đây:
    ${JSON.stringify(DEPARTMENTS)}
-   *(Ví dụ: "Hành chính nhân sự", "HCNS", "Phòng HCNS" -> "Phòng Hành Chính Nhân Sự"; "Kế toán", "P. Kế toán" -> "Phòng Kế Toán"; "Vật tư", "P. Vật tư" -> "Phòng Vật Tư Thiết Bị"; "Dự án", "QLDA", "Quản lý dự án" -> "Phòng Quản Lý Dự Án"; "Kỹ thuật" -> "Phòng Kỹ Thuật"; "An toàn lao động", "ATLĐ" -> "Phòng An Toàn Lao Động")*
-3. "position": Chức vụ / Vị trí công việc (ví dụ: "Chuyên viên tuyển dụng", "Kỹ sư cầu đường", "Trưởng phòng"). Nếu không có, dự đoán hoặc điền "Nhân viên".
-4. "phone": Số điện thoại liên hệ (ví dụ: "0912345678"). Nếu không có, điền "N/A".
-5. "email": Địa chỉ email làm việc (ví dụ: "nguyenvana@gmail.com"). Nếu không có, điền "N/A".
-6. "status": Trạng thái làm việc. Phải là một trong hai giá trị sau:
+   *(Ví dụ: "Hành chính nhân sự", "HCNS", "Phòng HCNS" -> "Phòng Hành Chính Nhân Sự"; "Kế toán", "P. Kế toán", "TCKT", "P. TCKT" -> "Phòng Tài Chính Kế Toán"; "Vật tư", "P. Vật tư" -> "Phòng Vật Tư Thiết Bị"; "Dự án", "QLDA", "Quản lý dự án" -> "Phòng Quản Lý Dự Án"; "Kỹ thuật" -> "Phòng Kỹ Thuật"; "An toàn lao động", "ATLĐ" -> "Phòng An Toàn Lao Động"; "Thư ký", "Trợ lý", "Tổ trợ lý" -> "Phòng Thư Ký, Trợ Lý")*
+4. "position": Chức vụ / Chức danh (ví dụ: "Chuyên viên tuyển dụng", "Kỹ sư cầu đường", "Trưởng phòng"). Nếu không có, dự đoán hoặc điền "Nhân viên".
+5. "gender": Giới tính ("Nam" hoặc "Nữ"). Nếu không rõ, để trống "".
+6. "start": Ngày nhận việc / ngày bắt đầu làm việc (định dạng YYYY-MM-DD, ví dụ: "2026-06-01"). Nếu không có, để trống "".
+7. "date_of_birth": Ngày sinh (định dạng YYYY-MM-DD, ví dụ: "1995-03-15"). Nếu không có, để trống "".
+8. "phone": Số điện thoại liên hệ (ví dụ: "0912345678"). Nếu không có, điền "N/A".
+9. "email": Địa chỉ email làm việc (ví dụ: "nguyenvana@gmail.com"). Nếu không có, điền "N/A".
+10. "cccd": Số Căn cước công dân / CMND (ví dụ: "079012345678"). Nếu không có, để trống "".
+11. "degree": Bằng cấp / Trình độ học vấn (ví dụ: "Đại học", "Cao đẳng", "Thạc sĩ", "Trung cấp"). Nếu không có, để trống "".
+12. "status": Trạng thái làm việc. Phải là một trong hai giá trị sau:
    - "Chính thức"
    - "Thử việc"
    *(Nếu không nêu rõ, mặc định là "Chính thức")*
-7. "start": Ngày bắt đầu làm việc (định dạng YYYY-MM-DD, ví dụ: "2026-06-01"). Nếu không có, điền ngày hiện tại hoặc để trống "".
+13. "notes": Ghi chú thêm (nếu có). Nếu không có, để trống "".
 
 ━━━ QUY TẮC PHÂN TÍCH ━━━
-- Hãy đọc kỹ các tiêu đề cột (Họ tên, Phòng ban, Điện thoại, Email, Chức vụ, Ngày vào làm, Trạng thái...) để trích xuất đúng dòng thông tin của từng nhân viên.
+- Hãy đọc kỹ các tiêu đề cột (STT, Mã NV, Họ tên, Phòng ban, Chức danh, Giới tính, Ngày nhận việc, Ngày sinh, SĐT, CCCD, Bằng cấp, Ghi chú...) để trích xuất đúng dòng thông tin của từng nhân viên.
 - Trả về kết quả CHỈ dạng JSON chứa mảng "employees", không kèm giải thích bên ngoài.
 
 ━━━ OUTPUT FORMAT (JSON ONLY) ━━━
 {
   "employees": [
     {
+      "employee_code": "...",
       "name": "...",
       "department": "...",
       "position": "...",
+      "gender": "Nam | Nữ | ",
+      "start": "YYYY-MM-DD",
+      "date_of_birth": "YYYY-MM-DD",
       "phone": "...",
       "email": "...",
+      "cccd": "...",
+      "degree": "...",
       "status": "Chính thức | Thử việc",
-      "start": "YYYY-MM-DD"
+      "notes": "..."
     }
   ]
 }
 `.trim();
+
 
 export async function POST(req: NextRequest) {
   try {

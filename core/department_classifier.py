@@ -62,7 +62,7 @@ DEPARTMENT_KEYWORDS: dict[str, list[str]] = {
         "cung cấp vật tư", "cung cap vat tu",
         "procurement",
     ],
-    "Phòng Kế Toán": [
+    "Phòng Tài Chính Kế Toán": [
         "kế toán", "ke toan",
         "tài chính", "tai chinh",
         "hạch toán", "hach toan", "hoach toan",
@@ -84,7 +84,7 @@ DEPARTMENT_KEYWORDS: dict[str, list[str]] = {
         "hr",
         "đào tạo", "dao tao",
     ],
-    "Phòng Trợ Lý": [
+    "Phòng Thư Ký, Trợ Lý": [
         "thư ký", "thu ky",
         "trợ lý", "tro ly",
         "trợ lý giám đốc", "tro ly giam doc",
@@ -121,8 +121,8 @@ REVIEWER_MAP: dict[str, str] = {
     "Phòng ATLĐ":              "TP ATLĐ",
     "Phòng Hành Chính Nhân Sự":"TP HCNS",
     "Phòng QLCC":              "Ban Lãnh Đạo",
-    "Phòng Trợ Lý":            "Ban Lãnh Đạo",
-    "Phòng Kế Toán":           "Kế Toán Trưởng",
+    "Phòng Thư Ký, Trợ Lý":    "Ban Lãnh Đạo",
+    "Phòng Tài Chính Kế Toán":  "Kế Toán Trưởng",
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -99,7 +99,7 @@ export default function Sidebar() {
         const { data: empData } = await supabase
           .from("employees")
           .select("role")
-          .ilike("email", email)
+          .like("email", `%${email}%`)
           .maybeSingle();
 
         const role = empData?.role || (isAdmin ? "Admin" : "Nhân viên");

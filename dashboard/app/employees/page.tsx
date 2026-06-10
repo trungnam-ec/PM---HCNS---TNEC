@@ -23,16 +23,34 @@ import {
   Settings
 } from "lucide-react";
 
+const DEPARTMENTS = [
+  "Phòng Hành Chính Nhân Sự",
+  "Phòng Tài Chính Kế Toán",
+  "Phòng Vật Tư Thiết Bị",
+  "Phòng Thị Trường",
+  "Phòng Kế Hoạch Đấu Thầu",
+  "Phòng Kỹ Thuật",
+  "Phòng An Toàn Lao Động",
+  "Phòng Quản Lý Dự Án",
+  "Phòng Thư Ký, Trợ Lý"
+];
+
 interface Employee {
   id: string;
+  employee_code: string;
   name: string;
   department: string;
   position: string;
-  status: string;
+  gender: string;
   start: string;
+  date_of_birth: string;
   phone: string;
+  cccd: string;
+  degree: string;
+  status: string;
   email: string;
   avatar: string;
+  notes: string;
 }
 
 export default function EmployeeManagementPage() {
@@ -49,17 +67,29 @@ export default function EmployeeManagementPage() {
   const [newPhone, setNewPhone] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newStatus, setNewStatus] = useState("Thử việc");
+  const [newGender, setNewGender] = useState("");
+  const [newDob, setNewDob] = useState("");
+  const [newCccd, setNewCccd] = useState("");
+  const [newDegree, setNewDegree] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+  const [newCode, setNewCode] = useState("");
 
   // File Upload & AI Analysis State
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   interface ExtractedEmployee {
+    employee_code: string;
     name: string;
     department: string;
     position: string;
+    gender: string;
+    start: string;
+    date_of_birth: string;
     phone: string;
     email: string;
+    cccd: string;
+    degree: string;
     status: string;
-    start: string;
+    notes: string;
   }
   const [previewEmployees, setPreviewEmployees] = useState<ExtractedEmployee[]>([]);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -91,14 +121,20 @@ export default function EmployeeManagementPage() {
       if (data) {
         const mapped = data.map((emp: any) => ({
           id: emp.id,
+          employee_code: emp.employee_code || "",
           name: emp.name,
           department: emp.department || "Chưa xếp phòng",
           position: emp.role || emp.last_position || "Nhân viên",
-          status: emp.status || "Chính thức",
+          gender: emp.gender || "",
           start: emp.created_at ? new Date(emp.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+          date_of_birth: emp.date_of_birth || "",
           phone: emp.phone || "N/A",
+          cccd: emp.cccd || "",
+          degree: emp.degree || "",
+          status: emp.status || "Chính thức",
           email: emp.email || "N/A",
-          avatar: emp.avatar || emp.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
+          avatar: emp.avatar || emp.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
+          notes: emp.notes || ""
         }));
         setEmployees(mapped);
       }
@@ -138,7 +174,7 @@ export default function EmployeeManagementPage() {
       const { data: empData } = await supabase
         .from("employees")
         .select("name, role, department")
-        .ilike("email", email)
+        .like("email", `%${email}%`)
         .maybeSingle();
 
       setCurrentUser({
@@ -243,56 +279,43 @@ export default function EmployeeManagementPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // Drag & Drop — use native window-level events for reliable detection
-  const processUploadedFilesRef = useRef(processUploadedFiles);
-  processUploadedFilesRef.current = processUploadedFiles;
+  // Drag & Drop Handlers
+  const dragCounter = useRef(0);
 
-  useEffect(() => {
-    let counter = 0;
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
 
-    const onDragEnter = (e: DragEvent) => {
-      e.preventDefault();
-      counter++;
-      if (counter === 1) {
-        setIsDragging(true);
-      }
-    };
-
-    const onDragOver = (e: DragEvent) => {
-      e.preventDefault();
-    };
-
-    const onDragLeave = (e: DragEvent) => {
-      e.preventDefault();
-      counter--;
-      if (counter <= 0) {
-        counter = 0;
-        setIsDragging(false);
-      }
-    };
-
-    const onDrop = (e: DragEvent) => {
-      e.preventDefault();
-      counter = 0;
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current--;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
       setIsDragging(false);
-      const files = e.dataTransfer?.files;
-      if (files && files.length > 0) {
-        processUploadedFilesRef.current(files);
-      }
-    };
+    }
+  };
 
-    window.addEventListener("dragenter", onDragEnter);
-    window.addEventListener("dragover", onDragOver);
-    window.addEventListener("dragleave", onDragLeave);
-    window.addEventListener("drop", onDrop);
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
 
-    return () => {
-      window.removeEventListener("dragenter", onDragEnter);
-      window.removeEventListener("dragover", onDragOver);
-      window.removeEventListener("dragleave", onDragLeave);
-      window.removeEventListener("drop", onDrop);
-    };
-  }, []);
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounter.current = 0;
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      processUploadedFiles(files);
+    }
+  };
 
   // Settings handlers
   const openSettings = () => {
@@ -319,13 +342,19 @@ export default function EmployeeManagementPage() {
         const avatarStr = emp.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
         const hasValidStart = emp.start && emp.start !== "" && !isNaN(Date.parse(emp.start));
         return {
+          employee_code: emp.employee_code || "",
           name: emp.name,
           department: emp.department,
           role: emp.position,
+          gender: emp.gender || "",
+          date_of_birth: emp.date_of_birth || "",
           phone: emp.phone || "N/A",
           email: emp.email || "N/A",
+          cccd: emp.cccd || "",
+          degree: emp.degree || "",
           status: emp.status || "Chính thức",
           avatar: avatarStr,
+          notes: emp.notes || "",
           created_at: hasValidStart ? new Date(emp.start).toISOString() : new Date().toISOString()
         };
       });
@@ -357,13 +386,19 @@ export default function EmployeeManagementPage() {
       const { error } = await supabase
         .from("employees")
         .insert([{
+          employee_code: newCode || "",
           name: newName,
           department: newDept,
           role: newPos,
+          gender: newGender || "",
+          date_of_birth: newDob || "",
           phone: newPhone || "N/A",
           email: newEmail || "N/A",
+          cccd: newCccd || "",
+          degree: newDegree || "",
           status: newStatus,
-          avatar: avatarStr
+          avatar: avatarStr,
+          notes: newNotes || ""
         }]);
 
       if (error) throw error;
@@ -375,6 +410,12 @@ export default function EmployeeManagementPage() {
       setNewPhone("");
       setNewEmail("");
       setNewStatus("Thử việc");
+      setNewGender("");
+      setNewDob("");
+      setNewCccd("");
+      setNewDegree("");
+      setNewNotes("");
+      setNewCode("");
 
       fetchEmployees();
     } catch (err) {
@@ -448,12 +489,44 @@ export default function EmployeeManagementPage() {
     if (isUserAdmin) return true;
     if (isUserDeputy) return emp.department === currentUser.department;
 
-    return emp.email.toLowerCase() === currentUser.email.toLowerCase();
+    return emp.email.toLowerCase().includes(currentUser.email.toLowerCase());
   });
+
+  const handleUpdateEmployeeField = async (id: string, field: string, value: string) => {
+    try {
+      // Optimistic update
+      setEmployees(prev => prev.map(emp => emp.id === id ? { ...emp, [field]: value } : emp));
+
+      // Map field name to database column name
+      const dbField = field === "position" ? "role" : field;
+
+      const { error } = await supabase
+        .from("employees")
+        .update({ [dbField]: value })
+        .eq("id", id);
+
+      if (error) throw error;
+    } catch (err) {
+      console.error("Lỗi khi cập nhật thông tin nhân sự:", err);
+      alert("Lỗi khi cập nhật thông tin nhân viên!");
+      fetchEmployees();
+    }
+  };
+
+  const canEdit = !!(currentUser && (
+    currentUser.isAdmin || 
+    currentUser.role.toLowerCase() === "admin" ||
+    currentUser.role.toLowerCase().includes("trưởng phòng") || 
+    currentUser.role.toLowerCase().includes("truong phong")
+  ));
 
   return (
     <div 
       className="flex min-h-screen bg-[#F7F9FC] relative"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
       <Sidebar />
       <div className="ml-60 flex-1 flex flex-col min-w-0">
@@ -484,14 +557,15 @@ export default function EmployeeManagementPage() {
                   className="text-xs text-slate-600 bg-transparent outline-none font-semibold cursor-pointer"
                 >
                   <option value="all">Tất cả phòng ban</option>
-                  <option value="Phòng Hành Chính Nhân Sự">Hành chính nhân sự</option>
-                  <option value="Phòng Kế Toán">P kế toán</option>
-                  <option value="Phòng Vật Tư Thiết Bị">p Vật tư thiết bị</option>
-                  <option value="Phòng Thị Trường">p thị trường</option>
-                  <option value="Phòng Kế Hoạch Đấu Thầu">p kế hoạch đấu thầu</option>
-                  <option value="Phòng Kỹ Thuật">p kỹ thuật</option>
-                  <option value="Phòng An Toàn Lao Động">p an toàn lao động</option>
-                  <option value="Phòng Quản Lý Dự Án">p quản lý dự án</option>
+                  <option value="Phòng Hành Chính Nhân Sự">Phòng Hành Chính Nhân Sự</option>
+                  <option value="Phòng Tài Chính Kế Toán">Phòng Tài Chính Kế Toán</option>
+                  <option value="Phòng Vật Tư Thiết Bị">Phòng Vật Tư Thiết Bị</option>
+                  <option value="Phòng Thị Trường">Phòng Thị Trường</option>
+                  <option value="Phòng Kế Hoạch Đấu Thầu">Phòng Kế Hoạch Đấu Thầu</option>
+                  <option value="Phòng Kỹ Thuật">Phòng Kỹ Thuật</option>
+                  <option value="Phòng An Toàn Lao Động">Phòng An Toàn Lao Động</option>
+                  <option value="Phòng Quản Lý Dự Án">Phòng Quản Lý Dự Án</option>
+                  <option value="Phòng Thư Ký, Trợ Lý">Phòng Thư Ký, Trợ Lý</option>
                 </select>
               </div>
             </div>
@@ -551,60 +625,99 @@ export default function EmployeeManagementPage() {
                 <table className="w-full text-sm text-left">
                   <thead>
                     <tr className="bg-slate-100/70 border-b border-slate-200/60">
-                      <th className="px-6 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Nhân viên</th>
-                      <th className="px-6 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Mã NV</th>
-                      <th className="px-6 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Phòng ban / Chức vụ</th>
-                      <th className="px-6 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Liên hệ</th>
-                      <th className="px-6 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Ngày bắt đầu</th>
-                      <th className="px-6 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Trạng thái</th>
-                      <th className="px-6 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Thao tác</th>
+                      <th className="px-4 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider text-center w-12">STT</th>
+                      <th className="px-4 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Mã nhân viên</th>
+                      <th className="px-4 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Họ tên</th>
+                      <th className="px-4 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Phòng ban</th>
+                      <th className="px-4 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Chức danh</th>
+                      <th className="px-4 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Giới tính</th>
+                      <th className="px-4 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Ngày nhận việc</th>
+                      <th className="px-4 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Ngày sinh</th>
+                      <th className="px-4 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Số ĐT</th>
+                      <th className="px-4 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">CCCD</th>
+                      <th className="px-4 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Bằng cấp</th>
+                      <th className="px-4 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Email</th>
+                      <th className="px-4 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider">Ghi chú</th>
+                      <th className="px-4 py-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider text-center">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filtered.map((emp) => (
+                    {filtered.map((emp, index) => (
                       <tr key={emp.id} className="hover:bg-blue-50/20 bg-white/50 transition-all">
-                        {/* Name & Avatar */}
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-white text-xs shadow-sm shrink-0">
+                        {/* STT */}
+                        <td className="px-4 py-3 text-center text-xs text-slate-400 font-mono">{index + 1}</td>
+
+                        {/* Mã nhân viên */}
+                        <td className="px-4 py-3 text-xs text-slate-600 font-semibold">{emp.employee_code || <span className="text-slate-300 italic">—</span>}</td>
+
+                        {/* Họ tên */}
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-white text-[10px] shadow-sm shrink-0">
                               {emp.avatar}
                             </div>
-                            <div>
-                              <p className="font-heading font-bold text-slate-800 text-sm">{emp.name}</p>
-                            </div>
+                            <p className="font-heading font-bold text-slate-800 text-xs whitespace-nowrap">{emp.name}</p>
                           </div>
                         </td>
 
-                        {/* ID */}
-                        <td className="px-6 py-4 font-mono text-[10px] text-slate-400 font-medium truncate max-w-[80px]" title={emp.id}>
-                          {emp.id.slice(0, 8)}...
+                        {/* Phòng ban */}
+                        <td className="px-4 py-1 text-xs text-slate-500 font-medium">
+                          <EditableSelect
+                            value={emp.department}
+                            options={DEPARTMENTS}
+                            onSave={(val) => handleUpdateEmployeeField(emp.id, "department", val)}
+                            readOnly={!canEdit}
+                          />
                         </td>
 
-                        {/* Dept & Position */}
-                        <td className="px-6 py-4 space-y-0.5">
-                          <p className="text-slate-700 text-xs font-semibold flex items-center gap-1"><Building size={11} className="text-slate-400" /> {emp.department}</p>
-                          <p className="text-slate-400 text-[10px] font-semibold flex items-center gap-1"><Briefcase size={11} className="text-slate-400" /> {emp.position}</p>
+                        {/* Chức danh */}
+                        <td className="px-4 py-1 text-xs text-slate-500 font-medium">
+                          <EditableCell
+                            value={emp.position}
+                            onSave={(val) => handleUpdateEmployeeField(emp.id, "position", val)}
+                            readOnly={!canEdit}
+                          />
                         </td>
 
-                        {/* Contact */}
-                        <td className="px-6 py-4 space-y-0.5 text-xs text-slate-500">
-                          <p className="flex items-center gap-1.5"><Phone size={11} /> {emp.phone}</p>
-                          <p className="flex items-center gap-1.5"><Mail size={11} /> {emp.email}</p>
+                        {/* Giới tính */}
+                        <td className="px-4 py-3 text-xs text-slate-500 font-medium">{emp.gender || <span className="text-slate-300">—</span>}</td>
+
+                        {/* Ngày nhận việc */}
+                        <td className="px-4 py-3 text-xs text-slate-500 font-medium whitespace-nowrap">{emp.start}</td>
+
+                        {/* Ngày sinh */}
+                        <td className="px-4 py-3 text-xs text-slate-500 font-medium whitespace-nowrap">{emp.date_of_birth || <span className="text-slate-300">—</span>}</td>
+
+                        {/* Số ĐT */}
+                        <td className="px-4 py-1 text-xs text-slate-500 font-medium whitespace-nowrap">
+                          <EditableCell
+                            value={emp.phone}
+                            onSave={(val) => handleUpdateEmployeeField(emp.id, "phone", val)}
+                            readOnly={!canEdit}
+                          />
                         </td>
 
-                        {/* Start Date */}
-                        <td className="px-6 py-4 text-xs text-slate-500 font-medium flex items-center gap-1.5"><Calendar size={13} /> {emp.start}</td>
+                        {/* CCCD */}
+                        <td className="px-4 py-3 text-xs text-slate-500 font-medium font-mono">{emp.cccd || <span className="text-slate-300">—</span>}</td>
 
-                        {/* Status */}
-                        <td className="px-6 py-4">
-                          <span className={`badge text-[10px] ${emp.status === "Chính thức" ? "badge-pass" : "badge-wait"}`}>
-                            {emp.status === "Chính thức" ? "✓ Chính thức" : "⏳ Thử việc"}
-                          </span>
+                        {/* Bằng cấp */}
+                        <td className="px-4 py-3 text-xs text-slate-500 font-medium">{emp.degree || <span className="text-slate-300">—</span>}</td>
+
+                        {/* Email */}
+                        <td className="px-4 py-1 text-xs text-slate-500 font-medium whitespace-nowrap">
+                          <EditableCell
+                            value={emp.email}
+                            onSave={(val) => handleUpdateEmployeeField(emp.id, "email", val)}
+                            readOnly={!canEdit}
+                          />
                         </td>
 
-                        {/* Actions */}
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
+                        {/* Ghi chú */}
+                        <td className="px-4 py-3 text-xs text-slate-400 max-w-[120px] truncate" title={emp.notes}>{emp.notes || <span className="text-slate-300">—</span>}</td>
+
+                        {/* Thao tác */}
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
                             {currentUser && (currentUser.isAdmin || 
                                              currentUser.role.toLowerCase() === "admin" ||
                                              currentUser.role.toLowerCase().includes("trưởng phòng") || 
@@ -619,7 +732,7 @@ export default function EmployeeManagementPage() {
                     ))}
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="text-center py-12 text-slate-400 text-xs italic">Không tìm thấy nhân viên nào phù hợp</td>
+                        <td colSpan={14} className="text-center py-12 text-slate-400 text-xs italic">Không tìm thấy nhân viên nào phù hợp</td>
                       </tr>
                     )}
                   </tbody>
@@ -633,7 +746,7 @@ export default function EmployeeManagementPage() {
       {/* Add Employee Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="glass bg-white rounded-2xl w-full max-w-md overflow-hidden p-6 space-y-4 border border-white text-xs">
+          <div className="glass bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4 border border-white text-xs">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-heading font-extrabold text-slate-800 text-sm">Thêm mới nhân sự</h3>
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
@@ -642,13 +755,23 @@ export default function EmployeeManagementPage() {
             </div>
             
             <form onSubmit={handleAddEmployee} className="space-y-4 font-semibold text-slate-600">
-              <div className="space-y-1">
-                <label className="text-slate-500">Họ và tên nhân viên</label>
-                <input
-                  type="text" required value={newName} onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Ví dụ: Nguyễn Văn A"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-slate-500">Mã nhân viên</label>
+                  <input
+                    type="text" value={newCode} onChange={(e) => setNewCode(e.target.value)}
+                    placeholder="VD: NV001"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-slate-500">Họ và tên *</label>
+                  <input
+                    type="text" required value={newName} onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Ví dụ: Nguyễn Văn A"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -658,19 +781,49 @@ export default function EmployeeManagementPage() {
                     value={newDept} onChange={(e) => setNewDept(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 bg-white"
                   >
-                    <option value="Phòng Hành Chính Nhân Sự">Hành chính nhân sự</option>
-                    <option value="Phòng Kế Toán">P kế toán</option>
-                    <option value="Phòng Vật Tư Thiết Bị">p Vật tư thiết bị</option>
-                    <option value="Phòng Thị Trường">p thị trường</option>
-                    <option value="Phòng Kế Hoạch Đấu Thầu">p kế hoạch đấu thầu</option>
-                    <option value="Phòng Kỹ Thuật">p kỹ thuật</option>
-                    <option value="Phòng An Toàn Lao Động">p an toàn lao động</option>
-                    <option value="Phòng Quản Lý Dự Án">p quản lý dự án</option>
+                    <option value="Phòng Hành Chính Nhân Sự">Phòng Hành Chính Nhân Sự</option>
+                    <option value="Phòng Tài Chính Kế Toán">Phòng Tài Chính Kế Toán</option>
+                    <option value="Phòng Vật Tư Thiết Bị">Phòng Vật Tư Thiết Bị</option>
+                    <option value="Phòng Thị Trường">Phòng Thị Trường</option>
+                    <option value="Phòng Kế Hoạch Đấu Thầu">Phòng Kế Hoạch Đấu Thầu</option>
+                    <option value="Phòng Kỹ Thuật">Phòng Kỹ Thuật</option>
+                    <option value="Phòng An Toàn Lao Động">Phòng An Toàn Lao Động</option>
+                    <option value="Phòng Quản Lý Dự Án">Phòng Quản Lý Dự Án</option>
+                    <option value="Phòng Thư Ký, Trợ Lý">Phòng Thư Ký, Trợ Lý</option>
                   </select>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-slate-500">Trạng thái làm việc</label>
+                  <label className="text-slate-500">Chức danh / Vị trí *</label>
+                  <input
+                    type="text" required value={newPos} onChange={(e) => setNewPos(e.target.value)}
+                    placeholder="Ví dụ: Kỹ sư cầu đường"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-slate-500">Giới tính</label>
+                  <select
+                    value={newGender} onChange={(e) => setNewGender(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 bg-white"
+                  >
+                    <option value="">-- Chọn --</option>
+                    <option value="Nam">Nam</option>
+                    <option value="Nữ">Nữ</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-slate-500">Ngày sinh</label>
+                  <input
+                    type="date" value={newDob} onChange={(e) => setNewDob(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-slate-500">Trạng thái</label>
                   <select
                     value={newStatus} onChange={(e) => setNewStatus(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 bg-white"
@@ -679,15 +832,6 @@ export default function EmployeeManagementPage() {
                     <option value="Chính thức">Chính thức</option>
                   </select>
                 </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-slate-500">Chức vụ / Vị trí</label>
-                <input
-                  type="text" required value={newPos} onChange={(e) => setNewPos(e.target.value)}
-                  placeholder="Ví dụ: Kỹ sư cầu đường"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs"
-                />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -699,7 +843,6 @@ export default function EmployeeManagementPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs"
                   />
                 </div>
-
                 <div className="space-y-1">
                   <label className="text-slate-500">Email làm việc</label>
                   <input
@@ -708,6 +851,35 @@ export default function EmployeeManagementPage() {
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-slate-500">Số CCCD</label>
+                  <input
+                    type="text" value={newCccd} onChange={(e) => setNewCccd(e.target.value)}
+                    placeholder="Ví dụ: 079012345678"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-slate-500">Bằng cấp</label>
+                  <input
+                    type="text" value={newDegree} onChange={(e) => setNewDegree(e.target.value)}
+                    placeholder="Ví dụ: Đại học, Cao đẳng..."
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-500">Ghi chú</label>
+                <textarea
+                  value={newNotes} onChange={(e) => setNewNotes(e.target.value)}
+                  placeholder="Ghi chú thêm..."
+                  rows={2}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs resize-none"
+                />
               </div>
 
               <div className="flex gap-2 justify-end pt-4 border-t border-slate-100">
@@ -762,38 +934,41 @@ export default function EmployeeManagementPage() {
                 <table className="w-full text-xs text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                      <th className="py-3 px-4 w-12 text-center">STT</th>
-                      <th className="py-3 px-4">Họ và tên</th>
-                      <th className="py-3 px-4">Phòng ban</th>
-                      <th className="py-3 px-4">Chức vụ</th>
-                      <th className="py-3 px-4">Liên hệ</th>
-                      <th className="py-3 px-4">Ngày vào làm</th>
-                      <th className="py-3 px-4">Trạng thái</th>
+                      <th className="py-3 px-3 w-10 text-center">STT</th>
+                      <th className="py-3 px-3">Mã NV</th>
+                      <th className="py-3 px-3">Họ và tên</th>
+                      <th className="py-3 px-3">Phòng ban</th>
+                      <th className="py-3 px-3">Chức danh</th>
+                      <th className="py-3 px-3">Giới tính</th>
+                      <th className="py-3 px-3">Ngày nhận việc</th>
+                      <th className="py-3 px-3">Ngày sinh</th>
+                      <th className="py-3 px-3">SĐT</th>
+                      <th className="py-3 px-3">CCCD</th>
+                      <th className="py-3 px-3">Bằng cấp</th>
+                      <th className="py-3 px-3">Email</th>
+                      <th className="py-3 px-3">Ghi chú</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
                     {previewEmployees.map((emp, index) => (
                       <tr key={index} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-3 px-4 text-center text-slate-400 font-mono">{index + 1}</td>
-                        <td className="py-3 px-4 text-slate-800 font-bold">{emp.name}</td>
-                        <td className="py-3 px-4">
+                        <td className="py-3 px-3 text-center text-slate-400 font-mono">{index + 1}</td>
+                        <td className="py-3 px-3 text-slate-500 font-medium">{emp.employee_code || "—"}</td>
+                        <td className="py-3 px-3 text-slate-800 font-bold whitespace-nowrap">{emp.name}</td>
+                        <td className="py-3 px-3">
                           <span className="inline-flex items-center gap-1 text-[10px] text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200/55">
                             {emp.department}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-slate-500 font-medium">{emp.position}</td>
-                        <td className="py-3 px-4 space-y-0.5 text-slate-400">
-                          <p className="text-[10px]">{emp.phone}</p>
-                          <p className="text-[10px]">{emp.email}</p>
-                        </td>
-                        <td className="py-3 px-4 font-mono text-[10px]">{emp.start || "N/A"}</td>
-                        <td className="py-3 px-4">
-                          <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold ${
-                            emp.status === "Chính thức" ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-amber-50 text-amber-700 border border-amber-100"
-                          }`}>
-                            {emp.status}
-                          </span>
-                        </td>
+                        <td className="py-3 px-3 text-slate-500 font-medium">{emp.position}</td>
+                        <td className="py-3 px-3 text-slate-500">{emp.gender || "—"}</td>
+                        <td className="py-3 px-3 font-mono text-[10px]">{emp.start || "—"}</td>
+                        <td className="py-3 px-3 font-mono text-[10px]">{emp.date_of_birth || "—"}</td>
+                        <td className="py-3 px-3 text-slate-500 whitespace-nowrap">{emp.phone || "—"}</td>
+                        <td className="py-3 px-3 text-slate-500 font-mono text-[10px]">{emp.cccd || "—"}</td>
+                        <td className="py-3 px-3 text-slate-500">{emp.degree || "—"}</td>
+                        <td className="py-3 px-3 text-slate-500 whitespace-nowrap">{emp.email || "—"}</td>
+                        <td className="py-3 px-3 text-slate-400 max-w-[100px] truncate" title={emp.notes}>{emp.notes || "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -916,5 +1091,103 @@ export default function EmployeeManagementPage() {
         </div>
       )}
     </div>
+  );
+}
+
+interface EditableCellProps {
+  value: string;
+  onSave: (value: string) => void;
+  readOnly?: boolean;
+}
+
+function EditableCell({ value, onSave, readOnly = false }: EditableCellProps) {
+  const [val, setVal] = useState(value);
+
+  useEffect(() => {
+    setVal(value);
+  }, [value]);
+
+  const handleBlur = () => {
+    if (!readOnly && val !== value) {
+      onSave(val);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.currentTarget.blur();
+    }
+  };
+
+  if (readOnly) {
+    return <span className="text-xs text-slate-600 block w-full whitespace-nowrap overflow-hidden text-ellipsis px-2 py-1">{value || "—"}</span>;
+  }
+
+  return (
+    <input
+      type="text"
+      value={val || ""}
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      className="w-full bg-transparent px-2 py-1 outline-none border border-transparent hover:bg-slate-100/50 focus:border-blue-500/30 focus:bg-white rounded-lg transition-all text-xs font-semibold text-slate-700"
+    />
+  );
+}
+
+interface EditableSelectProps {
+  value: string;
+  options: string[];
+  onSave: (value: string) => void;
+  readOnly?: boolean;
+}
+
+function EditableSelect({ value, options, onSave, readOnly = false }: EditableSelectProps) {
+  const [val, setVal] = useState(value);
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    setVal(value);
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newVal = e.target.value;
+    setVal(newVal);
+    onSave(newVal);
+    setIsEditing(false);
+  };
+
+  if (readOnly) {
+    return <span className="text-xs text-slate-600 block w-full whitespace-nowrap overflow-hidden text-ellipsis px-2 py-1">{value || "—"}</span>;
+  }
+
+  // Ensure current value is included in select options if it's not present in default options
+  const allOptions = options.includes(value) ? options : [value, ...options];
+
+  if (!isEditing) {
+    return (
+      <div 
+        onClick={() => setIsEditing(true)}
+        className="w-full cursor-pointer px-2 py-1 border border-transparent hover:bg-slate-100/50 hover:border-slate-200 rounded-lg transition-all text-xs font-semibold text-slate-700 block whitespace-nowrap overflow-hidden text-ellipsis min-h-[24px]"
+      >
+        {value || "—"}
+      </div>
+    );
+  }
+
+  return (
+    <select
+      value={val}
+      onChange={handleChange}
+      onBlur={() => setIsEditing(false)}
+      autoFocus
+      className="w-full bg-white px-1.5 py-1 outline-none border border-blue-500 rounded-lg text-xs font-semibold text-slate-700 shadow-sm"
+    >
+      {allOptions.map((opt) => (
+        <option key={opt} value={opt}>
+          {opt}
+        </option>
+      ))}
+    </select>
   );
 }

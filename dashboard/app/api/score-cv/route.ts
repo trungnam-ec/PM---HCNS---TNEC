@@ -242,9 +242,9 @@ const DEPT_KEYWORDS: Record<string, string[]> = {
   "Phòng Kỹ Thuật": ["shopdrawing", "shop drawing", "kết cấu cầu", "ket cau cau", "kỹ thuật", "ky thuat", "bản vẽ", "ban ve", "thiết kế", "thiet ke", "cầu đường", "cau duong", "thi công", "thi cong"],
   "Phòng ATLĐ": ["hse", "an toàn lao động", "an toan lao dong", "atlđ", "atld", "pccc", "môi trường", "moi truong"],
   "Phòng Vật Tư Thiết Bị": ["vật tư", "vat tu", "cung ứng", "cung ung", "mua hàng", "mua hang", "logistics", "kho", "warehouse", "thiết bị", "thiet bi", "procurement"],
-  "Phòng Kế Toán": ["kế toán", "ke toan", "tài chính", "tai chinh", "hạch toán", "hach toan", "công nợ", "cong no", "thuế", "thue", "kiểm toán", "kiem toan"],
+  "Phòng Tài Chính Kế Toán": ["kế toán", "ke toan", "tài chính", "tai chinh", "hạch toán", "hach toan", "công nợ", "cong no", "thuế", "thue", "kiểm toán", "kiem toan"],
   "Phòng Hành Chính Nhân Sự": ["hành chính", "hanh chinh", "nhân sự", "nhan su", "tuyển dụng", "tuyen dung", "văn thư", "van thu", "marketing", "hr", "đào tạo", "dao tao"],
-  "Phòng Trợ Lý": ["thư ký", "thu ky", "trợ lý", "tro ly", "trợ lý giám đốc", "tro ly giam doc", "secretary", "assistant", "administrative assistant"],
+  "Phòng Thư Ký, Trợ Lý": ["thư ký", "thu ky", "trợ lý", "tro ly", "trợ lý giám đốc", "tro ly giam doc", "secretary", "assistant", "administrative assistant"],
   "Phòng Dự Án": ["quản lý dự án", "quan ly du an", "dự án", "du an", "project manager", "project management", "điều phối dự án", "dieu phoi du an"],
   "Phòng QLCC": ["quản lý chất lượng", "quan ly chat luong", "qlcc", "chất lượng công trình", "chat luong cong trinh", "quality control", "qc", "kiểm định", "kiem dinh"],
 };
@@ -256,8 +256,8 @@ const REVIEWER_MAP: Record<string, string> = {
   "Phòng ATLĐ": "TP ATLĐ",
   "Phòng Hành Chính Nhân Sự": "TP HCNS",
   "Phòng QLCC": "Ban Lãnh Đạo",
-  "Phòng Trợ Lý": "Ban Lãnh Đạo",
-  "Phòng Kế Toán": "Kế Toán Trưởng",
+  "Phòng Thư Ký, Trợ Lý": "Ban Lãnh Đạo",
+  "Phòng Tài Chính Kế Toán": "Kế Toán Trưởng",
 };
 
 function classifyDept(jdText: string, viTri = ""): { phong_ban: string; nguoi_danh_gia: string } {

@@ -15,22 +15,21 @@ if (!supabaseUrl && fs.existsSync('.env.local')) {
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 async function main() {
-  console.log('Querying all employees...');
+  console.log('Querying duplicate employees...');
   const { data, error } = await supabase
     .from('employees')
-    .select('id, name, role, department');
+    .select('id, name, employee_code, email, department, role')
+    .order('name', { ascending: true });
 
   if (error) {
     console.error('Error:', error);
   } else {
-    console.log('Total employees:', data.length);
-    const byDept = {};
-    data.forEach(emp => {
-      const dept = emp.department || 'Không xác định';
-      if (!byDept[dept]) byDept[dept] = [];
-      byDept[dept].push(`${emp.name} (${emp.role})`);
+    const counts = {};
+    data.forEach(e => {
+      counts[e.name] = (counts[e.name] || 0) + 1;
     });
-    console.log(JSON.stringify(byDept, null, 2));
+    const duplicates = data.filter(e => counts[e.name] > 1);
+    console.log('Duplicate records:', JSON.stringify(duplicates, null, 2));
   }
 }
 

@@ -851,7 +851,7 @@ export default function RecruitmentPage() {
       const { data: empData } = await supabase
         .from("employees")
         .select("name, role, department")
-        .ilike("email", email)
+        .like("email", `%${email}%`)
         .maybeSingle();
 
       setCurrentUser({

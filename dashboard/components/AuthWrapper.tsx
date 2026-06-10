@@ -75,7 +75,7 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
         const { data: empData, error: empError } = await supabase
           .from("employees")
           .select("role")
-          .ilike("email", userEmail.trim())
+          .like("email", `%${userEmail.trim()}%`)
           .maybeSingle();
 
         if (empError) {

@@ -545,7 +545,7 @@ export default function EmployeeManagementPage() {
     >
       <Sidebar />
       <div className="ml-60 flex-1 flex flex-col min-w-0">
-        <Header title="Quản lý Nhân sự" subtitle="Quản lý thông tin hồ sơ nhân sự, phòng ban và chức vụ" />
+        <Header title="Danh sách nhân viên" subtitle="Quản lý thông tin hồ sơ nhân sự, phòng ban và chức vụ" />
 
         <main className="flex-1 p-8 space-y-6 overflow-y-auto">
           {/* Action Bar */}

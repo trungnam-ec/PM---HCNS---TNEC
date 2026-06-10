@@ -3728,79 +3728,107 @@ export default function AdministrationPage() {
                   {/* VPP Allocation Slip Preview Modal */}
                   {showSlipPreviewModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-                      <div className="bg-white rounded-2xl max-w-4xl w-full p-6 border border-slate-100 shadow-2xl relative flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+                      <div className="bg-slate-100 rounded-2xl max-w-4xl w-full p-6 border border-slate-200 shadow-2xl relative flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
                         <button
                           onClick={() => setShowSlipPreviewModal(false)}
-                          className="absolute right-4 top-4 p-1 text-slate-400 hover:bg-slate-50 rounded-lg transition-all"
+                          className="absolute right-4 top-4 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 rounded-lg transition-all"
                         >
                           <X size={16} />
                         </button>
                         
-                        <div className="border-b border-slate-100 pb-3 shrink-0 flex items-center gap-3">
+                        <div className="border-b border-slate-200/80 pb-3 shrink-0 flex items-center gap-3">
                           <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500">
                             <FileSpreadsheet className="text-amber-500" size={18} />
                           </div>
                           <div>
                             <h3 className="font-heading font-extrabold text-sm text-slate-800">Xem trước Phiếu cấp phát VPP</h3>
-                            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Rà soát danh sách cấp phát văn phòng phẩm trước khi tải file Excel</p>
+                            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Biểu mẫu HCNS/BM/053 (Xem trước nội dung điền tự động)</p>
                           </div>
                         </div>
 
-                        <div className="py-4 space-y-4 overflow-y-auto flex-1 pr-1">
-                          {/* Document Header Preview */}
-                          <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3 font-semibold text-xs text-slate-700">
-                            <div className="flex flex-col sm:flex-row justify-between border-b border-slate-100 pb-3 items-start sm:items-center gap-3">
-                              <div className="flex-1 w-full max-w-md">
-                                <span className="text-slate-400 block mb-1">
-                                  {slipPreviewTargetType === "phongban" ? "Bộ phận nhận cấp phát:" : "Dự án nhận cấp phát:"}
-                                </span>
-                                <select
-                                  value={slipPreviewTargetName}
-                                  onChange={(e) => setSlipPreviewTargetName(e.target.value)}
-                                  className="w-full px-3 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-[#005BAC] text-xs font-bold bg-white text-slate-800"
-                                >
-                                  {allocationTargets
-                                    .filter(t => t.type === slipPreviewTargetType)
-                                    .map(t => (
-                                      <option key={t.id} value={t.name}>{t.name}</option>
-                                    ))
-                                  }
-                                </select>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <span className="text-slate-400">Thời gian yêu cầu:</span>
-                                <div className="text-slate-800 font-bold text-sm mt-0.5">Tháng {new Date().getMonth() + 1} / {new Date().getFullYear()}</div>
-                              </div>
+                        {/* Scrollable Container containing the Paper Sheet */}
+                        <div className="py-4 overflow-y-auto flex-1 pr-1">
+                          
+                          {/* Inner Selection Controls */}
+                          <div className="max-w-2xl mx-auto mb-4 bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm flex items-center justify-between gap-4">
+                            <div className="flex-1">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                                {slipPreviewTargetType === "phongban" ? "Chọn bộ phận nhận cấp phát:" : "Chọn dự án nhận cấp phát:"}
+                              </label>
+                              <select
+                                value={slipPreviewTargetName}
+                                onChange={(e) => setSlipPreviewTargetName(e.target.value)}
+                                className="w-full px-3 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-[#005BAC] text-xs font-bold bg-white text-slate-800 cursor-pointer"
+                              >
+                                {allocationTargets
+                                  .filter(t => t.type === slipPreviewTargetType)
+                                  .map(t => (
+                                    <option key={t.id} value={t.name}>{t.name}</option>
+                                  ))
+                                }
+                              </select>
                             </div>
-                            <div className="flex justify-between pt-1">
-                              <div>
-                                <span className="text-slate-400">Người đại diện nhận:</span>
-                                <div className="text-slate-800 font-bold mt-0.5">
-                                  {allocationTargets.find(t => t.type === slipPreviewTargetType && t.name === slipPreviewTargetName)?.receiver || "Người nhận"}
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-slate-400">Nơi cấp phát:</span>
-                                <div className="text-slate-800 font-bold mt-0.5">
-                                  {slipPreviewTargetType === "phongban" ? "Văn phòng công ty" : "Ban điều hành dự án"}
-                                </div>
-                              </div>
+                            <div className="text-right shrink-0">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Nơi cấp phát</span>
+                              <span className="text-xs font-bold text-slate-700 mt-1 block">
+                                {slipPreviewTargetType === "phongban" ? "Văn phòng công ty" : "Ban điều hành dự án"}
+                              </span>
                             </div>
                           </div>
 
-                          {/* Table Preview */}
-                          <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
-                            <table className="w-full text-left border-collapse">
+                          {/* Paper Sheet Preview */}
+                          <div className="bg-white border border-slate-200 shadow-md p-8 rounded-xl font-sans text-slate-800 leading-normal max-w-2xl mx-auto w-full select-none relative mb-4">
+                            
+                            {/* Company Header Block */}
+                            <div className="flex justify-between items-start border-b border-slate-300 pb-4 mb-4">
+                              <div className="text-left">
+                                <div className="text-base font-black text-[#005BAC] font-sans">TRUNG <span className="text-red-500">N</span>AM <span className="text-sky-400 text-xs font-normal italic">E&C</span></div>
+                                <div className="text-[7.5px] font-bold text-slate-800 font-sans mt-0.5">CÔNG TY CP XÂY DỰNG VÀ LẮP MÁY TRUNG NAM</div>
+                                <div className="text-[6.5px] text-slate-500 font-sans mt-1 leading-tight">
+                                  A: Tầng trệt tòa nhà Safomec, 7/1 Thành Thái, Phường 14, Quận 10, TPHCM<br/>
+                                  T: (+84) 834 70 75 79 &nbsp; E: info.tnec@trungnamgroup.com.vn
+                                </div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-[13px] font-black tracking-wide">PHIẾU CẤP PHÁT VPP</div>
+                                <div className="text-[9.5px] font-bold underline mt-0.5">HCNS/BM/053</div>
+                              </div>
+                            </div>
+
+                            {/* Metadata Grid */}
+                            <div className="grid grid-cols-2 gap-y-2 text-xs mb-4">
+                              <div>
+                                <span className="font-bold text-slate-600">Yêu cầu VPP tháng:</span> &nbsp;Tháng {new Date().getMonth() + 1}
+                              </div>
+                              <div>
+                                <span className="font-bold text-slate-600">Định mức được duyệt:</span> &nbsp;___________________
+                              </div>
+                              <div>
+                                <span className="font-bold text-slate-600">Người đề xuất:</span> &nbsp;{allocationTargets.find(t => t.type === slipPreviewTargetType && t.name === slipPreviewTargetName)?.receiver || "Người nhận"}
+                              </div>
+                              <div>
+                                <span className="font-bold text-slate-600">Bộ phận:</span> &nbsp;{slipPreviewTargetName}
+                              </div>
+                            </div>
+
+                            <div className="text-xs mb-3 italic">
+                              Đề xuất cấp phát các loại văn phòng phẩm cho {slipPreviewTargetName} như sau:
+                            </div>
+
+                            {/* Items Table with Green Headers */}
+                            <table className="w-full text-left border-collapse text-xs border border-slate-400 mb-6">
                               <thead>
-                                <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 text-[10px] uppercase tracking-wider">
-                                  <th className="py-3 px-4 text-center w-12">TT</th>
-                                  <th className="py-3 px-4">Tên văn phòng phẩm</th>
-                                  <th className="py-3 px-4 w-24">Đơn vị</th>
-                                  <th className="py-3 px-4 text-center w-24">Số lượng</th>
-                                  <th className="py-3 px-4">Ghi chú</th>
+                                <tr className="bg-[#D9EAD3] border-b border-slate-400 font-bold text-slate-800">
+                                  <th className="py-2 px-2 text-center border-r border-slate-400 w-10">TT</th>
+                                  <th className="py-2 px-2 border-r border-slate-400">Tên văn phòng phẩm</th>
+                                  <th className="py-2 px-2 border-r border-slate-400 w-16 text-center">Đơn vị</th>
+                                  <th className="py-2 px-2 border-r border-slate-400 text-center w-16">Số lượng</th>
+                                  <th className="py-2 px-2 border-r border-slate-400 text-right w-20">Đơn giá dự kiến</th>
+                                  <th className="py-2 px-2 border-r border-slate-400 text-right w-20">Thành tiền</th>
+                                  <th className="py-2 px-2">Ghi chú</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-slate-100 font-semibold text-slate-600 text-xs">
+                              <tbody className="divide-y divide-slate-300">
                                 {(() => {
                                   const filtered = deptRequests.filter(
                                     r => r.target === slipPreviewTargetType && r.targetName === slipPreviewTargetName && r.status === "Đã cấp phát"
@@ -3809,38 +3837,64 @@ export default function AdministrationPage() {
                                   if (filtered.length === 0) {
                                     return (
                                       <tr>
-                                        <td colSpan={5} className="py-8 text-center text-slate-400 font-medium italic">
-                                          Không có yêu cầu cấp phát nào đã được duyệt cho đối tượng này.
+                                        <td colSpan={7} className="py-8 text-center text-slate-400 italic">
+                                          Không có yêu cầu cấp phát nào đã được duyệt cho bộ phận này.
                                         </td>
                                       </tr>
                                     );
                                   }
 
-                                  return filtered.map((req, idx) => {
-                                    const supplyItem = findMatchingSupply(req.item);
-                                    const unit = supplyItem ? supplyItem.unit : "Cái";
-                                    return (
-                                      <tr key={req.id} className="hover:bg-slate-50/30">
-                                        <td className="py-2.5 px-4 text-center text-slate-400 font-mono">{idx + 1}</td>
-                                        <td className="py-2.5 px-4 text-slate-800 font-bold">{req.item}</td>
-                                        <td className="py-2.5 px-4 text-slate-500 font-mono">{unit}</td>
-                                        <td className="py-2.5 px-4 text-center text-slate-800 font-bold bg-amber-50/20">{req.qty}</td>
-                                        <td className="py-2.5 px-4 text-slate-400 italic">Đã duyệt cấp phát</td>
+                                  return (
+                                    <>
+                                      {filtered.map((req, idx) => {
+                                        const supplyItem = findMatchingSupply(req.item);
+                                        const unit = supplyItem ? supplyItem.unit : "Cái";
+                                        return (
+                                          <tr key={req.id} className="hover:bg-slate-50/30">
+                                            <td className="py-1.5 px-2 text-center border-r border-slate-300 font-mono text-slate-500">{idx + 1}</td>
+                                            <td className="py-1.5 px-2 border-r border-slate-300 font-bold text-slate-800">{req.item}</td>
+                                            <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-600">{unit}</td>
+                                            <td className="py-1.5 px-2 border-r border-slate-300 text-center font-bold text-slate-800 bg-amber-50/20">{req.qty}</td>
+                                            <td className="py-1.5 px-2 border-r border-slate-300 text-right text-slate-400"></td>
+                                            <td className="py-1.5 px-2 border-r border-slate-300 text-right text-slate-400"></td>
+                                            <td className="py-1.5 px-2 text-slate-400 italic text-[10px]">Đã duyệt cấp phát</td>
+                                          </tr>
+                                        );
+                                      })}
+                                      {/* Total Row */}
+                                      <tr className="font-bold bg-slate-50 border-t border-slate-400">
+                                        <td colSpan={5} className="py-2 px-2 text-center border-r border-slate-300 text-slate-700">Tổng cộng</td>
+                                        <td className="py-2 px-2 border-r border-slate-300 text-right text-slate-700">0</td>
+                                        <td></td>
                                       </tr>
-                                    );
-                                  });
+                                    </>
+                                  );
                                 })()}
                               </tbody>
                             </table>
+
+                            {/* Footer Signatures Block */}
+                            <div className="mt-8 text-xs">
+                              <div className="text-right italic text-slate-500 mb-6">
+                                TPHCM, ngày {String(new Date().getDate()).padStart(2, "0")} tháng {String(new Date().getMonth() + 1).padStart(2, "0")} năm {new Date().getFullYear()}
+                              </div>
+                              <div className="flex justify-between font-bold text-center px-10 text-slate-700">
+                                <div>NGƯỜI NHẬN</div>
+                                <div>NGƯỜI LẬP</div>
+                              </div>
+                              <div className="h-20"></div>
+                            </div>
                           </div>
+
                         </div>
 
-                        <div className="border-t border-slate-100 pt-3 shrink-0 flex justify-end gap-2">
+                        {/* Modal Footer Controls */}
+                        <div className="border-t border-slate-200/80 pt-3 shrink-0 flex justify-end gap-2 bg-slate-100">
                           <button
                             onClick={() => setShowSlipPreviewModal(false)}
-                            className="px-4 py-2 border border-slate-200 rounded-xl font-bold text-slate-500 hover:bg-slate-50 text-xs transition-all active:scale-[0.98]"
+                            className="px-4 py-2 border border-slate-200 rounded-xl font-bold text-slate-500 hover:bg-slate-200/60 bg-white text-xs transition-all active:scale-[0.98] shadow-sm cursor-pointer"
                           >
-                            Đóng
+                            Đóng lại
                           </button>
                           <button
                             onClick={() => {
@@ -3850,9 +3904,9 @@ export default function AdministrationPage() {
                             disabled={deptRequests.filter(
                               r => r.target === slipPreviewTargetType && r.targetName === slipPreviewTargetName && r.status === "Đã cấp phát"
                             ).length === 0}
-                            className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-sm transition-all active:scale-[0.98]"
+                            className="flex items-center gap-1.5 bg-[#10B981] hover:bg-[#059669] disabled:bg-slate-300 disabled:text-slate-500 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-md transition-all active:scale-[0.98] cursor-pointer"
                           >
-                            <Download size={14} /> Tải file Excel (.xlsx)
+                            <Download size={14} /> Tải xuống file Excel
                           </button>
                         </div>
                       </div>

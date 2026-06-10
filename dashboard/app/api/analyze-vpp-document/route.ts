@@ -3,28 +3,30 @@ import OpenAI from "openai";
 import * as XLSX from "xlsx";
 
 const DEPARTMENTS = [
-  "Phòng HCNS",
-  "Kế toán",
-  "Phòng Kế hoạch",
-  "Phòng Dự án",
-  "Phòng Vật tư",
-  "Phòng Đấu thầu",
-  "Phòng MKT",
-  "Phòng ATLĐ",
-  "Phòng Kỹ thuật",
+  "Phòng Hành Chính Nhân Sự",
+  "Phòng Tài Chính Kế Toán",
+  "Phòng Vật Tư Thiết Bị",
+  "Phòng Thị Trường",
+  "Phòng Kế Hoạch Đấu Thầu",
+  "Phòng Kỹ Thuật",
+  "Phòng An Toàn Lao Động",
+  "Phòng Quản Lý Dự Án",
+  "Phòng Thư Ký, Trợ Lý",
   "Giám đốc",
   "Phó Giám đốc"
 ];
 
 const PROJECTS = [
-  "Vàm Lẽo",
-  "Tỉnh Lộ 8",
-  "Cầu Mã Đà",
-  "Thường Phước",
-  "Xử lý nước thải Tây Ninh",
-  "KCN Cà Ná",
-  "Điện mặt trời Trà Vinh 2",
-  "Rạch Xuyên Tâm"
+  "BĐH Vàm Lẽo",
+  "BĐH Rạch Xuyên Tâm",
+  "BĐH Thường Phước",
+  "BĐH XLNT Tây Ninh",
+  "BĐH KCN Cà Ná",
+  "BĐH Chống Hạn Ninh Thuận",
+  "BĐH Tỉnh Lộ 8",
+  "BĐH Cầu Mã Đà",
+  "BĐH ĐMT Trà Vinh 2",
+  "BĐH Hương Lộ 11"
 ];
 
 const SYSTEM_PROMPT = `

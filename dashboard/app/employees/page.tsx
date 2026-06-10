@@ -753,7 +753,13 @@ export default function EmployeeManagementPage() {
                         </td>
 
                         {/* Ghi chú */}
-                        <td className="px-4 py-3 text-xs text-slate-400 max-w-[120px] truncate" title={emp.notes}>{emp.notes || <span className="text-slate-300">—</span>}</td>
+                        <td className="px-4 py-1 text-xs text-slate-500 font-medium">
+                          <EditableNoteSelect
+                            value={emp.notes}
+                            onSave={(val) => handleUpdateEmployeeField(emp.id, "notes", val)}
+                            readOnly={!canEdit}
+                          />
+                        </td>
 
                         {/* Thao tác */}
                         <td className="px-4 py-3 text-center">
@@ -1228,6 +1234,81 @@ function EditableSelect({ value, options, onSave, readOnly = false }: EditableSe
       {allOptions.map((opt) => (
         <option key={opt} value={opt}>
           {opt}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+interface EditableNoteSelectProps {
+  value: string;
+  onSave: (value: string) => void;
+  readOnly?: boolean;
+}
+
+function EditableNoteSelect({ value, onSave, readOnly = false }: EditableNoteSelectProps) {
+  const [val, setVal] = useState(value);
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    setVal(value);
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newVal = e.target.value;
+    setVal(newVal);
+    onSave(newVal);
+    setIsEditing(false);
+  };
+
+  const getBadgeStyle = (text: string) => {
+    if (!text) return "text-slate-450 font-medium px-2 py-1";
+    const lower = text.toLowerCase();
+    if (lower === "nv mới" || lower === "nv moi") {
+      return "bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-2.5 py-0.5 rounded-full font-bold shadow-sm";
+    }
+    if (lower === "nv nghỉ việc" || lower === "nv nghi viec") {
+      return "bg-rose-50 text-rose-700 border border-rose-200/60 px-2.5 py-0.5 rounded-full font-bold shadow-sm";
+    }
+    if (lower.includes("kiêm nhiệm") || lower.includes("kiem nhiem")) {
+      return "bg-blue-50 text-blue-700 border border-blue-200/60 px-2.5 py-0.5 rounded-full font-bold shadow-sm";
+    }
+    return "bg-slate-50 text-slate-600 border border-slate-200/60 px-2.5 py-0.5 rounded-full font-semibold";
+  };
+
+  if (readOnly) {
+    return (
+      <span className={`text-[10px] inline-block whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px] ${getBadgeStyle(value)}`}>
+        {value || "—"}
+      </span>
+    );
+  }
+
+  const standardOptions = ["", "NV mới", "NV Kiêm nhiệm", "NV Nghỉ việc"];
+  const allOptions = standardOptions.includes(value) ? standardOptions : [value, ...standardOptions];
+
+  if (!isEditing) {
+    return (
+      <div 
+        onClick={() => setIsEditing(true)}
+        className={`cursor-pointer inline-block text-[10px] whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px] ${getBadgeStyle(value)} hover:brightness-95 active:scale-95 transition-all`}
+      >
+        {value || "—"}
+      </div>
+    );
+  }
+
+  return (
+    <select
+      value={val || ""}
+      onChange={handleChange}
+      onBlur={() => setIsEditing(false)}
+      autoFocus
+      className="bg-white px-1.5 py-1 outline-none border border-blue-500 rounded-lg text-[10px] font-semibold text-slate-755 shadow-sm"
+    >
+      {allOptions.map((opt) => (
+        <option key={opt} value={opt}>
+          {opt || "— Trống —"}
         </option>
       ))}
     </select>

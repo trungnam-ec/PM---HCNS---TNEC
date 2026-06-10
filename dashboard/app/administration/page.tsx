@@ -36,6 +36,7 @@ import {
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { docSoVietNam, exportDeNghiChuyenTien, downloadDocFile } from "@/lib/wordExporter";
 import { supabase } from "@/lib/supabase";
+import * as XLSX from "xlsx";
 
 // ─── TYPES & INTERFACES ──────────────────────────────────────────────────────
 interface SupplyItem {
@@ -506,6 +507,11 @@ export default function AdministrationPage() {
     qty: number;
   }>>([]);
   const [isSuppliesLoadedFromServer, setIsSuppliesLoadedFromServer] = useState(false);
+
+  // VPP Slip Preview & Download States
+  const [showSlipPreviewModal, setShowSlipPreviewModal] = useState(false);
+  const [slipPreviewTargetType, setSlipPreviewTargetType] = useState<"phongban" | "duan">("phongban");
+  const [slipPreviewTargetName, setSlipPreviewTargetName] = useState("");
 
   // Helper to parse tasks into DeptRequests
   const parseVppTask = (t: any): DeptRequest => {
@@ -1798,6 +1804,123 @@ export default function AdministrationPage() {
     } catch (err: any) {
       console.error("Error approving request in Supabase:", err);
       alert("Lỗi khi phê duyệt cấp phát: " + (err.message || err));
+    }
+  };
+
+  // Download Excel VPP Allocation Slip handler
+  const handleDownloadExcel = async (targetName: string, type: "phongban" | "duan") => {
+    try {
+      // 1. Fetch template as array buffer
+      const response = await fetch("/templates/phieu_cap_phat_vpp.xlsx");
+      if (!response.ok) throw new Error("Không thể tải file template từ hệ thống.");
+      const arrayBuffer = await response.arrayBuffer();
+
+      // 2. Parse workbook
+      const workbook = XLSX.read(arrayBuffer, { type: "array" });
+      const originalSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[originalSheetName];
+
+      // 3. Filter approved requests for this target
+      const filteredRequests = deptRequests.filter(
+        r => r.target === type && r.targetName === targetName && r.status === "Đã cấp phát"
+      );
+
+      if (filteredRequests.length === 0) {
+        alert("Không có yêu cầu cấp phát đã duyệt nào để điền vào phiếu.");
+        return;
+      }
+
+      // 4. Fill metadata
+      const now = new Date();
+      const monthStr = `Tháng ${now.getMonth() + 1}`;
+      
+      // Get receiver from allocationTargets
+      const targetInfo = allocationTargets.find(t => t.type === type && t.name === targetName);
+      const receiverName = targetInfo ? targetInfo.receiver : "";
+
+      worksheet["C9"] = { t: "s", v: monthStr };
+      worksheet["C10"] = { t: "s", v: receiverName };
+      worksheet["E10"] = { t: "s", v: `Bộ phận: ${targetName}` };
+
+      // 5. Clear rows 14 to 30 (0-indexed 13 to 29)
+      for (let r = 13; r <= 29; r++) {
+        const colKeys = ["A", "B", "C", "D", "E", "F", "G"];
+        colKeys.forEach(col => {
+          delete worksheet[`${col}${r + 1}`];
+        });
+      }
+
+      // 6. Write new items starting from row 14 (index 13)
+      filteredRequests.forEach((req, idx) => {
+        const rowIndex = 14 + idx;
+        const supplyItem = findMatchingSupply(req.item);
+        const unit = supplyItem ? supplyItem.unit : "Cái";
+
+        worksheet[`A${rowIndex}`] = { t: "n", v: idx + 1 };
+        worksheet[`B${rowIndex}`] = { t: "s", v: req.item };
+        worksheet[`C${rowIndex}`] = { t: "s", v: unit };
+        worksheet[`D${rowIndex}`] = { t: "n", v: req.qty };
+        worksheet[`E${rowIndex}`] = { t: "s", v: "" };
+        worksheet[`F${rowIndex}`] = { t: "s", v: "" };
+        worksheet[`G${rowIndex}`] = { t: "s", v: "Đã duyệt cấp phát" };
+      });
+
+      // 7. Write total sum, date, and signatures
+      const lastItemRowIndex = 14 + filteredRequests.length - 1;
+      const sumRowIndex = lastItemRowIndex + 2;
+
+      // Clean old signature areas to prevent overlap
+      for (let r = sumRowIndex; r <= sumRowIndex + 20; r++) {
+        const colKeys = ["A", "B", "C", "D", "E", "F", "G"];
+        colKeys.forEach(col => {
+          delete worksheet[`${col}${r}`];
+        });
+      }
+
+      // Write Date
+      const dateRowIndex = sumRowIndex + 2;
+      const dayStr = String(now.getDate()).padStart(2, "0");
+      const monthNumStr = String(now.getMonth() + 1).padStart(2, "0");
+      const yearStr = String(now.getFullYear());
+      worksheet[`F${dateRowIndex}`] = {
+        t: "s",
+        v: `TPHCM, ngày ${dayStr} tháng ${monthNumStr} năm ${yearStr}`
+      };
+
+      // Write Signatures
+      const sigRowIndex = sumRowIndex + 4;
+      worksheet[`A${sigRowIndex}`] = { t: "s", v: "NGƯỜI NHẬN" };
+      worksheet[`F${sigRowIndex}`] = { t: "s", v: "NGƯỜI LẬP" };
+
+      // Set print area ref
+      worksheet["!ref"] = `A1:G${sigRowIndex + 5}`;
+
+      // 8. Update Sheet Name to match Target Name
+      const cleanSheetName = targetName.replace(/Phòng\s+/i, "P. ").slice(0, 30);
+      workbook.SheetNames[0] = cleanSheetName;
+      workbook.Sheets[cleanSheetName] = worksheet;
+
+      // 9. Export
+      const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "binary" });
+      const s2ab = (s: string) => {
+        const buf = new ArrayBuffer(s.length);
+        const view = new Uint8Array(buf);
+        for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xff;
+        return buf;
+      };
+
+      const blob = new Blob([s2ab(wbout)], { type: "application/octet-stream" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Phieu_Cap_Phat_VPP_${targetName.replace(/\s+/g, "_")}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error("Lỗi xuất file Excel VPP:", err);
+      alert("Lỗi xuất file Excel: " + err.message);
     }
   };
 
@@ -3156,6 +3279,20 @@ export default function AdministrationPage() {
                             </select>
                           </div>
                           
+                          {selectedDeptFilter !== "Tất cả" && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSlipPreviewTargetType("phongban");
+                                setSlipPreviewTargetName(selectedDeptFilter);
+                                setShowSlipPreviewModal(true);
+                              }}
+                              className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+                            >
+                              <Eye size={14} /> Xem trước phiếu cấp phát
+                            </button>
+                          )}
+                          
                           <button
                             type="button"
                             onClick={() => {
@@ -3401,6 +3538,20 @@ export default function AdministrationPage() {
                             </select>
                           </div>
                           
+                          {selectedProjectFilter !== "Tất cả" && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSlipPreviewTargetType("duan");
+                                setSlipPreviewTargetName(selectedProjectFilter);
+                                setShowSlipPreviewModal(true);
+                              }}
+                              className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+                            >
+                              <Eye size={14} /> Xem trước phiếu cấp phát
+                            </button>
+                          )}
+                          
                           <button
                             type="button"
                             onClick={() => {
@@ -3630,6 +3781,125 @@ export default function AdministrationPage() {
                     accept=".xlsx,.xls,.docx,.doc,.pdf,image/*"
                     onChange={handleVppFileUpload}
                   />
+
+                  {/* VPP Allocation Slip Preview Modal */}
+                  {showSlipPreviewModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                      <div className="bg-white rounded-2xl max-w-4xl w-full p-6 border border-slate-100 shadow-2xl relative flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+                        <button
+                          onClick={() => setShowSlipPreviewModal(false)}
+                          className="absolute right-4 top-4 p-1 text-slate-400 hover:bg-slate-50 rounded-lg transition-all"
+                        >
+                          <X size={16} />
+                        </button>
+                        
+                        <div className="border-b border-slate-100 pb-3 shrink-0 flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500">
+                            <FileSpreadsheet className="text-amber-500" size={18} />
+                          </div>
+                          <div>
+                            <h3 className="font-heading font-extrabold text-sm text-slate-800">Xem trước Phiếu cấp phát VPP</h3>
+                            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Rà soát danh sách cấp phát văn phòng phẩm trước khi tải file Excel</p>
+                          </div>
+                        </div>
+
+                        <div className="py-4 space-y-4 overflow-y-auto flex-1 pr-1">
+                          {/* Document Header Preview */}
+                          <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3 font-semibold text-xs text-slate-700">
+                            <div className="flex justify-between border-b border-slate-100 pb-2">
+                              <div>
+                                <span className="text-slate-400">Bộ phận nhận cấp phát:</span>
+                                <div className="text-slate-800 font-bold text-sm mt-0.5">{slipPreviewTargetName}</div>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-slate-400">Thời gian yêu cầu:</span>
+                                <div className="text-slate-800 font-bold text-sm mt-0.5">Tháng {new Date().getMonth() + 1} / {new Date().getFullYear()}</div>
+                              </div>
+                            </div>
+                            <div className="flex justify-between pt-1">
+                              <div>
+                                <span className="text-slate-400">Người đại diện nhận:</span>
+                                <div className="text-slate-800 font-bold mt-0.5">
+                                  {allocationTargets.find(t => t.type === slipPreviewTargetType && t.name === slipPreviewTargetName)?.receiver || "Người nhận"}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-slate-400">Nơi cấp phát:</span>
+                                <div className="text-slate-800 font-bold mt-0.5">Văn phòng công ty / Ban điều hành</div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Table Preview */}
+                          <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500 text-[10px] uppercase tracking-wider">
+                                  <th className="py-3 px-4 text-center w-12">TT</th>
+                                  <th className="py-3 px-4">Tên văn phòng phẩm</th>
+                                  <th className="py-3 px-4 w-24">Đơn vị</th>
+                                  <th className="py-3 px-4 text-center w-24">Số lượng</th>
+                                  <th className="py-3 px-4">Ghi chú</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 font-semibold text-slate-600 text-xs">
+                                {(() => {
+                                  const filtered = deptRequests.filter(
+                                    r => r.target === slipPreviewTargetType && r.targetName === slipPreviewTargetName && r.status === "Đã cấp phát"
+                                  );
+                                  
+                                  if (filtered.length === 0) {
+                                    return (
+                                      <tr>
+                                        <td colSpan={5} className="py-8 text-center text-slate-400 font-medium italic">
+                                          Không có yêu cầu cấp phát nào đã được duyệt cho đối tượng này.
+                                        </td>
+                                      </tr>
+                                    );
+                                  }
+
+                                  return filtered.map((req, idx) => {
+                                    const supplyItem = findMatchingSupply(req.item);
+                                    const unit = supplyItem ? supplyItem.unit : "Cái";
+                                    return (
+                                      <tr key={req.id} className="hover:bg-slate-50/30">
+                                        <td className="py-2.5 px-4 text-center text-slate-400 font-mono">{idx + 1}</td>
+                                        <td className="py-2.5 px-4 text-slate-800 font-bold">{req.item}</td>
+                                        <td className="py-2.5 px-4 text-slate-500 font-mono">{unit}</td>
+                                        <td className="py-2.5 px-4 text-center text-slate-800 font-bold bg-amber-50/20">{req.qty}</td>
+                                        <td className="py-2.5 px-4 text-slate-400 italic">Đã duyệt cấp phát</td>
+                                      </tr>
+                                    );
+                                  });
+                                })()}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-slate-100 pt-3 shrink-0 flex justify-end gap-2">
+                          <button
+                            onClick={() => setShowSlipPreviewModal(false)}
+                            className="px-4 py-2 border border-slate-200 rounded-xl font-bold text-slate-500 hover:bg-slate-50 text-xs transition-all active:scale-[0.98]"
+                          >
+                            Đóng
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleDownloadExcel(slipPreviewTargetName, slipPreviewTargetType);
+                              setShowSlipPreviewModal(false);
+                            }}
+                            disabled={deptRequests.filter(
+                              r => r.target === slipPreviewTargetType && r.targetName === slipPreviewTargetName && r.status === "Đã cấp phát"
+                            ).length === 0}
+                            className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-sm transition-all active:scale-[0.98]"
+                          >
+                            <Download size={14} /> Tải file Excel (.xlsx)
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* AI VPP Preview & Confirmation Modal */}
                   {showVppPreviewModal && (

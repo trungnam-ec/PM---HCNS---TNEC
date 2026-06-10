@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import ExcelJS from "exceljs";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 1. Path to template
-    const templateFileName = "phieu_cap_phat_vpp.xlsx";
+    const templateFileName = "phieu_cap_phat_vpp.docx";
     const templatePath = path.join(process.cwd(), "public", "templates", templateFileName);
 
     if (!fs.existsSync(templatePath)) {
@@ -23,66 +26,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Load the template using ExcelJS
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(templatePath);
-
-    // Get the first worksheet
-    const worksheet = workbook.worksheets[0];
-
-    // 3. Fill in metadata
-    const now = new Date();
-    const monthStr = `Tháng ${now.getMonth() + 1}`;
-
-    // C9 is Month
-    worksheet.getCell("C9").value = monthStr;
-    // C10 is Receiver Name
-    worksheet.getCell("C10").value = receiverName || "";
-    // E10 is Department/Project
-    worksheet.getCell("E10").value = `Bộ phận: ${targetName}`;
-
-    // 4. Clear existing template items (from row 14 to row 30)
-    // Clear rows 14 to 30 completely of values but keep structure and formatting
-    for (let r = 14; r <= 30; r++) {
-      const row = worksheet.getRow(r);
-      for (let c = 1; c <= 7; c++) {
-        row.getCell(c).value = "";
-      }
+    // Create temp files inside scratch directory
+    const scratchDir = path.join(process.cwd(), "scratch");
+    if (!fs.existsSync(scratchDir)) {
+      fs.mkdirSync(scratchDir);
     }
 
-    // 5. Write the VPP items starting from row 14
-    items.forEach((item: any, idx: number) => {
-      const rowIndex = 14 + idx;
-      const row = worksheet.getRow(rowIndex);
+    const timestamp = Date.now();
+    const tempJsonPath = path.join(scratchDir, `vpp_data_${timestamp}.json`);
+    const tempDocxPath = path.join(scratchDir, `vpp_output_${timestamp}.docx`);
 
-      row.getCell(1).value = idx + 1; // TT
-      row.getCell(2).value = item.name; // Tên văn phòng phẩm
-      row.getCell(3).value = item.unit; // Đơn vị
-      row.getCell(4).value = Number(item.qty) || 0; // Số lượng
-      row.getCell(5).value = ""; // Đơn giá dự kiến
-      row.getCell(6).value = ""; // Thành tiền
-      row.getCell(7).value = item.notes || "Đã duyệt cấp phát"; // Ghi chú
-    });
+    // Write JSON data to temp file
+    fs.writeFileSync(tempJsonPath, JSON.stringify(data, null, 2), "utf-8");
 
-    // 6. Overwrite the Date directly in Cell F34 (fixed template location)
-    const dayStr = String(now.getDate()).padStart(2, "0");
-    const monthNumStr = String(now.getMonth() + 1).padStart(2, "0");
-    const yearStr = String(now.getFullYear());
-    worksheet.getCell("F34").value = `TPHCM, ngày ${dayStr} tháng ${monthNumStr} năm ${yearStr}`;
+    // 2. Execute Python script to fill the docx template
+    const scriptPath = path.join(scratchDir, "fill_docx.py");
+    const pythonCmd = `python "${scriptPath}" "${tempJsonPath}" "${tempDocxPath}"`;
+    
+    await execAsync(pythonCmd);
 
-    // Set Sheet Name (max 31 characters, remove "Phòng " prefix for brevity if needed)
-    const cleanSheetName = targetName.replace(/Phòng\s+/i, "P. ").slice(0, 30);
-    worksheet.name = cleanSheetName;
+    if (!fs.existsSync(tempDocxPath)) {
+      throw new Error("Python script failed to generate output docx file.");
+    }
 
-    // 7. Write workbook to buffer
-    const buffer = await workbook.xlsx.writeBuffer();
+    // 3. Read output file buffer
+    const buffer = fs.readFileSync(tempDocxPath);
 
-    const outputFilename = `Phieu_Cap_Phat_VPP_${targetName.replace(/\s+/g, "_")}.xlsx`;
+    // Clean up temp files
+    try {
+      fs.unlinkSync(tempJsonPath);
+      fs.unlinkSync(tempDocxPath);
+    } catch (cleanupError) {
+      console.error("Temp file cleanup error:", cleanupError);
+    }
+
+    // 4. Return document response
+    const outputFilename = `Phieu_Cap_Phat_VPP_${targetName.replace(/\s+/g, "_")}.docx`;
 
     return new NextResponse(buffer, {
       status: 200,
       headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "Content-Disposition": `attachment; filename="${encodeURIComponent(outputFilename)}"`,
         "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
         "Pragma": "no-cache",
@@ -91,7 +75,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error("Export Excel VPP error:", error);
-    return new NextResponse(`Error exporting Excel: ${error.message || error}`, { status: 500 });
+    console.error("Export Word VPP error:", error);
+    return new NextResponse(`Error exporting Word: ${error.message || error}`, { status: 500 });
   }
 }

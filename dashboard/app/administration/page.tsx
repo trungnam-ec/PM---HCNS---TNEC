@@ -1852,7 +1852,7 @@ export default function AdministrationPage() {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(errorText || "Lỗi khi xuất file Excel từ server.");
+        throw new Error(errorText || "Lỗi khi xuất file Word từ server.");
       }
 
       // 3. Download the returned file buffer
@@ -1860,14 +1860,14 @@ export default function AdministrationPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Phieu_Cap_Phat_VPP_${targetName.replace(/\s+/g, "_")}.xlsx`;
+      a.download = `Phieu_Cap_Phat_VPP_${targetName.replace(/\s+/g, "_")}.docx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
-      console.error("Lỗi xuất file Excel VPP:", err);
-      alert("Lỗi xuất file Excel: " + err.message);
+      console.error("Lỗi xuất file Word VPP:", err);
+      alert("Lỗi xuất file Word: " + err.message);
     }
   };
 
@@ -3906,7 +3906,7 @@ export default function AdministrationPage() {
                             ).length === 0}
                             className="flex items-center gap-1.5 bg-[#10B981] hover:bg-[#059669] disabled:bg-slate-300 disabled:text-slate-500 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-md transition-all active:scale-[0.98] cursor-pointer"
                           >
-                            <Download size={14} /> Tải xuống file Excel
+                            <Download size={14} /> Tải xuống file Word
                           </button>
                         </div>
                       </div>

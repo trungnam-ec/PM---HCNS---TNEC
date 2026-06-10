@@ -364,13 +364,18 @@ export default function TaskManagementPage() {
     const userEmail = currentUser.email.toLowerCase().trim();
     const userName = currentUser.name;
 
-    // 1. Hoa Đào thấy toàn bộ nhân viên (cùng với Admin / Trưởng phòng)
+    // 1. Hoa Đào & Hoành Anh thấy toàn bộ nhân viên (cùng với Admin / Trưởng phòng / Tổ trưởng)
     const isUserAdmin = currentUser.isAdmin || 
                         currentUser.role.toLowerCase() === "admin" ||
                         currentUser.role.toLowerCase().includes("trưởng phòng") || 
                         currentUser.role.toLowerCase().includes("truong phong") ||
+                        currentUser.role.toLowerCase().includes("tổ trưởng") || 
+                        currentUser.role.toLowerCase().includes("to truong") || 
                         userEmail === "lehoadao2706@gmail.com" ||
-                        userName.includes("Hoa Đào");
+                        userEmail === "duongnhathoanhanh@gmail.com" ||
+                        userEmail === "anhdnh@trungnamgroup.com.vn" ||
+                        userName.includes("Hoa Đào") ||
+                        userName.includes("Hoành Anh");
 
     if (isUserAdmin) return true;
 

@@ -239,16 +239,22 @@ export default function CBPage() {
       const allowedData = allowedList && allowedList.length > 0 ? allowedList[0] : null;
 
       const isAdmin = allowedData?.role === "Admin" || empData?.role?.toLowerCase() === "admin";
-      const isLanPhương = empData?.name === "Lại Nguyễn Lan Phương" || 
-                          session.user.user_metadata?.full_name === "Lại Nguyễn Lan Phương" || 
-                          session.user.user_metadata?.name === "Lại Nguyễn Lan Phương" ||
-                          empData?.role === "CV Nhân sự" ||
-                          (empData?.role?.toLowerCase()?.includes("nhân sự") && 
-                           (empData?.department?.toLowerCase()?.includes("hành chính") || empData?.department?.toLowerCase()?.includes("hcns")));
+      const isHRStaff = empData?.name === "Lại Nguyễn Lan Phương" || 
+                        empData?.name === "Dương Nhật Hoành Anh" ||
+                        session.user.user_metadata?.full_name === "Lại Nguyễn Lan Phương" || 
+                        session.user.user_metadata?.full_name === "Dương Nhật Hoành Anh" || 
+                        session.user.user_metadata?.name === "Lại Nguyễn Lan Phương" ||
+                        session.user.user_metadata?.name === "Dương Nhật Hoành Anh" ||
+                        empData?.role === "CV Nhân sự" ||
+                        empData?.role === "Tổ trưởng Nhân sự" ||
+                        (empData?.role?.toLowerCase()?.includes("nhân sự") && 
+                         (empData?.department?.toLowerCase()?.includes("hành chính") || empData?.department?.toLowerCase()?.includes("hcns"))) ||
+                        (empData?.role?.toLowerCase()?.includes("tổ trưởng") && 
+                         (empData?.department?.toLowerCase()?.includes("hành chính") || empData?.department?.toLowerCase()?.includes("hcns")));
       const isTPHCNS = empData?.role?.toLowerCase()?.includes("trưởng phòng") && 
                        (empData?.department?.toLowerCase()?.includes("hành chính") || empData?.department?.toLowerCase()?.includes("hcns"));
                        
-      const fullAccess = !!(isAdmin || isLanPhương || isTPHCNS);
+      const fullAccess = !!(isAdmin || isHRStaff || isTPHCNS);
       setHasFullAccess(fullAccess);
       
       const userInfo = {

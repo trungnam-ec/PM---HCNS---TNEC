@@ -873,10 +873,16 @@ export default function RecruitmentPage() {
     const emailLower = (currentUser.email || "").toLowerCase().trim();
     const roleLower = (currentUser.role || "").toLowerCase();
     const deptLower = (currentUser.department || "").toLowerCase();
+    const nameLower = (currentUser.name || "").toLowerCase();
 
     return (
       emailLower === "quyen.0408@gmail.com" ||
       emailLower === "duongnhathoanhanh@gmail.com" ||
+      emailLower === "anhdnh@trungnamgroup.com.vn" ||
+      emailLower === "phuonglnl@trungnamgroup.com.vn" ||
+      emailLower === "lanphuonghcns1611@gmail.com" ||
+      nameLower.includes("hoành anh") ||
+      nameLower.includes("lan phương") ||
       deptLower.includes("hành chính") ||
       deptLower.includes("nhân sự") ||
       roleLower.includes("tuyển dụng") ||

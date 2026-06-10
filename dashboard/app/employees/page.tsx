@@ -444,8 +444,12 @@ export default function EmployeeManagementPage() {
     const isUserAdmin = currentUser.isAdmin || 
                         currentUser.role.toLowerCase() === "admin" ||
                         currentUser.name === "Lại Nguyễn Lan Phương" ||
+                        currentUser.name === "Dương Nhật Hoành Anh" ||
                         currentUser.role === "CV Nhân sự" ||
+                        currentUser.role === "Tổ trưởng Nhân sự" ||
                         (currentUser.role.toLowerCase().includes("nhân sự") && 
+                         (currentUser.department.toLowerCase().includes("hành chính") || currentUser.department.toLowerCase().includes("hcns"))) ||
+                        (currentUser.role.toLowerCase().includes("tổ trưởng") && 
                          (currentUser.department.toLowerCase().includes("hành chính") || currentUser.department.toLowerCase().includes("hcns")));
     const isUserManager = currentUser.role.toLowerCase().includes("trưởng phòng") || 
                           currentUser.role.toLowerCase().includes("truong phong");
@@ -501,8 +505,12 @@ export default function EmployeeManagementPage() {
                         currentUser.role.toLowerCase().includes("trưởng phòng") || 
                         currentUser.role.toLowerCase().includes("truong phong") ||
                         currentUser.name === "Lại Nguyễn Lan Phương" ||
+                        currentUser.name === "Dương Nhật Hoành Anh" ||
                         currentUser.role === "CV Nhân sự" ||
+                        currentUser.role === "Tổ trưởng Nhân sự" ||
                         (currentUser.role.toLowerCase().includes("nhân sự") && 
+                         (currentUser.department.toLowerCase().includes("hành chính") || currentUser.department.toLowerCase().includes("hcns"))) ||
+                        (currentUser.role.toLowerCase().includes("tổ trưởng") && 
                          (currentUser.department.toLowerCase().includes("hành chính") || currentUser.department.toLowerCase().includes("hcns")));
 
     const isUserDeputy = currentUser.role.toLowerCase().includes("phó phòng") || 
@@ -543,8 +551,12 @@ export default function EmployeeManagementPage() {
     currentUser.role.toLowerCase().includes("trưởng phòng") || 
     currentUser.role.toLowerCase().includes("truong phong") ||
     currentUser.name === "Lại Nguyễn Lan Phương" ||
+    currentUser.name === "Dương Nhật Hoành Anh" ||
     currentUser.role === "CV Nhân sự" ||
+    currentUser.role === "Tổ trưởng Nhân sự" ||
     (currentUser.role.toLowerCase().includes("nhân sự") && 
+     (currentUser.department.toLowerCase().includes("hành chính") || currentUser.department.toLowerCase().includes("hcns"))) ||
+    (currentUser.role.toLowerCase().includes("tổ trưởng") && 
      (currentUser.department.toLowerCase().includes("hành chính") || currentUser.department.toLowerCase().includes("hcns")))
   ));
 

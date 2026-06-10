@@ -67,11 +67,16 @@ export default function EmployeeManagementPage() {
 
   // Drag & Drop State
   const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
 
   // Settings State
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [tempApiKey, setTempApiKey] = useState("");
   const [tempModel, setTempModel] = useState("gpt-4o-mini");
+
+  // Batch Progress State
+  const [totalFiles, setTotalFiles] = useState(0);
+  const [processedFiles, setProcessedFiles] = useState(0);
 
   // Fetch employees from Supabase
   const fetchEmployees = async () => {
@@ -154,72 +159,123 @@ export default function EmployeeManagementPage() {
     fetchEmployees();
   }, []);
 
-  const processUploadedFile = async (file: File) => {
+  const processUploadedFiles = async (files: FileList | File[]) => {
     // Retrieve OpenAI key and model from localStorage
     const customKey = localStorage.getItem("openai_api_key") || "";
     const selectedModel = localStorage.getItem("openai_model_nhan_su") || "gpt-4o-mini";
 
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+
+    setTotalFiles(fileArray.length);
+    setProcessedFiles(0);
     setIsAnalyzing(true);
-    const formData = new FormData();
-    formData.append("employee_file", file);
-    formData.append("original_filename", file.name);
+
+    let combinedExtracted: ExtractedEmployee[] = [];
+    let errorCount = 0;
+    let successCount = 0;
+    let completed = 0;
 
     try {
-      const res = await fetch("/api/analyze-employee-file", {
-        method: "POST",
-        headers: {
-          "Authorization": customKey ? `Bearer ${customKey}` : "",
-          "x-openai-model": selectedModel
-        },
-        body: formData,
-      });
+      const results = await Promise.all(
+        fileArray.map(async (file) => {
+          const formData = new FormData();
+          formData.append("employee_file", file);
+          formData.append("original_filename", file.name);
 
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "Lỗi phân tích file.");
-      }
+          try {
+            const res = await fetch("/api/analyze-employee-file", {
+              method: "POST",
+              headers: {
+                "Authorization": customKey ? `Bearer ${customKey}` : "",
+                "x-openai-model": selectedModel
+              },
+              body: formData,
+            });
 
-      const data = await res.json();
-      if (data.employees && Array.isArray(data.employees)) {
-        setPreviewEmployees(data.employees);
-        setShowPreviewModal(true);
-      } else {
-        alert("Không tìm thấy danh sách nhân sự hợp lệ trong file này.");
-      }
-    } catch (err: any) {
-      console.error("Error analyzing file:", err);
-      alert("Lỗi phân tích file nhân sự: " + err.message);
+            if (!res.ok) {
+              const errData = await res.json();
+              throw new Error(errData.error || "Lỗi phân tích.");
+            }
+
+            const data = await res.json();
+            if (data.employees && Array.isArray(data.employees)) {
+              successCount++;
+              return data.employees;
+            } else {
+              errorCount++;
+              return [];
+            }
+          } catch (err) {
+            console.error(`Error analyzing file ${file.name}:`, err);
+            errorCount++;
+            return [];
+          } finally {
+            completed++;
+            setProcessedFiles(completed);
+          }
+        })
+      );
+      // Flatten all employee lists
+      combinedExtracted = results.flat();
+    } catch (err) {
+      console.error("Batch processing error:", err);
     } finally {
       setIsAnalyzing(false);
+    }
+
+    if (combinedExtracted.length > 0) {
+      setPreviewEmployees(combinedExtracted);
+      setShowPreviewModal(true);
+      if (errorCount > 0) {
+        alert(`Đã trích xuất thành công từ ${successCount} file. Có ${errorCount} file gặp lỗi không thể trích xuất.`);
+      }
+    } else {
+      alert("Không tìm thấy danh sách nhân sự hợp lệ trong các file đã chọn.");
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      processUploadedFile(file);
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      processUploadedFiles(files);
     }
     // Reset file input
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   // Drag & Drop handlers
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragging(true);
+    e.stopPropagation();
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragging(false);
+    e.stopPropagation();
+    dragCounter.current--;
+    if (dragCounter.current <= 0) {
+      setIsDragging(false);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      processUploadedFile(file);
+    dragCounter.current = 0;
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      processUploadedFiles(files);
     }
   };
 
@@ -382,8 +438,11 @@ export default function EmployeeManagementPage() {
 
   return (
     <div 
-      className="flex min-h-screen bg-[#F7F9FC]"
+      className="flex min-h-screen bg-[#F7F9FC] relative"
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
       <Sidebar />
       <div className="ml-60 flex-1 flex flex-col min-w-0">
@@ -433,6 +492,7 @@ export default function EmployeeManagementPage() {
                 ref={fileInputRef}
                 onChange={handleFileChange}
                 accept=".xlsx,.xls,.docx,.doc,.pdf,.png,.jpg,.jpeg"
+                multiple
                 className="hidden"
               />
               <button 
@@ -762,7 +822,9 @@ export default function EmployeeManagementPage() {
           </div>
           <div className="text-center space-y-1">
             <h3 className="font-heading font-extrabold text-white text-sm">AI đang xử lý tài liệu</h3>
-            <p className="text-xs text-blue-100/70 font-medium">Vui lòng chờ, hệ thống đang bóc tách thông tin nhân sự...</p>
+            <p className="text-xs text-blue-100/70 font-medium">
+              Vui lòng chờ, đang phân tích tài liệu ({processedFiles}/{totalFiles})...
+            </p>
           </div>
         </div>
       )}
@@ -827,10 +889,7 @@ export default function EmployeeManagementPage() {
       {/* Drag & Drop Overlay */}
       {isDragging && (
         <div 
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[999] flex flex-col items-center justify-center p-6 transition-all duration-300"
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[999] flex flex-col items-center justify-center p-6 transition-all duration-300 pointer-events-none"
         >
           <div className="border-4 border-dashed border-[#005BAC] bg-white/95 rounded-3xl p-12 flex flex-col items-center justify-center gap-4 max-w-lg shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-5 bg-blue-50 text-[#005BAC] rounded-full animate-bounce">

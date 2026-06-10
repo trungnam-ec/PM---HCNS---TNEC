@@ -37,12 +37,11 @@ Nhiệm vụ của bạn là phân tích văn bản hoặc tệp (Excel, Word, P
    - "phongban": Nếu đối tượng yêu cầu là một Phòng ban văn phòng.
    - "duan": Nếu đối tượng yêu cầu là một Ban điều hành Dự án công trường.
    
-2. "targetName": Tên phòng ban hoặc dự án yêu cầu, bắt buộc phải khớp (hoặc ánh xạ gần nhất) với một trong các tên hợp lệ dưới đây:
-   - Nếu "targetType" is "phongban", "targetName" PHẢI là một trong các giá trị sau: ${JSON.stringify(DEPARTMENTS)}
-   - Nếu "targetType" is "duan", "targetName" PHẢI là một trong các giá trị sau: ${JSON.stringify(PROJECTS)}
-   *(Ví dụ: Nếu trong file ghi "Phòng QLDA" hoặc "Dự án", hãy ánh xạ sang "Phòng Dự án"; nếu ghi "HCNS" ánh xạ sang "Phòng HCNS"; nếu ghi "BĐH Vàm Lẽo" hoặc "Vàm Lẽo" ánh xạ sang "Vàm Lẽo")*
+2. "targetName": Tên phòng ban hoặc dự án yêu cầu, bắt buộc phải khớp (hoặc ánh xạ gần nhất    *(Ví dụ: Nếu trong file ghi "Phòng QLDA" hoặc "Dự án", hãy ánh xạ sang "Phòng Dự án"; nếu ghi "HCNS" ánh xạ sang "Phòng HCNS"; nếu ghi "BĐH Vàm Lẽo" hoặc "Vàm Lẽo" ánh xạ sang "Vàm Lẽo")*
 
-3. "items": Danh sách các vật tư yêu cầu cấp phát. Mỗi phần tử là một object gồm:
+3. "requesterName": Tên người yêu cầu/đề xuất cụ thể trên phiếu yêu cầu (ví dụ: "Thanh Hằng", "Nguyễn Văn A"...). Tìm kiếm xung quanh các dòng "Người yêu cầu", "Người đề xuất", hoặc chữ ký "Người nhận" / "Người lập". Nếu không tìm thấy, để là chuỗi rỗng "".
+
+4. "items": Danh sách các vật tư yêu cầu cấp phát. Mỗi phần tử là một object gồm:
    - "name": Tên vật tư (ví dụ: "Bút bi Thiên Long xanh", "Giấy A4 Double A 70gsm", "Bìa còng 7cm"). Hãy chuẩn hóa và làm sạch tên vật tư (bỏ số thứ tự ở đầu, ký tự rác...).
    - "unit": Đơn vị tính (ví dụ: "Cái", "Ram", "Hộp", "Cuốn"). Nếu không có thông tin đơn vị tính, hãy dự đoán hợp lý dựa trên loại vật tư (ví dụ: bút -> cái/hộp, giấy -> ram/thùng).
    - "qty": Số lượng yêu cầu (kiểu số nguyên dương). Nếu ghi số lượng kèm chữ, chỉ trích xuất phần số nguyên (ví dụ: "5 cái" -> 5).
@@ -55,6 +54,7 @@ Nhiệm vụ của bạn là phân tích văn bản hoặc tệp (Excel, Word, P
 {
   "targetType": "phongban | duan",
   "targetName": "...",
+  "requesterName": "...",
   "items": [
     {
       "name": "...",
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
     const filenameInfo = originalFilename ? `Tên file tài liệu gốc: "${originalFilename}"` : `Tên file tài liệu: "${file.name}"`;
     const promptText = `Hãy phân tích tài liệu yêu cầu VPP này. 
 ${filenameInfo}
-Hãy trích xuất thông tin dạng JSON gồm: targetType, targetName, items.`;
+Hãy trích xuất thông tin dạng JSON gồm: targetType, targetName, requesterName, items.`;
 
     if (fileType.endsWith(".xlsx") || fileType.endsWith(".xls")) {
       const workbook = XLSX.read(fileBuffer, { type: "buffer" });

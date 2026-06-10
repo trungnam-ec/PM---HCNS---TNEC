@@ -58,6 +58,7 @@ interface DeptRequest {
   status: "Chờ duyệt" | "Đã cấp phát";
   target?: "phongban" | "duan";
   targetName?: string;
+  requesterName?: string;
 }
 
 interface AllocationTarget {
@@ -439,6 +440,7 @@ export default function AdministrationPage() {
   const [newPYCTargetName, setNewPYCTargetName] = useState("");
   const [newPYCItem, setNewPYCItem] = useState("");
   const [newPYCQty, setNewPYCQty] = useState(1);
+  const [newPYCRequesterName, setNewPYCRequesterName] = useState("");
 
   // Invoice Reader Batch States
   const [invoiceQueue, setInvoiceQueue] = useState<Array<{
@@ -500,6 +502,7 @@ export default function AdministrationPage() {
   const [showVppPreviewModal, setShowVppPreviewModal] = useState(false);
   const [vppPreviewTargetType, setVppPreviewTargetType] = useState<"phongban" | "duan">("phongban");
   const [vppPreviewTargetName, setVppPreviewTargetName] = useState("");
+  const [vppPreviewRequesterName, setVppPreviewRequesterName] = useState("");
   const [vppPreviewItems, setVppPreviewItems] = useState<Array<{
     checked: boolean;
     name: string;
@@ -527,7 +530,8 @@ export default function AdministrationPage() {
           allocationTime: parsed.allocationTime || parsed.allocationDate || "",
           status: t.status === "completed" ? "Đã cấp phát" : "Chờ duyệt",
           target: parsed.target || "phongban",
-          targetName: parsed.targetName || t.assignee
+          targetName: parsed.targetName || t.assignee,
+          requesterName: parsed.requesterName || ""
         };
       }
     } catch (e) {
@@ -1820,9 +1824,10 @@ export default function AdministrationPage() {
         return;
       }
 
-      // Get receiver from allocationTargets
+      // Get receiver from allocationTargets or custom requesterName
       const targetInfo = allocationTargets.find(t => t.type === type && t.name === targetName);
-      const receiverName = targetInfo ? targetInfo.receiver : "";
+      const customRequester = filteredRequests.find(r => r.requesterName)?.requesterName;
+      const receiverName = customRequester || (targetInfo ? targetInfo.receiver : "");
 
       // Format items to send to the server
       const itemsToSend = filteredRequests.map(req => {
@@ -1969,7 +1974,8 @@ export default function AdministrationPage() {
             targetName: newPYCTargetName,
             item: newPYCItem,
             qty: Number(newPYCQty),
-            date: dateStr
+            date: dateStr,
+            requesterName: newPYCRequesterName.trim()
           })
         }])
         .select();
@@ -1982,6 +1988,7 @@ export default function AdministrationPage() {
       // Reset fields
       setNewPYCItem("");
       setNewPYCQty(1);
+      setNewPYCRequesterName("");
       
       // Refresh list from Supabase
       fetchDeptRequests();
@@ -2037,6 +2044,7 @@ export default function AdministrationPage() {
       // Populate preview states
       setVppPreviewTargetType(data.targetType === "duan" ? "duan" : "phongban");
       setVppPreviewTargetName(data.targetName || "");
+      setVppPreviewRequesterName(data.requesterName || "");
       
       const parsedItems = (data.items || []).map((item: any) => ({
         checked: true,
@@ -2084,7 +2092,8 @@ export default function AdministrationPage() {
           targetName: vppPreviewTargetName,
           item: item.name,
           qty: Number(item.qty),
-          date: dateStr
+          date: dateStr,
+          requesterName: vppPreviewRequesterName
         })
       }));
 
@@ -2096,6 +2105,7 @@ export default function AdministrationPage() {
 
       alert(`Đã tạo thành công ${payloads.length} yêu cầu cấp phát VPP cho ${deptName}.`);
       setShowVppPreviewModal(false);
+      setVppPreviewRequesterName("");
       
       // Refresh list from Supabase
       fetchDeptRequests();
@@ -2122,7 +2132,8 @@ export default function AdministrationPage() {
         item: currentReq.item,
         qty: updatedQty,
         date: currentReq.date,
-        allocationTime: updatedTime
+        allocationTime: updatedTime,
+        requesterName: currentReq.requesterName || ""
       };
 
       const { error } = await supabase
@@ -3804,7 +3815,14 @@ export default function AdministrationPage() {
                                 <span className="font-bold text-slate-600">Định mức được duyệt:</span> &nbsp;___________________
                               </div>
                               <div>
-                                <span className="font-bold text-slate-600">Người đề xuất:</span> &nbsp;{allocationTargets.find(t => t.type === slipPreviewTargetType && t.name === slipPreviewTargetName)?.receiver || "Người nhận"}
+                                <span className="font-bold text-slate-600">Người đề xuất:</span> &nbsp;
+                                {(() => {
+                                  const filtered = deptRequests.filter(
+                                    r => r.target === slipPreviewTargetType && r.targetName === slipPreviewTargetName && r.status === "Đã cấp phát"
+                                  );
+                                  const customRequester = filtered.find(r => r.requesterName)?.requesterName;
+                                  return customRequester || allocationTargets.find(t => t.type === slipPreviewTargetType && t.name === slipPreviewTargetName)?.receiver || "Người nhận";
+                                })()}
                               </div>
                               <div>
                                 <span className="font-bold text-slate-600">Bộ phận:</span> &nbsp;{slipPreviewTargetName}
@@ -3936,7 +3954,7 @@ export default function AdministrationPage() {
 
                         <div className="py-4 space-y-4 overflow-y-auto flex-1 pr-1">
                           {/* Target Type Selector */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="space-y-1">
                               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đối tượng nhận cấp phát</label>
                               <div className="grid grid-cols-2 gap-2 mt-1">
@@ -3991,6 +4009,18 @@ export default function AdministrationPage() {
                                       <option key={t.id} value={t.name}>{t.name}</option>
                                     ))}
                               </select>
+                            </div>
+
+                            {/* Requester Name Input */}
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Người yêu cầu / Đề xuất</label>
+                              <input
+                                type="text"
+                                value={vppPreviewRequesterName}
+                                onChange={(e) => setVppPreviewRequesterName(e.target.value)}
+                                placeholder="Tên người yêu cầu..."
+                                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white font-semibold text-slate-700 focus:border-blue-500 focus:outline-none mt-1 text-xs"
+                              />
                             </div>
                           </div>
 
@@ -4256,6 +4286,18 @@ export default function AdministrationPage() {
                               onChange={(e) => setNewPYCQty(Number(e.target.value))}
                               className="w-full px-3 py-2.5 border border-slate-200 rounded-lg font-semibold text-slate-700 focus:border-blue-500 focus:outline-none mt-1 bg-white"
                               required
+                            />
+                          </div>
+
+                          {/* Requester Input */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Người yêu cầu / đề xuất</label>
+                            <input
+                              type="text"
+                              value={newPYCRequesterName}
+                              onChange={(e) => setNewPYCRequesterName(e.target.value)}
+                              placeholder="Tên người yêu cầu (để trống sẽ lấy mặc định bộ phận)..."
+                              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg font-semibold text-slate-700 focus:border-blue-500 focus:outline-none mt-1 bg-white"
                             />
                           </div>
 

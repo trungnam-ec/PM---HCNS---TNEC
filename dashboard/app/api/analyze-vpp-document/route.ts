@@ -101,7 +101,16 @@ Hãy trích xuất thông tin dạng JSON gồm: targetType, targetName, request
       for (const sheetName of workbook.SheetNames) {
         const sheet = workbook.Sheets[sheetName];
         const csv = XLSX.utils.sheet_to_csv(sheet);
-        excelText += `--- SHEET: ${sheetName} ---\n${csv}\n\n`;
+        // Filter out empty rows or rows that contain only commas/semicolons/quotes and whitespace
+        const cleanCsv = csv
+          .split(/\r?\n/)
+          .map(line => line.trim())
+          .filter(line => {
+            const content = line.replace(/[,;"']/g, "").trim();
+            return content !== "";
+          })
+          .join("\n");
+        excelText += `--- SHEET: ${sheetName} ---\n${cleanCsv}\n\n`;
       }
       messages = [
         { role: "system", content: SYSTEM_PROMPT },

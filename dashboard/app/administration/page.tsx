@@ -3279,19 +3279,17 @@ export default function AdministrationPage() {
                             </select>
                           </div>
                           
-                          {selectedDeptFilter !== "Tất cả" && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSlipPreviewTargetType("phongban");
-                                setSlipPreviewTargetName(selectedDeptFilter);
-                                setShowSlipPreviewModal(true);
-                              }}
-                              className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
-                            >
-                              <Eye size={14} /> Xem trước phiếu cấp phát
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSlipPreviewTargetType("phongban");
+                              setSlipPreviewTargetName(selectedDeptFilter !== "Tất cả" ? selectedDeptFilter : (allocationTargets.filter(t => t.type === "phongban")[0]?.name || ""));
+                              setShowSlipPreviewModal(true);
+                            }}
+                            className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+                          >
+                            <Eye size={14} /> Xem trước phiếu cấp phát
+                          </button>
                           
                           <button
                             type="button"
@@ -3538,19 +3536,17 @@ export default function AdministrationPage() {
                             </select>
                           </div>
                           
-                          {selectedProjectFilter !== "Tất cả" && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSlipPreviewTargetType("duan");
-                                setSlipPreviewTargetName(selectedProjectFilter);
-                                setShowSlipPreviewModal(true);
-                              }}
-                              className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
-                            >
-                              <Eye size={14} /> Xem trước phiếu cấp phát
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSlipPreviewTargetType("duan");
+                              setSlipPreviewTargetName(selectedProjectFilter !== "Tất cả" ? selectedProjectFilter : (allocationTargets.filter(t => t.type === "duan")[0]?.name || ""));
+                              setShowSlipPreviewModal(true);
+                            }}
+                            className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200"
+                          >
+                            <Eye size={14} /> Xem trước phiếu cấp phát
+                          </button>
                           
                           <button
                             type="button"
@@ -3806,12 +3802,25 @@ export default function AdministrationPage() {
                         <div className="py-4 space-y-4 overflow-y-auto flex-1 pr-1">
                           {/* Document Header Preview */}
                           <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3 font-semibold text-xs text-slate-700">
-                            <div className="flex justify-between border-b border-slate-100 pb-2">
-                              <div>
-                                <span className="text-slate-400">Bộ phận nhận cấp phát:</span>
-                                <div className="text-slate-800 font-bold text-sm mt-0.5">{slipPreviewTargetName}</div>
+                            <div className="flex flex-col sm:flex-row justify-between border-b border-slate-100 pb-3 items-start sm:items-center gap-3">
+                              <div className="flex-1 w-full max-w-md">
+                                <span className="text-slate-400 block mb-1">
+                                  {slipPreviewTargetType === "phongban" ? "Bộ phận nhận cấp phát:" : "Dự án nhận cấp phát:"}
+                                </span>
+                                <select
+                                  value={slipPreviewTargetName}
+                                  onChange={(e) => setSlipPreviewTargetName(e.target.value)}
+                                  className="w-full px-3 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-[#005BAC] text-xs font-bold bg-white text-slate-800"
+                                >
+                                  {allocationTargets
+                                    .filter(t => t.type === slipPreviewTargetType)
+                                    .map(t => (
+                                      <option key={t.id} value={t.name}>{t.name}</option>
+                                    ))
+                                  }
+                                </select>
                               </div>
-                              <div className="text-right">
+                              <div className="text-right shrink-0">
                                 <span className="text-slate-400">Thời gian yêu cầu:</span>
                                 <div className="text-slate-800 font-bold text-sm mt-0.5">Tháng {new Date().getMonth() + 1} / {new Date().getFullYear()}</div>
                               </div>
@@ -3825,7 +3834,9 @@ export default function AdministrationPage() {
                               </div>
                               <div className="text-right">
                                 <span className="text-slate-400">Nơi cấp phát:</span>
-                                <div className="text-slate-800 font-bold mt-0.5">Văn phòng công ty / Ban điều hành</div>
+                                <div className="text-slate-800 font-bold mt-0.5">
+                                  {slipPreviewTargetType === "phongban" ? "Văn phòng công ty" : "Ban điều hành dự án"}
+                                </div>
                               </div>
                             </div>
                           </div>

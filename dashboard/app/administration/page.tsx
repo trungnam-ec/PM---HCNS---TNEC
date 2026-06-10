@@ -159,6 +159,56 @@ const PROJECTS = [
   "BĐH Hương Lộ 11"
 ];
 
+const normalizeDeptName = (name: string): string => {
+  if (!name) return "";
+  const cleaned = name.trim().toLowerCase();
+  if (
+    cleaned === "phòng hcns" ||
+    cleaned === "hcns" ||
+    cleaned === "p.hcns" ||
+    cleaned === "p. hành chính nhân sự" ||
+    cleaned === "hành chính nhân sự" ||
+    cleaned === "phòng hành chính nhân sự"
+  ) {
+    return "Phòng Hành Chính Nhân Sự";
+  }
+  if (
+    cleaned === "phòng tài chính kế toán" ||
+    cleaned === "phòng tckt" ||
+    cleaned === "tckt" ||
+    cleaned === "p.tckt" ||
+    cleaned === "kế toán" ||
+    cleaned === "phòng kế toán"
+  ) {
+    return "Phòng Tài Chính Kế Toán";
+  }
+  if (
+    cleaned === "phòng vật tư thiết bị" ||
+    cleaned === "vật tư thiết bị" ||
+    cleaned === "vật tư" ||
+    cleaned === "phòng vật tư"
+  ) {
+    return "Phòng Vật Tư Thiết Bị";
+  }
+  if (
+    cleaned === "phòng kế hoạch đấu thầu" ||
+    cleaned === "kế hoạch đấu thầu" ||
+    cleaned === "khđt" ||
+    cleaned === "phòng khđt"
+  ) {
+    return "Phòng Kế Hoạch Đấu Thầu";
+  }
+  if (
+    cleaned === "phòng quản lý dự án" ||
+    cleaned === "quản lý dự án" ||
+    cleaned === "qlda" ||
+    cleaned === "phòng qlda"
+  ) {
+    return "Phòng Quản Lý Dự Án";
+  }
+  return name;
+};
+
 const INITIAL_ALLOCATION_TARGETS: AllocationTarget[] = [
   { id: "CP-01", type: "phongban", name: "Phòng Hành Chính Nhân Sự", receiver: "Như Quỳnh", notes: "Văn phòng công ty" },
   { id: "CP-02", type: "phongban", name: "Phòng Tài Chính Kế Toán", receiver: "Thanh Hằng", notes: "Văn phòng công ty" },
@@ -521,16 +571,17 @@ export default function AdministrationPage() {
     try {
       if (t.notes && t.notes.startsWith("{")) {
         const parsed = JSON.parse(t.notes);
+        const normTargetName = normalizeDeptName(parsed.targetName || t.assignee);
         return {
           id: t.id,
-          dept: parsed.dept || parsed.targetName || t.assignee,
+          dept: parsed.target === "phongban" ? normTargetName : `Ban điều hành ${normTargetName}`,
           item: parsed.item,
           qty: parsed.qty,
           date: parsed.date || t.start_date,
           allocationTime: parsed.allocationTime || parsed.allocationDate || "",
           status: t.status === "completed" ? "Đã cấp phát" : "Chờ duyệt",
           target: parsed.target || "phongban",
-          targetName: parsed.targetName || t.assignee,
+          targetName: normTargetName,
           requesterName: parsed.requesterName || ""
         };
       }
@@ -540,12 +591,12 @@ export default function AdministrationPage() {
     
     // Fallback parsing from title: VPP: targetName | item | qty
     const parts = t.title.split("|").map((p: string) => p.trim());
-    const targetName = (parts[0] || "").replace("VPP:", "").trim();
+    const targetName = normalizeDeptName((parts[0] || "").replace("VPP:", "").trim());
     const item = parts[1] || "";
     const qty = Number(parts[2]) || 1;
     return {
       id: t.id,
-      dept: targetName,
+      dept: t.title.includes("Ban điều hành") || t.title.includes("BĐH") ? `Ban điều hành ${targetName}` : targetName,
       item: item,
       qty: qty,
       date: t.start_date || "",

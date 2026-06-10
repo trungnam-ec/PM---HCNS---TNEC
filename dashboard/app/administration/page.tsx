@@ -2132,9 +2132,11 @@ export default function AdministrationPage() {
       const customKey = localStorage.getItem("openai_api_key_hanh_chinh") || localStorage.getItem("openai_api_key") || "";
       const customModel = localStorage.getItem("openai_model_hanh_chinh") || "gpt-4o-mini";
 
+      const currentFilter = vppSubTab === "phongban" ? selectedDeptFilter : selectedProjectFilter;
       const formData = new FormData();
       formData.append("vpp_file", file);
       formData.append("original_filename", file.name);
+      formData.append("target_filter", currentFilter);
 
       const headers: Record<string, string> = {};
       if (customKey) {

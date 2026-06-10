@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
     const file = form.get("vpp_file") as File | null;
     const originalFilename = form.get("original_filename") as string | null;
+    const targetFilter = form.get("target_filter") as string | null;
 
     if (!file) {
       return NextResponse.json({ error: "Thiếu file văn bản cần phân tích." }, { status: 400 });
@@ -101,7 +102,7 @@ LƯU Ý QUAN TRỌNG: Nếu tài liệu chứa cả phần hướng dẫn/ví d�
       let excelText = "";
       
       // Filter sheet names to prioritize actual requests if there are multiple sheets
-      const validSheets = workbook.SheetNames.filter(name => {
+      let validSheets = workbook.SheetNames.filter(name => {
         if (workbook.SheetNames.length <= 1) return true;
         const normalized = name.toLowerCase().trim();
         return !(
@@ -117,6 +118,22 @@ LƯU Ý QUAN TRỌNG: Nếu tài liệu chứa cả phần hướng dẫn/ví d�
           normalized === "hd"
         );
       });
+
+      // If a target filter hint is provided, prioritize the sheet that matches the target filter
+      if (targetFilter && targetFilter !== "Tất cả") {
+        const hint = targetFilter.toLowerCase().replace("phòng", "").replace("bđh", "").replace("ban điều hành", "").trim();
+        const matchingSheets = [];
+        for (const sheetName of validSheets) {
+          const sheet = workbook.Sheets[sheetName];
+          const csv = XLSX.utils.sheet_to_csv(sheet).toLowerCase();
+          if (sheetName.toLowerCase().includes(hint) || csv.includes(hint)) {
+            matchingSheets.push(sheetName);
+          }
+        }
+        if (matchingSheets.length > 0) {
+          validSheets = matchingSheets;
+        }
+      }
 
       // If all sheets were filtered out, fallback to all sheets
       const sheetsToProcess = validSheets.length > 0 ? validSheets : workbook.SheetNames;

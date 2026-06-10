@@ -123,64 +123,62 @@ interface SupplierPayment {
 
 // ─── INITIAL MOCK DATA ────────────────────────────────────────────────────────
 const INITIAL_SUPPLIES: SupplyItem[] = [
-  { name: "Giấy A4 Double A 70gsm", cat: "Giấy in", unit: "Ram", stock: 150, allocated: 320, alert: "Bình thường" },
-  { name: "Bút bi Thiên Long xanh", cat: "Bút viết", unit: "Hộp", stock: 12, allocated: 45, alert: "Cảnh báo" },
-  { name: "Kẹp bướm 25mm", cat: "Dụng cụ lưu trữ", unit: "Hộp", stock: 45, allocated: 15, alert: "Bình thường" }
+  { name: "Giấy A4 Double A 70gsm", cat: "Giấy in", unit: "Ram", stock: 150, allocated: 0, alert: "Bình thường" },
+  { name: "Bút bi Thiên Long xanh", cat: "Bút viết", unit: "Hộp", stock: 12, allocated: 0, alert: "Cảnh báo" },
+  { name: "Kẹp bướm 25mm", cat: "Dụng cụ lưu trữ", unit: "Hộp", stock: 45, allocated: 0, alert: "Bình thường" }
 ];
 
-const INITIAL_DEPT_REQUESTS: DeptRequest[] = [
-  { id: "REQ-01", dept: "Phòng HCNS", item: "Giấy A4 Double A 70gsm", qty: 5, date: "2026-06-04", status: "Chờ duyệt", target: "phongban", targetName: "Phòng HCNS" },
-  { id: "REQ-02", dept: "Kế toán", item: "Bút bi Thiên Long xanh", qty: 2, date: "2026-06-05", status: "Chờ duyệt", target: "phongban", targetName: "Kế toán" },
-  { id: "REQ-03", dept: "Phòng Dự án", item: "Giấy A4 Double A 70gsm", qty: 10, date: "2026-06-03", status: "Đã cấp phát", target: "phongban", targetName: "Phòng Dự án" },
-  { id: "REQ-04", dept: "Ban điều hành Vàm Lẽo", item: "Bút bi Thiên Long xanh", qty: 5, date: "2026-06-06", status: "Chờ duyệt", target: "duan", targetName: "Vàm Lẽo" },
-  { id: "REQ-05", dept: "Ban điều hành Thường Phước", item: "Kẹp bướm 25mm", qty: 3, date: "2026-06-05", status: "Đã cấp phát", target: "duan", targetName: "Thường Phước" }
-];
+const INITIAL_DEPT_REQUESTS: DeptRequest[] = [];
 
 const DEPARTMENTS = [
-  "Phòng HCNS",
-  "Kế toán",
-  "Phòng Kế hoạch",
-  "Phòng Dự án",
-  "Phòng Vật tư",
-  "Phòng Đấu thầu",
-  "Phòng MKT",
-  "Phòng ATLĐ",
-  "Phòng Kỹ thuật",
+  "Phòng Hành Chính Nhân Sự",
+  "Phòng Tài Chính Kế Toán",
+  "Phòng Vật Tư Thiết Bị",
+  "Phòng Thị Trường",
+  "Phòng Kế Hoạch Đấu Thầu",
+  "Phòng Kỹ Thuật",
+  "Phòng An Toàn Lao Động",
+  "Phòng Quản Lý Dự Án",
+  "Phòng Thư Ký, Trợ Lý",
   "Giám đốc",
   "Phó Giám đốc"
 ];
 
 const PROJECTS = [
-  "Vàm Lẽo",
-  "Tỉnh Lộ 8",
-  "Cầu Mã Đà",
-  "Thường Phước",
-  "Xử lý nước thải Tây Ninh",
-  "KCN Cà Ná",
-  "Điện mặt trời Trà Vinh 2",
-  "Rạch Xuyên Tâm"
+  "BĐH Vàm Lẽo",
+  "BĐH Rạch Xuyên Tâm",
+  "BĐH Thường Phước",
+  "BĐH XLNT Tây Ninh",
+  "BĐH KCN Cà Ná",
+  "BĐH Chống Hạn Ninh Thuận",
+  "BĐH Tỉnh Lộ 8",
+  "BĐH Cầu Mã Đà",
+  "BĐH ĐMT Trà Vinh 2",
+  "BĐH Hương Lộ 11"
 ];
 
 const INITIAL_ALLOCATION_TARGETS: AllocationTarget[] = [
-  { id: "CP-01", type: "phongban", name: "Phòng HCNS", receiver: "Như Quỳnh", notes: "Văn phòng công ty" },
-  { id: "CP-02", type: "phongban", name: "Kế toán", receiver: "Thanh Hằng", notes: "Văn phòng công ty" },
-  { id: "CP-03", type: "phongban", name: "Phòng Kế hoạch", receiver: "Thùy Quyên", notes: "Văn phòng công ty" },
-  { id: "CP-04", type: "phongban", name: "Phòng Dự án", receiver: "Nguyễn Văn A", notes: "Văn phòng công ty" },
-  { id: "CP-05", type: "phongban", name: "Phòng Vật tư", receiver: "Nguyễn Văn B", notes: "Văn phòng công ty" },
-  { id: "CP-06", type: "phongban", name: "Phòng Đấu thầu", receiver: "Nguyễn Văn C", notes: "Văn phòng công ty" },
-  { id: "CP-07", type: "phongban", name: "Phòng MKT", receiver: "Nguyễn Văn D", notes: "Văn phòng công ty" },
-  { id: "CP-08", type: "phongban", name: "Phòng ATLĐ", receiver: "Nguyễn Văn E", notes: "Văn phòng công ty" },
-  { id: "CP-09", type: "phongban", name: "Phòng Kỹ thuật", receiver: "Nguyễn Văn F", notes: "Văn phòng công ty" },
+  { id: "CP-01", type: "phongban", name: "Phòng Hành Chính Nhân Sự", receiver: "Như Quỳnh", notes: "Văn phòng công ty" },
+  { id: "CP-02", type: "phongban", name: "Phòng Tài Chính Kế Toán", receiver: "Thanh Hằng", notes: "Văn phòng công ty" },
+  { id: "CP-03", type: "phongban", name: "Phòng Vật Tư Thiết Bị", receiver: "Thùy Quyên", notes: "Văn phòng công ty" },
+  { id: "CP-04", type: "phongban", name: "Phòng Thị Trường", receiver: "Nguyễn Văn A", notes: "Văn phòng công ty" },
+  { id: "CP-05", type: "phongban", name: "Phòng Kế Hoạch Đấu Thầu", receiver: "Nguyễn Văn B", notes: "Văn phòng công ty" },
+  { id: "CP-06", type: "phongban", name: "Phòng Kỹ Thuật", receiver: "Nguyễn Văn C", notes: "Văn phòng công ty" },
+  { id: "CP-07", type: "phongban", name: "Phòng An Toàn Lao Động", receiver: "Nguyễn Văn D", notes: "Văn phòng công ty" },
+  { id: "CP-08", type: "phongban", name: "Phòng Quản Lý Dự Án", receiver: "Nguyễn Văn E", notes: "Văn phòng công ty" },
+  { id: "CP-09", type: "phongban", name: "Phòng Thư Ký, Trợ Lý", receiver: "Nguyễn Văn F", notes: "Văn phòng công ty" },
   { id: "CP-10", type: "phongban", name: "Giám đốc", receiver: "Trần Nghiệp Quang", notes: "Ban Giám đốc" },
   { id: "CP-11", type: "phongban", name: "Phó Giám đốc", receiver: "Phó Giám đốc", notes: "Ban Giám đốc" },
-  { id: "CP-12", type: "duan", name: "Vàm Lẽo", receiver: "Chỉ huy trưởng", notes: "Dự án Vàm Lẽo" },
-  { id: "CP-13", type: "duan", name: "Tỉnh Lộ 8", receiver: "Chỉ huy trưởng", notes: "Dự án Tỉnh Lộ 8" },
-  { id: "CP-14", type: "duan", name: "Cầu Mã Đà", receiver: "Chỉ huy trưởng", notes: "Dự án Cầu Mã Đà" },
-  { id: "CP-15", type: "duan", name: "Thường Phước", receiver: "Chỉ huy trưởng", notes: "Dự án Thường Phước" },
-  { id: "CP-16", type: "duan", name: "Xử lý nước thải Tây Ninh", receiver: "Chỉ huy trưởng", notes: "Dự án XLNT Tây Ninh" },
-  { id: "CP-17", type: "duan", name: "KCN Cà Ná", receiver: "Chỉ huy trưởng", notes: "Dự án KCN Cà Ná" },
-  { id: "CP-18", type: "duan", name: "Điện mặt trời Trà Vinh 2", receiver: "Chỉ huy trưởng", notes: "Dự án ĐMT Trà Vinh 2" },
-  { id: "CP-19", type: "duan", name: "Rạch Xuyên Tâm", receiver: "Chỉ huy trưởng", notes: "Dự án Rạch Xuyên Tâm" }
+  { id: "CP-12", type: "duan", name: "BĐH Vàm Lẽo", receiver: "Chỉ huy trưởng", notes: "Dự án Vàm Lẽo" },
+  { id: "CP-13", type: "duan", name: "BĐH Tỉnh Lộ 8", receiver: "Chỉ huy trưởng", notes: "Dự án Tỉnh Lộ 8" },
+  { id: "CP-14", type: "duan", name: "BĐH Cầu Mã Đà", receiver: "Chỉ huy trưởng", notes: "Dự án Cầu Mã Đà" },
+  { id: "CP-15", type: "duan", name: "BĐH Thường Phước", receiver: "Chỉ huy trưởng", notes: "Dự án Thường Phước" },
+  { id: "CP-16", type: "duan", name: "BĐH XLNT Tây Ninh", receiver: "Chỉ huy trưởng", notes: "Dự án XLNT Tây Ninh" },
+  { id: "CP-17", type: "duan", name: "BĐH KCN Cà Ná", receiver: "Chỉ huy trưởng", notes: "Dự án KCN Cà Ná" },
+  { id: "CP-18", type: "duan", name: "BĐH ĐMT Trà Vinh 2", receiver: "Chỉ huy trưởng", notes: "Dự án ĐMT Trà Vinh 2" },
+  { id: "CP-19", type: "duan", name: "BĐH Rạch Xuyên Tâm", receiver: "Chỉ huy trưởng", notes: "Dự án Rạch Xuyên Tâm" },
+  { id: "CP-20", type: "duan", name: "BĐH Chống Hạn Ninh Thuận", receiver: "Chỉ huy trưởng", notes: "Dự án Chống Hạn Ninh Thuận" },
+  { id: "CP-21", type: "duan", name: "BĐH Hương Lộ 11", receiver: "Chỉ huy trưởng", notes: "Dự án Hương Lộ 11" }
 ];
 
 const KANBAN_COLUMNS = [
@@ -694,21 +692,28 @@ export default function AdministrationPage() {
       if (savedTargets) {
         try {
           const parsed = JSON.parse(savedTargets);
-          let changed = false;
-          const updated = [...parsed];
-          INITIAL_ALLOCATION_TARGETS.forEach(initItem => {
-            const exists = parsed.some(
-              (p: any) => p.name.toLowerCase() === initItem.name.toLowerCase() && p.type === initItem.type
-            );
-            if (!exists) {
-              updated.push(initItem);
-              changed = true;
+          // If the saved targets list contains old department/project names, reset it to INITIAL_ALLOCATION_TARGETS
+          const hasOldTargets = parsed.some((t: any) => t.name === "Kế toán" || t.name === "Phòng HCNS" || t.name === "Vàm Lẽo");
+          if (hasOldTargets) {
+            setAllocationTargets(INITIAL_ALLOCATION_TARGETS);
+            localStorage.setItem("tnec_allocation_targets", JSON.stringify(INITIAL_ALLOCATION_TARGETS));
+          } else {
+            let changed = false;
+            const updated = [...parsed];
+            INITIAL_ALLOCATION_TARGETS.forEach(initItem => {
+              const exists = parsed.some(
+                (p: any) => p.name.toLowerCase() === initItem.name.toLowerCase() && p.type === initItem.type
+              );
+              if (!exists) {
+                updated.push(initItem);
+                changed = true;
+              }
+            });
+            if (changed) {
+              localStorage.setItem("tnec_allocation_targets", JSON.stringify(updated));
             }
-          });
-          if (changed) {
-            localStorage.setItem("tnec_allocation_targets", JSON.stringify(updated));
+            setAllocationTargets(updated);
           }
-          setAllocationTargets(updated);
         } catch (err) {
           console.error("Error parsing savedTargets:", err);
           setAllocationTargets(INITIAL_ALLOCATION_TARGETS);

@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase";
@@ -8,18 +9,17 @@ import {
   Search,
   Plus,
   Filter,
-  MoreHorizontal,
   Mail,
   Phone,
   Building,
   UserCheck,
   Calendar,
   Briefcase,
-  Download,
   Trash2,
-  Edit,
   Loader2,
-  X
+  X,
+  Upload,
+  Check
 } from "lucide-react";
 
 interface Employee {
@@ -48,6 +48,21 @@ export default function EmployeeManagementPage() {
   const [newPhone, setNewPhone] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newStatus, setNewStatus] = useState("Thử việc");
+
+  // File Upload & AI Analysis State
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  interface ExtractedEmployee {
+    name: string;
+    department: string;
+    position: string;
+    phone: string;
+    email: string;
+    status: string;
+    start: string;
+  }
+  const [previewEmployees, setPreviewEmployees] = useState<ExtractedEmployee[]>([]);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch employees from Supabase
   const fetchEmployees = async () => {
@@ -129,6 +144,87 @@ export default function EmployeeManagementPage() {
     fetchCurrentUser();
     fetchEmployees();
   }, []);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Retrieve OpenAI key from localStorage
+    const customKey = localStorage.getItem("openai_api_key") || "";
+
+    setIsAnalyzing(true);
+    const formData = new FormData();
+    formData.append("employee_file", file);
+    formData.append("original_filename", file.name);
+
+    try {
+      const res = await fetch("/api/analyze-employee-file", {
+        method: "POST",
+        headers: {
+          "Authorization": customKey ? `Bearer ${customKey}` : "",
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Lỗi phân tích file.");
+      }
+
+      const data = await res.json();
+      if (data.employees && Array.isArray(data.employees)) {
+        setPreviewEmployees(data.employees);
+        setShowPreviewModal(true);
+      } else {
+        alert("Không tìm thấy danh sách nhân sự hợp lệ trong file này.");
+      }
+    } catch (err: any) {
+      console.error("Error analyzing file:", err);
+      alert("Lỗi phân tích file nhân sự: " + err.message);
+    } finally {
+      setIsAnalyzing(false);
+      // Reset file input
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleSaveImportedEmployees = async () => {
+    if (previewEmployees.length === 0) return;
+
+    try {
+      setLoading(true);
+      // Format payload for employees table
+      const insertPayload = previewEmployees.map(emp => {
+        const avatarStr = emp.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+        return {
+          name: emp.name,
+          department: emp.department,
+          role: emp.position,
+          phone: emp.phone || "N/A",
+          email: emp.email || "N/A",
+          status: emp.status || "Chính thức",
+          avatar: avatarStr,
+          created_at: emp.start ? new Date(emp.start).toISOString() : new Date().toISOString()
+        };
+      });
+
+      const { error } = await supabase
+        .from("employees")
+        .insert(insertPayload);
+
+      if (error) throw error;
+
+      alert(`Đã lưu thành công ${previewEmployees.length} nhân sự vào hệ thống!`);
+      setShowPreviewModal(false);
+      setPreviewEmployees([]);
+      fetchEmployees();
+    } catch (err: any) {
+      console.error("Error saving imported employees:", err);
+      alert("Lỗi khi lưu danh sách nhân sự: " + (err.message || err));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -277,11 +373,21 @@ export default function EmployeeManagementPage() {
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end sm:justify-start">
+              {/* Hidden file input */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept=".xlsx,.xls,.docx,.doc,.pdf,.png,.jpg,.jpeg"
+                className="hidden"
+              />
               <button 
-                onClick={fetchEmployees}
-                className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-all shadow-sm"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-all shadow-sm cursor-pointer"
+                title="Nhập danh sách nhân sự tự động bằng AI từ Excel, Word, PDF, Ảnh"
               >
-                Tải lại
+                <Upload size={13} className="text-slate-500" />
+                Danh sách nhân sự
               </button>
               {currentUser && (currentUser.isAdmin || 
                                currentUser.role.toLowerCase() === "admin" ||
@@ -487,6 +593,115 @@ export default function EmployeeManagementPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Preview Modal */}
+      {showPreviewModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl border border-slate-100 flex flex-col animate-in fade-in-50 zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-blue-50 text-[#005BAC] rounded-xl">
+                  <UserCheck size={18} />
+                </div>
+                <div>
+                  <h3 className="font-heading font-extrabold text-slate-800 text-sm">
+                    Xem trước danh sách nhân sự trích xuất
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                    AI đã tìm thấy {previewEmployees.length} nhân viên trong tài liệu. Kiểm tra thông tin trước khi đồng bộ.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all cursor-pointer bg-transparent border-none"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body: Table list */}
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+              <div className="border border-slate-200/60 bg-white rounded-xl overflow-hidden shadow-sm">
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="py-3 px-4 w-12 text-center">STT</th>
+                      <th className="py-3 px-4">Họ và tên</th>
+                      <th className="py-3 px-4">Phòng ban</th>
+                      <th className="py-3 px-4">Chức vụ</th>
+                      <th className="py-3 px-4">Liên hệ</th>
+                      <th className="py-3 px-4">Ngày vào làm</th>
+                      <th className="py-3 px-4">Trạng thái</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
+                    {previewEmployees.map((emp, index) => (
+                      <tr key={index} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="py-3 px-4 text-center text-slate-400 font-mono">{index + 1}</td>
+                        <td className="py-3 px-4 text-slate-800 font-bold">{emp.name}</td>
+                        <td className="py-3 px-4">
+                          <span className="inline-flex items-center gap-1 text-[10px] text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200/55">
+                            {emp.department}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-500 font-medium">{emp.position}</td>
+                        <td className="py-3 px-4 space-y-0.5 text-slate-400">
+                          <p className="text-[10px]">{emp.phone}</p>
+                          <p className="text-[10px]">{emp.email}</p>
+                        </td>
+                        <td className="py-3 px-4 font-mono text-[10px]">{emp.start || "N/A"}</td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold ${
+                            emp.status === "Chính thức" ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-amber-50 text-amber-700 border border-amber-100"
+                          }`}>
+                            {emp.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-slate-100 bg-white flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowPreviewModal(false)}
+                className="px-4 py-2 border border-slate-200 text-slate-500 font-bold rounded-xl text-xs hover:bg-slate-50 transition-all"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveImportedEmployees}
+                className="flex items-center gap-1.5 px-4 py-2 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl text-xs active:scale-95 transition-all shadow-md"
+              >
+                <Check size={14} /> Lưu vào hệ thống
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Overlay */}
+      {isAnalyzing && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex flex-col items-center justify-center gap-4">
+          <div className="relative flex items-center justify-center">
+            {/* Spinning ring */}
+            <div className="w-16 h-16 rounded-full border-4 border-blue-100/30 border-t-[#005BAC] animate-spin"></div>
+            {/* Icon inside */}
+            <UserCheck size={20} className="absolute text-[#005BAC] animate-pulse" />
+          </div>
+          <div className="text-center space-y-1">
+            <h3 className="font-heading font-extrabold text-white text-sm">AI đang xử lý tài liệu</h3>
+            <p className="text-xs text-blue-100/70 font-medium">Vui lòng chờ, hệ thống đang bóc tách thông tin nhân sự...</p>
           </div>
         </div>
       )}

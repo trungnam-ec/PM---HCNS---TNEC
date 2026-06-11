@@ -1369,6 +1369,19 @@ export default function AdministrationPage() {
     }
   };
 
+  // Helper to parse JSON description of invoices safely
+  const getInvoiceDesc = (desc: string) => {
+    if (desc && desc.startsWith("{\"")) {
+      try {
+        const parsed = JSON.parse(desc);
+        return parsed.mission || "";
+      } catch (e) {
+        return desc;
+      }
+    }
+    return desc || "";
+  };
+
   // Helper classification function
   const getCategory = (desc: string) => {
     const lower = (desc || "").toLowerCase();
@@ -1412,9 +1425,9 @@ export default function AdministrationPage() {
         code: inv.number || "N/A",
         date: inv.date || "",
         beneficiary: inv.beneficiary_name || "N/A",
-        desc: inv.desc || "",
+        desc: getInvoiceDesc(inv.desc),
         amount: inv.amount || 0,
-        category: getCategory(inv.desc || ""),
+        category: getCategory(getInvoiceDesc(inv.desc)),
         file_url: inv.file_url
       })),
       ...filteredPayments.map(p => ({
@@ -1762,7 +1775,7 @@ export default function AdministrationPage() {
         const monthNum = parseInt(dateParts[1]);
         if (monthNum < 1 || monthNum > 12) return;
 
-        const matchedRow = findMatchingRow(updatedRows, inv.desc, inv.beneficiary_name || "");
+        const matchedRow = findMatchingRow(updatedRows, getInvoiceDesc(inv.desc), inv.beneficiary_name || "");
         if (matchedRow) {
           const field = `m${monthNum}` as keyof AdminMonthlyReport;
           (matchedRow[field] as number) += Number(inv.amount) || 0;
@@ -2613,12 +2626,14 @@ export default function AdministrationPage() {
   // Export word document from selected success items
   const exportInvoicePaymentRequest = async () => {
     const successItems = activePreviewInvoice 
-      ? [{
-          number: activePreviewInvoice.number,
-          date: activePreviewInvoice.date,
-          desc: activePreviewInvoice.desc,
-          amount: activePreviewInvoice.amount
-        }]
+      ? (activePreviewInvoice.desc.startsWith("{\"")
+          ? JSON.parse(activePreviewInvoice.desc).items
+          : [{
+              number: activePreviewInvoice.number,
+              date: activePreviewInvoice.date,
+              desc: activePreviewInvoice.desc,
+              amount: activePreviewInvoice.amount
+            }])
       : invoiceQueue.filter(item => item.status === "success");
 
     if (successItems.length === 0) return;
@@ -2633,7 +2648,9 @@ export default function AdministrationPage() {
         body: JSON.stringify({
           employeeName,
           employeeDept,
-          mission: activePreviewInvoice ? activePreviewInvoice.desc : paymentMission,
+          mission: activePreviewInvoice 
+            ? (activePreviewInvoice.desc.startsWith("{\"") ? JSON.parse(activePreviewInvoice.desc).mission : activePreviewInvoice.desc) 
+            : paymentMission,
           projectName,
           supplierName: activePreviewInvoice ? (activePreviewInvoice.beneficiary_name || "") : supplierName,
           bankAccount: activePreviewInvoice ? (activePreviewInvoice.bank_account || "") : bankAccount,
@@ -2727,22 +2744,37 @@ export default function AdministrationPage() {
     fetchInvoices();
   }, [fetchInvoices]);
 
-  // Save successful queue items to main processed table
+  // Save successful queue items to main processed table (grouped as a single request)
   const saveQueueToHistory = async () => {
     const successItems = invoiceQueue.filter(item => item.status === "success" && item.number && item.amount);
     if (successItems.length === 0) return;
 
     try {
-      const newInvsPayload = successItems.map(item => ({
-        number: item.number,
-        date: item.date,
-        description: item.desc || "Hóa đơn thanh toán",
-        amount: item.amount,
-        file_url: item.fileUrl || "",
-        beneficiary_name: item.beneficiaryName || "",
-        bank_account: item.bankAccount || "",
-        bank_name_branch: item.bankNameBranch || ""
-      }));
+      const totalAmount = successItems.reduce((sum, item) => sum + item.amount, 0);
+      const combinedNumbers = successItems.map(item => item.number).join(", ");
+      const combinedFileUrls = successItems.map(item => item.fileUrl).filter(Boolean).join(", ");
+      
+      const firstItem = successItems[0];
+      const mainDesc = JSON.stringify({
+        mission: paymentMission || successItems.map(item => item.desc).join(" | "),
+        items: successItems.map(item => ({
+          number: item.number,
+          date: item.date,
+          desc: item.desc,
+          amount: item.amount
+        }))
+      });
+
+      const newInvsPayload = [{
+        number: combinedNumbers,
+        date: firstItem.date,
+        description: mainDesc,
+        amount: totalAmount,
+        file_url: combinedFileUrls,
+        beneficiary_name: supplierName || firstItem.beneficiaryName || "",
+        bank_account: bankAccount || firstItem.bankAccount || "",
+        bank_name_branch: bankNameBranch || firstItem.bankNameBranch || ""
+      }];
 
       const { data, error } = await supabase
         .from("invoices")
@@ -2761,17 +2793,31 @@ export default function AdministrationPage() {
       }
       
       // Local state fallback if Supabase table is not configured
-      const newInvs: Invoice[] = successItems.map(item => ({
+      const totalAmount = successItems.reduce((sum, item) => sum + item.amount, 0);
+      const combinedNumbers = successItems.map(item => item.number).join(", ");
+      const combinedFileUrls = successItems.map(item => item.fileUrl).filter(Boolean).join(", ");
+      const firstItem = successItems[0];
+      const mainDesc = JSON.stringify({
+        mission: paymentMission || successItems.map(item => item.desc).join(" | "),
+        items: successItems.map(item => ({
+          number: item.number,
+          date: item.date,
+          desc: item.desc,
+          amount: item.amount
+        }))
+      });
+
+      const newInvs: Invoice[] = [{
         id: `INV-${Date.now().toString().slice(-2)}-${Math.random().toString(36).substr(2, 4)}`,
-        number: item.number,
-        date: item.date,
-        desc: item.desc || "Hóa đơn thanh toán",
-        amount: item.amount,
-        file_url: item.fileUrl || "",
-        beneficiary_name: item.beneficiaryName || "",
-        bank_account: item.bankAccount || "",
-        bank_name_branch: item.bankNameBranch || ""
-      }));
+        number: combinedNumbers,
+        date: firstItem.date,
+        desc: mainDesc,
+        amount: totalAmount,
+        file_url: combinedFileUrls,
+        beneficiary_name: supplierName || firstItem.beneficiaryName || "",
+        bank_account: bankAccount || firstItem.bankAccount || "",
+        bank_name_branch: bankNameBranch || firstItem.bankNameBranch || ""
+      }];
 
       setInvoices(prev => [...newInvs, ...prev]);
       setInvoiceQueue([]);
@@ -5188,7 +5234,7 @@ export default function AdministrationPage() {
                             <tr key={inv.id} className="hover:bg-slate-50/50 bg-white">
                               <td className="p-3 font-mono text-slate-800 font-bold">{inv.number}</td>
                               <td className="p-3 text-slate-500">{inv.date}</td>
-                              <td className="p-3 text-slate-600 max-w-xs truncate">{inv.desc}</td>
+                              <td className="p-3 text-slate-600 max-w-xs truncate">{getInvoiceDesc(inv.desc)}</td>
                               <td className="p-3 text-right text-[#005BAC] font-mono font-bold">
                                 {inv.amount.toLocaleString("vi-VN")} đ
                               </td>
@@ -6215,7 +6261,7 @@ export default function AdministrationPage() {
                   <span className="underline">Bộ phận</span>: <span className="font-bold">{employeeDept}</span>
                 </div>
                 <div>
-                  <span className="underline">{documentType === "payment" ? "Nội dung thanh toán" : "Lý do xin đề nghị chuyển tiền"}</span>: <span>{activePreviewInvoice ? activePreviewInvoice.desc : paymentMission}</span>
+                  <span className="underline">{documentType === "payment" ? "Nội dung thanh toán" : "Lý do xin đề nghị chuyển tiền"}</span>: <span>{activePreviewInvoice ? getInvoiceDesc(activePreviewInvoice.desc) : paymentMission}</span>
                 </div>
                 {(documentType === "transfer" || activePreviewInvoice) && (
                   <>
@@ -6250,33 +6296,37 @@ export default function AdministrationPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activePreviewInvoice ? (
-                    <tr className="border-b border-slate-900">
-                      <td className="border border-slate-900 p-1 text-center">1</td>
-                      <td className="border border-slate-900 p-1 font-mono font-bold text-center">{activePreviewInvoice.number}</td>
-                      <td className="border border-slate-900 p-1 text-center">{activePreviewInvoice.date ? new Date(activePreviewInvoice.date).toLocaleDateString("vi-VN") : ""}</td>
-                      <td className="border border-slate-900 p-1">{activePreviewInvoice.desc}</td>
-                      <td className="border border-slate-900 p-1 text-right font-mono font-bold">
-                        {activePreviewInvoice.amount.toLocaleString("vi-VN")}
-                      </td>
-                      <td className="border border-slate-900 p-1"></td>
-                    </tr>
-                  ) : (
-                    invoiceQueue
-                      .filter(item => item.status === "success")
-                      .map((item, idx) => (
-                        <tr key={item.id} className="border-b border-slate-900">
-                          <td className="border border-slate-900 p-1 text-center">{idx + 1}</td>
-                          <td className="border border-slate-900 p-1 font-mono font-bold text-center">{item.number}</td>
-                          <td className="border border-slate-900 p-1 text-center">{item.date ? new Date(item.date).toLocaleDateString("vi-VN") : ""}</td>
-                          <td className="border border-slate-900 p-1">{item.desc}</td>
-                          <td className="border border-slate-900 p-1 text-right font-mono font-bold">
-                            {item.amount.toLocaleString("vi-VN")}
-                          </td>
-                          <td className="border border-slate-900 p-1"></td>
-                        </tr>
-                      ))
-                  )}
+                  {(() => {
+                    const previewItems = activePreviewInvoice
+                      ? (activePreviewInvoice.desc.startsWith("{\"")
+                          ? JSON.parse(activePreviewInvoice.desc).items
+                          : [{
+                              number: activePreviewInvoice.number,
+                              date: activePreviewInvoice.date,
+                              desc: activePreviewInvoice.desc,
+                              amount: activePreviewInvoice.amount
+                            }])
+                      : invoiceQueue
+                          .filter(item => item.status === "success")
+                          .map(item => ({
+                            number: item.number,
+                            date: item.date,
+                            desc: item.desc,
+                            amount: item.amount
+                          }));
+                    return previewItems.map((item: any, idx: number) => (
+                      <tr key={idx} className="border-b border-slate-900">
+                        <td className="border border-slate-900 p-1 text-center">{idx + 1}</td>
+                        <td className="border border-slate-900 p-1 font-mono font-bold text-center">{item.number}</td>
+                        <td className="border border-slate-900 p-1 text-center">{item.date ? new Date(item.date).toLocaleDateString("vi-VN") : ""}</td>
+                        <td className="border border-slate-900 p-1">{item.desc}</td>
+                        <td className="border border-slate-900 p-1 text-right font-mono font-bold">
+                          {item.amount.toLocaleString("vi-VN")}
+                        </td>
+                        <td className="border border-slate-900 p-1"></td>
+                      </tr>
+                    ));
+                  })()}
                   <tr className="font-bold border-b border-slate-900">
                     <td className="border border-slate-900 p-1 text-center" colSpan={4}>Tổng cộng</td>
                     <td className="border border-slate-900 p-1 text-right font-mono font-bold">

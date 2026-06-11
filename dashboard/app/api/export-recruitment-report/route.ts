@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { exec } from "child_process";
-import { promisify } from "util";
 import { supabase } from "@/lib/supabase";
-
-const execAsync = promisify(exec);
+import { fillWeeklyReport } from "../../../scratch/fill_weekly_report";
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,17 +21,14 @@ export async function POST(request: NextRequest) {
       candidates = dbData || [];
     }
 
-    // 2. Prepare temp files inside scratch directory
-    const scratchDir = path.join(process.cwd(), "scratch");
-    if (!fs.existsSync(scratchDir)) {
-      fs.mkdirSync(scratchDir);
+    // 2. Read template buffer from public directory
+    const templatePath = path.join(process.cwd(), "public", "templates", "bao_cao_tuyen_dung_tuan.docx");
+    if (!fs.existsSync(templatePath)) {
+      throw new Error("Template file not found at " + templatePath);
     }
+    const templateBuffer = fs.readFileSync(templatePath);
 
-    const timestamp = Date.now();
-    const tempJsonPath = path.join(scratchDir, `report_data_${timestamp}.json`);
-    const tempDocxPath = path.join(scratchDir, `report_output_${timestamp}.docx`);
-
-    // Write JSON payload to temp file
+    // 3. Generate report in-memory using JavaScript
     const payload = {
       startDate,
       endDate,
@@ -42,33 +36,12 @@ export async function POST(request: NextRequest) {
       officeManualNeeds,
       projectManualNeeds
     };
-    fs.writeFileSync(tempJsonPath, JSON.stringify(payload, null, 2), "utf-8");
+    const buffer = fillWeeklyReport(payload, templateBuffer);
 
-    // 3. Execute Python script to populate docx template
-    const scriptPath = path.join(scratchDir, "fill_weekly_report.py");
-    const pythonCmd = `python "${scriptPath}" "${tempJsonPath}" "${tempDocxPath}"`;
-    
-    await execAsync(pythonCmd);
-
-    if (!fs.existsSync(tempDocxPath)) {
-      throw new Error("Python script failed to generate weekly report docx.");
-    }
-
-    // 4. Read output file buffer
-    const buffer = fs.readFileSync(tempDocxPath);
-
-    // Clean up temp files
-    try {
-      fs.unlinkSync(tempJsonPath);
-      fs.unlinkSync(tempDocxPath);
-    } catch (cleanupError) {
-      console.error("Temp file cleanup error:", cleanupError);
-    }
-
-    // 5. Send document response
+    // 4. Send document response
     const outputFilename = `Bao_Cao_Tuyen_Dung_Tuan_${startDate || "Start"}_den_${endDate || "End"}.docx`;
 
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

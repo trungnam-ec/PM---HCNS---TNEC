@@ -150,12 +150,28 @@ def fill_weekly_report(data_path, output_path):
     
     for p in doc.paragraphs:
         if "BÁO CÁO TUYỂN DỤNG" in p.text or "BÁO CÁO TUYỂN DỤNG THÁNG" in p.text:
-            p.text = f"BÁO CÁO TUYỂN DỤNG TUẦN{date_range_str}"
-            p.alignment = docx.enum.text.WD_ALIGN_PARAGRAPH.CENTER
+            # Modify only the run that contains the title text to preserve other runs (e.g. logo drawing)
+            title_updated = False
             for run in p.runs:
-                run.bold = True
-                run.font.size = docx.shared.Pt(18)
-                run.font.color.rgb = docx.shared.RGBColor(0, 91, 172) # #005BAC
+                if "BÁO CÁO TUYỂN DỤNG" in run.text or "BÁO CÁO TUYỂN DỤNG THÁNG" in run.text:
+                    run.text = f"BÁO CÁO TUYỂN DỤNG TUẦN\n(Từ ngày {formatted_start} đến ngày {formatted_end})"
+                    title_updated = True
+                    break
+            if not title_updated:
+                p.text = f"BÁO CÁO TUYỂN DỤNG TUẦN\n(Từ ngày {formatted_start} đến ngày {formatted_end})"
+
+    # Modify bottom date
+    report_date = end_date or datetime.date.today()
+    day_str = str(report_date.day).zfill(2)
+    month_str = str(report_date.month).zfill(2)
+    year_str = str(report_date.year)
+    
+    for p in doc.paragraphs:
+        if "ngày" in p.text.lower() and "tháng" in p.text.lower() and "năm" in p.text.lower() and len(p.text) < 50:
+            p.text = f"Ngày {day_str} tháng {month_str} năm {year_str}"
+            p.alignment = docx.enum.text.WD_ALIGN_PARAGRAPH.RIGHT
+            for run in p.runs:
+                run.italic = True
 
     # Edit Table 0
     if len(doc.tables) > 0:

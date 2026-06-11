@@ -519,6 +519,7 @@ export default function AdministrationPage() {
   // States for viewing original files in popups
   const [previewFileUrl, setPreviewFileUrl] = useState<string>("");
   const [previewFileName, setPreviewFileName] = useState<string>("");
+  const [previewFileIndex, setPreviewFileIndex] = useState<number>(0);
   const [showSqlGuideModal, setShowSqlGuideModal] = useState(false);
   const [isTableMissing, setIsTableMissing] = useState(false);
   const [editingPayment, setEditingPayment] = useState<SupplierPayment | null>(null);
@@ -5250,6 +5251,7 @@ export default function AdministrationPage() {
                                       onClick={() => {
                                         setPreviewFileUrl(inv.file_url || "");
                                         setPreviewFileName(`Hóa đơn số ${inv.number}`);
+                                        setPreviewFileIndex(0);
                                       }}
                                       className="text-blue-600 hover:text-blue-800 transition-colors p-1.5 rounded-lg hover:bg-blue-50 cursor-pointer inline-flex items-center justify-center bg-transparent border-none"
                                       title="Xem file gốc"
@@ -5632,6 +5634,7 @@ export default function AdministrationPage() {
                                             onClick={() => {
                                               setPreviewFileUrl(p.fileUrl || "");
                                               setPreviewFileName(`Hóa đơn ${p.supplierName}`);
+                                              setPreviewFileIndex(0);
                                             }}
                                             className="text-blue-600 hover:text-blue-800 transition-colors p-1.5 rounded-lg hover:bg-blue-50 cursor-pointer inline-flex items-center justify-center bg-transparent border-none"
                                             title="Xem file gốc"
@@ -6157,6 +6160,7 @@ export default function AdministrationPage() {
                                       onClick={() => {
                                         setPreviewFileUrl(item.file_url || "");
                                         setPreviewFileName(item.type === "Hóa đơn" ? `Hóa đơn số ${item.code}` : `Thanh toán ${item.beneficiary}`);
+                                        setPreviewFileIndex(0);
                                       }}
                                       className="text-blue-600 hover:text-blue-800 transition-colors p-1.5 rounded-lg hover:bg-blue-50 cursor-pointer inline-flex items-center justify-center bg-transparent border-none"
                                       title="Xem file gốc"
@@ -6573,70 +6577,114 @@ CREATE POLICY "Allow public delete for invoices" ON public.invoices FOR DELETE U
       )}
 
       {/* File Preview Modal */}
-      {previewFileUrl && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-4xl h-[85vh] overflow-hidden shadow-2xl border border-slate-100 flex flex-col animate-in fade-in-50 zoom-in-95 duration-150">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="p-2 bg-blue-50 text-[#005BAC] rounded-xl flex-shrink-0">
-                  <FileText size={16} />
+      {previewFileUrl && (() => {
+        const previewUrls = previewFileUrl.split(",").map(url => url.trim()).filter(Boolean);
+        const currentPreviewUrl = previewUrls[previewFileIndex] || previewUrls[0] || "";
+        
+        let fileTabs: string[] = [];
+        if (previewUrls.length > 1) {
+          const match = previewFileName.match(/(?:Hóa đơn số|Hóa đơn|Thanh toán)\s*(.+)/i);
+          if (match && match[1]) {
+            const codes = match[1].split(',').map(s => s.trim()).filter(Boolean);
+            if (codes.length === previewUrls.length) {
+              fileTabs = codes.map(code => `HĐ ${code}`);
+            }
+          }
+          if (fileTabs.length !== previewUrls.length) {
+            fileTabs = previewUrls.map((_, idx) => `Tài liệu ${idx + 1}`);
+          }
+        }
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-4xl h-[85vh] overflow-hidden shadow-2xl border border-slate-100 flex flex-col animate-in fade-in-50 zoom-in-95 duration-150">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2 bg-blue-50 text-[#005BAC] rounded-xl flex-shrink-0">
+                    <FileText size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-heading font-extrabold text-slate-800 text-xs truncate" title={previewFileName}>
+                      {previewFileName}
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-semibold">
+                      {previewUrls.length > 1 ? `Xem hóa đơn ${previewFileIndex + 1} trên tổng số ${previewUrls.length}` : "Tài liệu hóa đơn gốc"}
+                    </p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <h3 className="font-heading font-extrabold text-slate-800 text-xs truncate" title={previewFileName}>
-                    {previewFileName}
-                  </h3>
-                  <p className="text-[10px] text-slate-400 font-semibold">Tài liệu hóa đơn gốc</p>
+
+                {/* Tabs for multiple files */}
+                {previewUrls.length > 1 && (
+                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl shadow-inner border border-slate-200/50">
+                    {fileTabs.map((tabLabel, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setPreviewFileIndex(idx)}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold transition-all border-none cursor-pointer select-none active:scale-95 ${
+                          (previewFileIndex === idx || (idx === 0 && previewFileIndex >= previewUrls.length))
+                            ? "bg-white text-[#005BAC] shadow-sm font-black"
+                            : "text-slate-500 hover:text-slate-800 hover:bg-white/50"
+                        }`}
+                      >
+                        {tabLabel}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <a
+                    href={currentPreviewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer border-none"
+                  >
+                    Mở tab mới
+                  </a>
+                  <button
+                    onClick={() => {
+                      setPreviewFileUrl("");
+                      setPreviewFileName("");
+                    }}
+                    className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-all cursor-pointer bg-transparent border-none"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <a
-                  href={previewFileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-bold shadow-sm transition-all cursor-pointer border-none"
-                >
-                  Mở tab mới
-                </a>
-                <button
-                  onClick={() => {
-                    setPreviewFileUrl("");
-                    setPreviewFileName("");
-                  }}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-all cursor-pointer bg-transparent border-none"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-            {/* Body */}
-            <div className="flex-1 bg-slate-100 p-4 flex items-center justify-center relative">
-              {(() => {
-                const isImage = /\.(jpeg|jpg|gif|png|webp|svg)/i.test(previewFileUrl.split(/[?#]/)[0]);
-                if (isImage) {
+              {/* Body */}
+              <div className="flex-1 bg-slate-100 p-4 flex items-center justify-center relative">
+                {(() => {
+                  if (!currentPreviewUrl) {
+                    return <div className="text-slate-400 font-semibold text-xs">Không tìm thấy đường dẫn file</div>;
+                  }
+                  const isImage = /\.(jpeg|jpg|gif|png|webp|svg)/i.test(currentPreviewUrl.split(/[?#]/)[0]);
+                  if (isImage) {
+                    return (
+                      <div className="w-full h-full overflow-auto flex items-center justify-center bg-white rounded-xl shadow-inner p-4 animate-in fade-in-50 duration-200">
+                        <img 
+                          src={currentPreviewUrl} 
+                          alt={`${previewFileName} - Phần ${previewFileIndex + 1}`} 
+                          className="max-w-full max-h-full object-contain rounded-lg shadow-md"
+                        />
+                      </div>
+                    );
+                  }
+                  
                   return (
-                    <div className="w-full h-full overflow-auto flex items-center justify-center bg-white rounded-xl shadow-inner p-4">
-                      <img 
-                        src={previewFileUrl} 
-                        alt={previewFileName} 
-                        className="max-w-full max-h-full object-contain rounded-lg shadow-md"
-                      />
-                    </div>
+                    <iframe 
+                      src={currentPreviewUrl} 
+                      className="w-full h-full border-none bg-white rounded-xl shadow-inner animate-in fade-in-50 duration-200" 
+                      title={`Invoice File Preview - Part ${previewFileIndex + 1}`}
+                    />
                   );
-                }
-                
-                return (
-                  <iframe 
-                    src={previewFileUrl} 
-                    className="w-full h-full border-none bg-white rounded-xl shadow-inner" 
-                    title="Invoice File Preview"
-                  />
-                );
-              })()}
+                })()}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Recurring Preview Modal */}
       {showRecurringPreviewModal && (() => {

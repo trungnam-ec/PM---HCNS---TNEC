@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   Upload,
   FileText,
+  FileDown,
   Trash2,
   CheckCircle,
   XCircle,
@@ -1029,6 +1030,23 @@ export default function RecruitmentPage() {
   const [addPhone, setAddPhone] = useState("");
   const [addSource, setAddSource] = useState("TopCV");
 
+  // Modal Weekly Report State
+  const [isReportOpen, setIsReportOpen] = useState(false);
+  const [reportStartDate, setReportStartDate] = useState(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    return `${y}-${m}-01`;
+  });
+  const [reportEndDate, setReportEndDate] = useState(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  });
+  const [exportingReport, setExportingReport] = useState(false);
+
   // Fetch candidates from Supabase
   const fetchCandidates = async () => {
     try {
@@ -1411,6 +1429,209 @@ export default function RecruitmentPage() {
     }
   };
 
+  // Helper functions for normalization in UI
+  const normalizeDeptUI = (deptName: string): string => {
+    if (!deptName) return "";
+    const d = deptName.toLowerCase().trim();
+    if (d.includes("xuyên tâm") || d.includes("rxt")) return "rxt";
+    if (d.includes("vàm lẽo") || d.includes("vàm lẻo")) return "vam_leo";
+    if (d.includes("mã đà")) return "ma_da";
+    if (d.includes("trà vinh") || d.includes("dmt")) return "dmt_tra_vinh";
+    if (d.includes("tỉnh lộ 8") || d.includes("tl8")) return "tl8";
+    if (d.includes("tây ninh")) return "tay_ninh";
+    if (d.includes("chống hạn")) return "chong_han";
+    if (d.includes("cà ná")) return "ca_na";
+    if (d.includes("quản lý dự án") || d.includes("qlda")) return "phong_qlda";
+    if (d.includes("hành chính") || d.includes("hcns") || d.includes("nhân sự")) return "phong_hcns";
+    if (d.includes("kế hoạch") || d.includes("đấu thầu")) return "phong_ke_hoach";
+    if (d.includes("an toàn") || d.includes("atld") || d.includes("atlđ")) return "phong_atld";
+    if (d.includes("vật tư") || d.includes("vt-tb") || d.includes("vt tb") || d.includes("vt_tb")) return "phong_vt_tb";
+    if (d.includes("kỹ thuật") || d.includes("ktht")) return "phong_ktht";
+    return d;
+  };
+
+  const normalizeRoleUI = (roleName: string): string => {
+    if (!roleName) return "";
+    const r = roleName.toLowerCase().trim();
+    if (r.includes("tuyển dụng")) return "tuyen_dung";
+    if (r.includes("media")) return "media";
+    if (r.includes("designer")) return "designer";
+    if (r.includes("tổ trưởng") && r.includes("nhân sự")) return "to_truong_ns";
+    if (r.includes("phó phòng") && (r.includes("hành chính") || r.includes("hc"))) return "pp_hanh_chinh";
+    if (r.includes("hành chính") || r.includes("hành chánh") || r.includes("hcns") || r.includes("nhân sự")) return "hanh_chinh";
+    if (r.includes("an toàn") || r.includes("atld") || r.includes("atlđ") || r.includes("hse") || r.includes("môi trường")) return "atld";
+    if (r.includes("qlda") || r.includes("quản lý dự án") || r.includes("tổng hợp p qlda")) return "cv_qlda";
+    if (r.includes("qs")) return "qs";
+    if (r.includes("đấu thầu")) return "dau_thau";
+    if (r.includes("kế hoạch") || r.includes("kinh tế")) return "ke_hoach";
+    if (r.includes("vật tư") || r.includes("vt-tb")) return "vt_tb";
+    if (r.includes("trưởng phòng") && r.includes("ktht")) return "tp_ktht";
+    if (r.includes("phó phòng") && r.includes("ktht")) return "pp_ktht";
+    if (r.includes("kỹ thuật") || r.includes("ktht") || r.includes("kỹ sư")) return "ktht";
+    return r;
+  };
+
+  const parseDateUI = (dStr: string): Date | null => {
+    if (!dStr) return null;
+    const match = dStr.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
+    if (match) {
+      return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+    }
+    return null;
+  };
+
+  const { reportPreviewData, totalReportHired } = useMemo(() => {
+    const start = reportStartDate ? parseDateUI(reportStartDate) : null;
+    const end = reportEndDate ? parseDateUI(reportEndDate) : null;
+    
+    // Filter hired candidates within date range
+    const filteredHired = candidates.filter(c => {
+      const status = (c.status || "").toLowerCase();
+      const v2 = (c.v2_result || "").toLowerCase();
+      const prob = (c.probation_result || "").toLowerCase();
+      
+      const isHired = status === "hired" || status === "offer" || v2 === "đạt" || v2 === "pass" || prob === "x" || prob === "đạt" || c.onboard_date != null;
+      if (!isHired) return false;
+      
+      const cDateStr = c.onboard_date || c.v2_interview_date || c.created_at || c.v1_date;
+      const cDate = parseDateUI(cDateStr);
+      if (cDate) {
+        if (start && cDate < start) return false;
+        if (end && cDate > end) return false;
+      }
+      return true;
+    });
+
+    const generateRowsForDept = (deptName: string, totalDemand: number) => {
+      const deptCandidates = candidates.filter(c => normalizeDeptUI(c.department) === normalizeDeptUI(deptName));
+      const deptHiredInRange = filteredHired.filter(c => normalizeDeptUI(c.department) === normalizeDeptUI(deptName));
+      const rows: any[] = [];
+      
+      if (deptHiredInRange.length > 0) {
+        const roleGroups: Record<string, any[]> = {};
+        deptHiredInRange.forEach(c => {
+          const role = c.role || "Nhân sự";
+          if (!roleGroups[role]) roleGroups[role] = [];
+          roleGroups[role].push(c);
+        });
+        
+        let hiredTotal = 0;
+        Object.entries(roleGroups).forEach(([roleName, cands]) => {
+          const hired = cands.length;
+          hiredTotal += hired;
+          const demand = hired; 
+          const remaining = 0;
+          const progress = "Hoàn thành";
+          const notes = cands.map(c => {
+            const name = c.name || "";
+            if (c.onboard_date) {
+              const oDate = parseDateUI(c.onboard_date);
+              return oDate ? `${name} ${oDate.getDate()}/${oDate.getMonth() + 1}` : `${name} ${c.onboard_date}`;
+            }
+            return name;
+          }).join(", ");
+          
+          rows.push({
+            dept: deptName,
+            role: roleName,
+            demand,
+            hired,
+            remaining,
+            progress,
+            notes
+          });
+        });
+        
+        if (hiredTotal < totalDemand) {
+          const remainingDemand = totalDemand - hiredTotal;
+          const otherRoles = Array.from(new Set(deptCandidates.map(c => c.role).filter(Boolean)));
+          const activeHiredRoles = Object.keys(roleGroups);
+          const unusedRoles = otherRoles.filter(r => !activeHiredRoles.includes(r));
+          const fallbackRole = unusedRoles[0] || otherRoles[0] || "";
+          
+          rows.push({
+            dept: deptName,
+            role: fallbackRole,
+            demand: remainingDemand,
+            hired: 0,
+            remaining: remainingDemand,
+            progress: "Chưa hoàn thành",
+            notes: ""
+          });
+        }
+      } else {
+        const deptRoles = Array.from(new Set(deptCandidates.map(c => c.role).filter(Boolean)));
+        const primaryRole = deptRoles[0] || "";
+        
+        rows.push({
+          dept: deptName,
+          role: primaryRole,
+          demand: totalDemand,
+          hired: 0,
+          remaining: totalDemand,
+          progress: totalDemand > 0 ? "Chưa hoàn thành" : "",
+          notes: ""
+        });
+      }
+      
+      return rows;
+    };
+
+    const previewData: any[] = [];
+    
+    // KHỐI DỰ ÁN header
+    previewData.push({ dept: "KHỐI DỰ ÁN", role: "", demand: 0, isHeader: true });
+    Object.entries(projectManualNeeds).forEach(([projName, demand]) => {
+      const deptRows = generateRowsForDept(projName, demand);
+      previewData.push(...deptRows);
+    });
+    
+    // KHỐI VĂN PHÒNG header
+    previewData.push({ dept: "KHỐI VĂN PHÒNG", role: "", demand: 0, isHeader: true });
+    Object.entries(officeManualNeeds).forEach(([deptName, demand]) => {
+      const deptRows = generateRowsForDept(deptName, demand);
+      previewData.push(...deptRows);
+    });
+
+    return {
+      reportPreviewData: previewData,
+      totalReportHired: filteredHired.length
+    };
+  }, [candidates, reportStartDate, reportEndDate, projectManualNeeds, officeManualNeeds]);
+
+  const handleExportReport = async () => {
+    try {
+      setExportingReport(true);
+      const res = await fetch("/api/export-recruitment-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startDate: reportStartDate,
+          endDate: reportEndDate,
+          candidates,
+          officeManualNeeds,
+          projectManualNeeds
+        })
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Bao_Cao_Tuyen_Dung_Tuan_${reportStartDate}_den_${reportEndDate}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert("Lỗi xuất báo cáo: " + (e.message || e));
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-[#F7F9FC]">
       <Sidebar />
@@ -1463,6 +1684,13 @@ export default function RecruitmentPage() {
             >
               <Settings size={14} />
               Cấu hình hệ thống (Settings)
+            </button>
+            <button
+              onClick={() => setIsReportOpen(true)}
+              className="flex items-center gap-2 ml-auto px-4 py-2 my-1.5 mr-4 text-xs font-bold text-white bg-[#005BAC] hover:bg-blue-700 rounded-xl shadow-md transition-all active:scale-95 shrink-0"
+            >
+              <FileDown size={14} />
+              Báo cáo tuần
             </button>
           </div>
 
@@ -2735,6 +2963,136 @@ export default function RecruitmentPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Weekly Report Modal */}
+      {isReportOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-4xl p-6 shadow-2xl border border-slate-100 flex flex-col max-h-[85vh] animate-in fade-in-50 zoom-in-95 duration-150 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+              <h3 className="font-heading font-black text-sm text-slate-800 flex items-center gap-2">
+                <FileText size={16} className="text-[#005BAC]" />
+                Báo cáo tuyển dụng tuần (Bản nháp xem trước)
+              </h3>
+              <button onClick={() => setIsReportOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Date Inputs */}
+            <div className="grid grid-cols-2 gap-4 py-4 border-b border-slate-100 shrink-0 bg-slate-50/50 p-4 rounded-xl my-2">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600">Từ ngày (Start Date)</label>
+                <input
+                  type="date"
+                  value={reportStartDate}
+                  onChange={(e) => setReportStartDate(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-slate-700"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600">Đến ngày (End Date)</label>
+                <input
+                  type="date"
+                  value={reportEndDate}
+                  onChange={(e) => setReportEndDate(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-slate-700"
+                />
+              </div>
+            </div>
+
+            {/* Preview Table */}
+            <div className="flex-1 overflow-y-auto my-4 border border-slate-100 rounded-xl">
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100 font-bold text-slate-700 select-none">
+                    <th className="p-3 border-r border-slate-100">Dự án / Phòng ban</th>
+                    <th className="p-3 border-r border-slate-100">Vị trí tuyển dụng</th>
+                    <th className="p-3 border-r border-slate-100 text-center w-24">Nhu cầu</th>
+                    <th className="p-3 border-r border-slate-100 text-center w-24">Đã tuyển</th>
+                    <th className="p-3 border-r border-slate-100 text-center w-24">Đang tuyển</th>
+                    <th className="p-3 border-r border-slate-100 text-center w-28">Tiến độ</th>
+                    <th className="p-3">Ứng viên đã nhận việc (Ghi chú)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportPreviewData.map((row, idx) => (
+                    <tr
+                      key={idx}
+                      className={`border-b border-slate-100 hover:bg-slate-50/50 transition-colors ${
+                        row.isHeader ? "bg-blue-50/20 font-black text-[#005BAC]" : ""
+                      }`}
+                    >
+                      <td className="p-3 border-r border-slate-100 font-semibold">
+                        {idx > 0 && reportPreviewData[idx - 1].dept === row.dept && !reportPreviewData[idx - 1].isHeader
+                          ? ""
+                          : row.dept}
+                      </td>
+                      <td className="p-3 border-r border-slate-100">{row.role}</td>
+                      <td className="p-3 border-r border-slate-100 text-center font-bold">
+                        {row.isHeader ? "" : row.demand}
+                      </td>
+                      <td className="p-3 border-r border-slate-100 text-center font-bold text-emerald-600 bg-emerald-50/10">
+                        {row.isHeader ? "" : (row.hired > 0 ? row.hired : "-")}
+                      </td>
+                      <td className="p-3 border-r border-slate-100 text-center font-bold text-orange-600">
+                        {row.isHeader ? "" : (row.demand > 0 ? row.remaining : "-")}
+                      </td>
+                      <td className="p-3 border-r border-slate-100 text-center">
+                        {row.isHeader ? "" : (
+                          row.demand > 0 ? (
+                            <span className={`px-2 py-0.5 rounded font-black text-[10px] ${
+                              row.progress === "Hoàn thành" 
+                                ? "bg-emerald-100 text-emerald-800" 
+                                : "bg-orange-100 text-orange-800"
+                            }`}>
+                              {row.progress}
+                            </span>
+                          ) : ""
+                        )}
+                      </td>
+                      <td className="p-3 text-slate-500 italic font-semibold">{row.isHeader ? "" : row.notes}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-between items-center pt-3 border-t border-slate-100 shrink-0">
+              <div className="text-slate-500 font-medium select-none">
+                Tổng số ứng viên đã tuyển trong kỳ: <span className="font-bold text-emerald-600">{totalReportHired}</span>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsReportOpen(false)}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  disabled={exportingReport}
+                  onClick={handleExportReport}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-[#005BAC] hover:bg-blue-700 disabled:bg-blue-300 text-white font-bold rounded-xl shadow-md transition-all active:scale-95"
+                >
+                  {exportingReport ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Đang xuất báo cáo...
+                    </>
+                  ) : (
+                    <>
+                      <FileDown className="w-4 h-4" />
+                      Tải báo cáo (.docx)
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -630,19 +630,118 @@ export default function AdministrationPage() {
     found = supplies.find(s => cleanForComparison(s.name) === cleanSearch);
     if (found) return found;
 
-    // 3. Special mapping rules for closely related equivalents
-    // Excel paper variations
-    if (cleanSearch === "giaya4excel80" || cleanSearch === "giaya4excel70") {
-      const match = supplies.find(s => cleanForComparison(s.name) === "giaya4excel");
-      if (match) return match;
+    // 3. Normalize words to handle common typos and equivalents
+    const normalizeWords = (str: string) => {
+      let clean = str.toLowerCase().trim();
+      
+      // Clean typos
+      clean = clean.replace(/doupble/g, "double");
+      clean = clean.replace(/mầu/g, "màu");
+      
+      // Map common request terms to official catalog terms
+      if (clean.includes("kẹp bướm")) {
+        if (clean.includes("nhỏ") || clean.includes("size nhỏ") || clean.includes("15mm") || clean.includes("19mm")) {
+          return "kẹp bướm 15mm";
+        }
+        if (clean.includes("vừa") || clean.includes("size vừa") || clean.includes("25mm") || clean.includes("32mm")) {
+          return "kẹp bướm 25mm";
+        }
+        if (clean.includes("lớn") || clean.includes("size lớn") || clean.includes("41mm") || clean.includes("51mm")) {
+          return "kẹp bướm 41mm";
+        }
+      }
+      
+      if (clean === "kẹp giấy" || clean === "ghim kẹp" || clean.includes("kẹp giấy c62") || clean.includes("ghim kẹp giấy")) {
+        return "ghim kẹp giấy c62";
+      }
+      
+      if (clean === "khăn giấy" || clean === "khăn giấy hộp" || clean.includes("khan giay")) {
+        return "khăn giấy nhỏ";
+      }
+      
+      if (clean.includes("thước dẻo") || clean.includes("thước kẻ") || clean.includes("thuoc deo")) {
+        return "thước kẻ";
+      }
+      
+      if (clean.includes("băng keo xanh")) {
+        return "băng keo xanh";
+      }
+
+      if (clean.includes("băng keo trong")) {
+        return "băng keo trong";
+      }
+      
+      if (clean.includes("bút bi xanh")) {
+        return "bút bi thiên long xanh";
+      }
+
+      if (clean.includes("bút chì")) {
+        return "bút chì";
+      }
+
+      if (clean.includes("bút xóa kéo")) {
+        return "bút xóa kéo";
+      }
+      
+      return clean;
+    };
+
+    const cleanNormSearch = cleanForComparison(normalizeWords(itemName));
+    found = supplies.find(s => cleanForComparison(normalizeWords(s.name)) === cleanNormSearch);
+    if (found) return found;
+
+    // 4. Sørensen-Dice coefficient similarity match for fallback
+    const getBigrams = (s: string) => {
+      const bigrams = new Set<string>();
+      for (let i = 0; i < s.length - 1; i++) {
+        bigrams.add(s.substring(i, i + 2));
+      }
+      return bigrams;
+    };
+
+    const getSimilarity = (s1: string, s2: string) => {
+      if (s1 === s2) return 1.0;
+      if (s1.length < 2 || s2.length < 2) return 0.0;
+      const b1 = getBigrams(s1);
+      const b2 = getBigrams(s2);
+      let intersection = 0;
+      for (const val of b1) {
+        if (b2.has(val)) intersection++;
+      }
+      return (2.0 * intersection) / (b1.size + b2.size);
+    };
+
+    let bestMatch: SupplyItem | null = null;
+    let highestSim = 0;
+
+    for (const s of supplies) {
+      const cleanNormCatalog = cleanForComparison(normalizeWords(s.name));
+      const sim = getSimilarity(cleanNormSearch, cleanNormCatalog);
+      if (sim > highestSim) {
+        highestSim = sim;
+        bestMatch = s;
+      }
     }
-    if (cleanSearch === "giaya3excel80" || cleanSearch === "giaya3excel70") {
-      const match = supplies.find(s => cleanForComparison(s.name) === "giaya3excel");
-      if (match) return match;
+
+    if (highestSim >= 0.70 && bestMatch) {
+      return bestMatch;
     }
 
     return null;
   };
+
+  // Dynamically calculate the allocated quantity from completed VPP requests (status = "Đã cấp phát")
+  const suppliesWithDynamicAllocated = useMemo(() => {
+    return supplies.map(s => {
+      const allocatedSum = deptRequests
+        .filter(r => r.status === "Đã cấp phát" && findMatchingSupply(r.item)?.name === s.name)
+        .reduce((sum, r) => sum + r.qty, 0);
+      return {
+        ...s,
+        allocated: allocatedSum
+      };
+    });
+  }, [supplies, deptRequests]);
 
   // Fetch VPP supplies catalog from Supabase
   const fetchSuppliesCatalog = async () => {
@@ -967,6 +1066,9 @@ export default function AdministrationPage() {
   };
 
   const handleDeleteRequest = async (reqId: string) => {
+    const request = deptRequests.find(r => r.id === reqId);
+    if (!request) return;
+
     if (window.confirm("Bạn có chắc chắn muốn xóa yêu cầu cấp phát này không?")) {
       try {
         const { error } = await supabase
@@ -975,6 +1077,22 @@ export default function AdministrationPage() {
           .eq("id", reqId);
 
         if (error) throw error;
+
+        // If the request was approved ("Đã cấp phát"), restore the stock
+        if (request.status === "Đã cấp phát") {
+          setSupplies(prev => prev.map(s => {
+            const matched = findMatchingSupply(request.item);
+            if (matched && s.name === matched.name) {
+              const newStock = s.stock + request.qty;
+              return {
+                ...s,
+                stock: newStock,
+                alert: newStock < 15 ? "Cảnh báo" : "Bình thường"
+              };
+            }
+            return s;
+          }));
+        }
 
         alert("Đã xóa yêu cầu cấp phát thành công.");
         fetchDeptRequests();
@@ -2889,7 +3007,7 @@ export default function AdministrationPage() {
                       <div className="z-10">
                         <p className="text-slate-400 text-[10px] font-extrabold uppercase tracking-wider">Còn lại trong kho</p>
                         <p className="font-heading font-black text-3xl text-sky-700 mt-1">
-                          {supplies.reduce((sum, item) => sum + (item.stock - item.allocated), 0)} <span className="text-xs font-semibold text-slate-500">vật tư</span>
+                          {suppliesWithDynamicAllocated.reduce((sum, item) => sum + (item.stock - item.allocated), 0)} <span className="text-xs font-semibold text-slate-500">vật tư</span>
                         </p>
                         <p className="text-[10px] text-slate-400 font-semibold">Khả dụng cấp phát</p>
                       </div>
@@ -3225,7 +3343,7 @@ export default function AdministrationPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
-                            {supplies
+                            {suppliesWithDynamicAllocated
                               .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()))
                               .map((item, idx) => (
                                 <tr key={idx} className="hover:bg-slate-50/50 hover:translate-x-[2px] transition-all duration-150">

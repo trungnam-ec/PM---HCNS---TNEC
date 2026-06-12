@@ -1203,6 +1203,7 @@ export default function AdministrationPage() {
 
     const tempId = `PAY-${Date.now().toString().slice(-4)}`;
     let finalId = tempId;
+    let addedInv: Invoice | null = null;
 
     // Try to sync with Supabase invoices table
     try {
@@ -1233,6 +1234,7 @@ export default function AdministrationPage() {
           bank_account: data[0].bank_account || "",
           bank_name_branch: data[0].bank_name_branch || ""
         };
+        addedInv = savedInv;
         setInvoices(prev => [savedInv, ...prev]);
         alert("Đã thêm khoản thanh toán và đồng bộ thành công lên Supabase!");
       }
@@ -1249,6 +1251,7 @@ export default function AdministrationPage() {
         bank_account: supp.account,
         bank_name_branch: supp.bank
       };
+      addedInv = newInv;
       setInvoices(prev => [newInv, ...prev]);
       alert("Đã lưu khoản thanh toán thành công (lưu tạm thời trên trình duyệt do lỗi kết nối Supabase)!");
     }
@@ -1272,6 +1275,10 @@ export default function AdministrationPage() {
       localStorage.setItem("tnec_pending_payments", JSON.stringify(updated));
     }
 
+    if (addedInv) {
+      handleAutoFillReport([addedInv, ...invoices], updated, true);
+    }
+
     // Reset payment inputs
     setPayAmount("");
     setSelectedSupplierId("");
@@ -1292,12 +1299,17 @@ export default function AdministrationPage() {
         console.warn("Could not delete invoice row from Supabase:", err.message || err);
       }
 
-      const updated = pendingPayments.filter(p => p.id !== id);
-      setPendingPayments(updated);
+      const updatedPayments = pendingPayments.filter(p => p.id !== id);
+      setPendingPayments(updatedPayments);
       if (typeof window !== "undefined") {
-        localStorage.setItem("tnec_pending_payments", JSON.stringify(updated));
+        localStorage.setItem("tnec_pending_payments", JSON.stringify(updatedPayments));
       }
-      setInvoices(prev => prev.filter(inv => inv.id !== id));
+      
+      const updatedInvs = invoices.filter(inv => inv.id !== id);
+      setInvoices(updatedInvs);
+
+      // Trigger silent auto sync with updated lists
+      handleAutoFillReport(updatedInvs, updatedPayments, true);
     }
   };
 
@@ -1762,9 +1774,12 @@ export default function AdministrationPage() {
     }
   };
 
-  const handleAutoFillReport = async () => {
-    setAutoFillLoading(true);
+  const handleAutoFillReport = async (customInvoices?: Invoice[], customPayments?: SupplierPayment[], silent: boolean = false) => {
+    if (!silent) setAutoFillLoading(true);
     try {
+      const activeInvoices = customInvoices || invoices;
+      const activePayments = customPayments || pendingPayments;
+
       // 1. Unpack all invoices (including grouped ones)
       const unpackedItems: Array<{
         date: string;
@@ -1773,7 +1788,7 @@ export default function AdministrationPage() {
         supplier: string;
       }> = [];
 
-      invoices.filter(inv => !inv.number?.startsWith("HD-DK-")).forEach(inv => {
+      activeInvoices.filter(inv => !inv.number?.startsWith("HD-DK-")).forEach(inv => {
         const desc = inv.desc || "";
         if (desc.startsWith("{\"")) {
           try {
@@ -1806,7 +1821,7 @@ export default function AdministrationPage() {
       });
 
       // 2. Add pending payments (recurring)
-      pendingPayments.forEach(p => {
+      activePayments.forEach(p => {
         // Parse month MM/YYYY to YYYY-MM-DD for consistency
         let dateStr = "";
         if (p.month) {
@@ -2009,12 +2024,16 @@ export default function AdministrationPage() {
       await Promise.all(insertPromises);
 
       setReportRows(finalRows);
-      alert("Đồng bộ dữ liệu chi phí từ hóa đơn và thanh toán định kỳ thành công!");
+      if (!silent) {
+        alert("Đồng bộ dữ liệu chi phí từ hóa đơn và thanh toán định kỳ thành công!");
+      }
     } catch (err: any) {
       console.error("Error during auto fill:", err);
-      alert("Lỗi khi đồng bộ dữ liệu: " + err.message);
+      if (!silent) {
+        alert("Lỗi khi đồng bộ dữ liệu: " + err.message);
+      }
     } finally {
-      setAutoFillLoading(false);
+      if (!silent) setAutoFillLoading(false);
     }
   };
 
@@ -2932,6 +2951,8 @@ export default function AdministrationPage() {
         });
         setPendingPayments(mappedPayments);
         setIsTableMissing(false);
+
+        return { invoices: loadedInvs, pendingPayments: mappedPayments };
       }
     } catch (err: any) {
       console.error("Failed to fetch invoices from Supabase:", err);
@@ -2939,6 +2960,7 @@ export default function AdministrationPage() {
         setIsTableMissing(true);
       }
     }
+    return null;
   }, []);
 
   useEffect(() => {
@@ -2984,9 +3006,12 @@ export default function AdministrationPage() {
 
       if (error) throw error;
 
-      await fetchInvoices();
+      const res = await fetchInvoices();
       setInvoiceQueue([]);
       alert("Đã đồng bộ lưu tất cả hóa đơn thành công vào danh sách lịch sử trên Supabase!");
+      if (res) {
+        await handleAutoFillReport(res.invoices, res.pendingPayments, true);
+      }
     } catch (dbErr: any) {
       console.error("Failed to save invoices to Supabase:", dbErr);
       if (dbErr.message && (dbErr.message.includes("Could not find the table") || dbErr.message.includes("does not exist"))) {
@@ -3020,9 +3045,11 @@ export default function AdministrationPage() {
         bank_name_branch: bankNameBranch || firstItem.bankNameBranch || ""
       }];
 
-      setInvoices(prev => [...newInvs, ...prev]);
+      const updatedInvs = [...newInvs, ...invoices];
+      setInvoices(updatedInvs);
       setInvoiceQueue([]);
       alert(`Đã lưu hóa đơn thành công vào danh sách tạm thời! Lỗi kết nối Supabase: ${dbErr.message}`);
+      await handleAutoFillReport(updatedInvs, pendingPayments, true);
     }
   };
 
@@ -3037,7 +3064,10 @@ export default function AdministrationPage() {
             .eq("id", id);
           if (error) throw error;
         }
-        setInvoices(prev => prev.filter(inv => inv.id !== id));
+        const updated = invoices.filter(inv => inv.id !== id);
+        setInvoices(updated);
+        // Silent real-time synchronization to master cost report
+        handleAutoFillReport(updated, pendingPayments, true);
       } catch (err: any) {
         console.error("Delete invoice error:", err);
         alert("Lỗi khi xóa hóa đơn từ Supabase: " + err.message);
@@ -3047,9 +3077,10 @@ export default function AdministrationPage() {
 
   const handleUpdateInvoiceNumber = async (id: string, newNumber: string) => {
     // 1. Update local state
-    setInvoices(prev => prev.map(inv => 
+    const updated = invoices.map(inv => 
       inv.id === id ? { ...inv, number: newNumber } : inv
-    ));
+    );
+    setInvoices(updated);
 
     // 2. If it's a real database UUID, update in Supabase
     if (!id.startsWith("INV-") && !id.startsWith("HD-DK-")) {
@@ -3064,6 +3095,9 @@ export default function AdministrationPage() {
         alert("Lỗi khi cập nhật số hóa đơn trên Supabase: " + err.message);
       }
     }
+
+    // Silent real-time synchronization to master cost report
+    handleAutoFillReport(updated, pendingPayments, true);
   };
 
   const handleUploadFileForPayment = async (paymentId: string, file: File) => {
@@ -3134,15 +3168,31 @@ export default function AdministrationPage() {
       }
 
       // Update in local state
-      const updated = pendingPayments.map(p => 
+      const updatedPayments = pendingPayments.map(p => 
         p.id === id ? editingPayment : p
       );
-      setPendingPayments(updated);
+      setPendingPayments(updatedPayments);
+
+      const updatedInvs = invoices.map(inv => 
+        inv.id === id ? {
+          ...inv,
+          desc: content,
+          amount: Number(amount),
+          beneficiary_name: supplierName,
+          bank_account: account,
+          bank_name_branch: bank
+        } : inv
+      );
+      setInvoices(updatedInvs);
+
       if (typeof window !== "undefined") {
-        localStorage.setItem("tnec_pending_payments", JSON.stringify(updated));
+        localStorage.setItem("tnec_pending_payments", JSON.stringify(updatedPayments));
       }
       alert("Cập nhật thông tin thanh toán thành công!");
       setEditingPayment(null);
+
+      // Trigger silent auto sync with updated lists
+      handleAutoFillReport(updatedInvs, updatedPayments, true);
     } catch (err: any) {
       console.error("Update payment error:", err);
       alert("Lỗi khi cập nhật thanh toán: " + (err.message || err));
@@ -6068,7 +6118,7 @@ export default function AdministrationPage() {
                         
                         <div className="flex flex-wrap items-center gap-2">
                           <button
-                            onClick={handleAutoFillReport}
+                            onClick={() => handleAutoFillReport()}
                             disabled={autoFillLoading}
                             className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-[11px] font-bold px-3.5 py-2 rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                           >

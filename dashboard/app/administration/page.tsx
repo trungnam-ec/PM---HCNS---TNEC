@@ -5721,8 +5721,8 @@ export default function AdministrationPage() {
 
                       {/* Right list table */}
                       <div className="md:col-span-2 space-y-4">
-                        <div className="border border-slate-200/80 rounded-2xl overflow-hidden bg-white shadow-sm max-h-[460px] overflow-y-auto">
-                          <table className="w-full text-xs text-left border-collapse">
+                        <div className="border border-slate-200/80 rounded-2xl overflow-hidden bg-white shadow-sm max-h-[460px] overflow-y-auto overflow-x-auto custom-scrollbar">
+                          <table className="w-full text-xs text-left border-collapse min-w-[900px]">
                             <thead>
                               <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
                                 <th className="py-2.5 px-3 w-16 text-center">Mã NCC</th>
@@ -5898,8 +5898,8 @@ export default function AdministrationPage() {
                           </div>
                         </div>
 
-                        <div className="border border-slate-200/80 rounded-2xl overflow-hidden bg-white shadow-sm max-h-[365px] overflow-y-auto">
-                          <table className="w-full text-xs text-left border-collapse">
+                        <div className="border border-slate-200/80 rounded-2xl overflow-hidden bg-white shadow-sm max-h-[365px] overflow-y-auto overflow-x-auto custom-scrollbar">
+                          <table className="w-full text-xs text-left border-collapse min-w-[900px]">
                             <thead>
                               <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
                                 <th className="py-2.5 px-3">Tên Nhà Cung Cấp</th>
@@ -6419,7 +6419,7 @@ export default function AdministrationPage() {
                       </div>
 
                       <div className="overflow-x-auto custom-scrollbar">
-                        <table className="w-full text-left border-collapse">
+                        <table className="w-full text-left border-collapse min-w-[1100px]">
                           <thead>
                             <tr className="border-b border-slate-150 text-[10px] font-bold text-slate-400 bg-slate-50/20 uppercase tracking-wider">
                               <th className="py-2.5 px-4 w-12 text-center">STT</th>

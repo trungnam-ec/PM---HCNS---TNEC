@@ -272,6 +272,30 @@ export default function CBPage() {
       .trim();
   };
 
+  const parseExcelDate = (val: any): string => {
+    if (val === undefined || val === null || val === "") return "";
+    const num = Number(val);
+    if (!isNaN(num) && num > 30000 && num < 60000) {
+      const ms = Math.round((num - 25569) * 86400 * 1000);
+      const date = new Date(ms);
+      const d = String(date.getUTCDate()).padStart(2, '0');
+      const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+      const y = date.getUTCFullYear();
+      return `${d}/${m}/${y}`;
+    }
+    return String(val).trim();
+  };
+
+  const getMinutes = (timeStr: string): number | null => {
+    if (!timeStr) return null;
+    const parts = timeStr.trim().split(":");
+    if (parts.length < 2) return null;
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    if (isNaN(h) || isNaN(m)) return null;
+    return h * 60 + m;
+  };
+
   const handleUploadExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -374,7 +398,9 @@ export default function CBPage() {
             let totalOvertime = 0;
 
             const details = rows.map(row => {
-              const dateVal = colIndices.date !== -1 ? String(row[colIndices.date] || "").trim() : "";
+              const rawDate = colIndices.date !== -1 ? row[colIndices.date] : "";
+              const dateVal = parseExcelDate(rawDate);
+              
               if (dateVal && !detectedMonth) {
                 const parts = dateVal.split(/[-\/]/);
                 if (parts.length === 3) {
@@ -388,8 +414,36 @@ export default function CBPage() {
 
               const lateMins = colIndices.late !== -1 ? (Number(row[colIndices.late]) || 0) : 0;
               const earlyMins = colIndices.early !== -1 ? (Number(row[colIndices.early]) || 0) : 0;
-              const workdayVal = colIndices.workday !== -1 ? (Number(row[colIndices.workday]) || 0) : 0;
               const otHours = colIndices.ot !== -1 ? (Number(row[colIndices.ot]) || 0) : 0;
+              
+              const checkin = colIndices.checkin !== -1 ? String(row[colIndices.checkin] || "").trim() : "";
+              const checkout = colIndices.checkout !== -1 ? String(row[colIndices.checkout] || "").trim() : "";
+              
+              let rawWorkday = 0;
+              if (colIndices.workday !== -1 && row[colIndices.workday] !== undefined && row[colIndices.workday] !== null && row[colIndices.workday] !== "") {
+                rawWorkday = Number(row[colIndices.workday]) || 0;
+              } else {
+                // Tự động tính ngày công dựa trên quy định: Sáng 8h00 - 12h00, Chiều 13h15 - 17h15
+                const ci = getMinutes(checkin);
+                const co = getMinutes(checkout);
+                if (ci !== null && co !== null) {
+                  const morningStart = Math.max(ci, 8 * 60);
+                  const morningEnd = Math.min(co, 12 * 60);
+                  const morningMins = Math.max(0, morningEnd - morningStart);
+
+                  const afternoonStart = Math.max(ci, 13 * 60 + 15);
+                  const afternoonEnd = Math.min(co, 17 * 60 + 15);
+                  const afternoonMins = Math.max(0, afternoonEnd - afternoonStart);
+
+                  const totalMins = morningMins + afternoonMins;
+                  if (totalMins >= 360) {
+                    rawWorkday = 1.0;
+                  } else if (totalMins >= 150) {
+                    rawWorkday = 0.5;
+                  }
+                }
+              }
+              const workdayVal = Math.round(rawWorkday * 2) / 2;
 
               totalDays += workdayVal;
               totalLate += lateMins;
@@ -399,8 +453,8 @@ export default function CBPage() {
               return {
                 date: dateVal,
                 dayOfWeek: colIndices.dayOfWeek !== -1 ? String(row[colIndices.dayOfWeek] || "").trim() : "",
-                checkin: colIndices.checkin !== -1 ? String(row[colIndices.checkin] || "").trim() : "",
-                checkout: colIndices.checkout !== -1 ? String(row[colIndices.checkout] || "").trim() : "",
+                checkin,
+                checkout,
                 hours: colIndices.hours !== -1 ? (Number(row[colIndices.hours]) || 0) : 0,
                 late: lateMins,
                 early: earlyMins,
@@ -414,7 +468,7 @@ export default function CBPage() {
               department: dept || dbEmp?.department || "",
               email,
               emailFound,
-              totalDays: parseFloat(totalDays.toFixed(2)),
+              totalDays: Math.round(totalDays * 2) / 2,
               totalLate,
               totalEarly,
               totalOvertime: parseFloat(totalOvertime.toFixed(2)),

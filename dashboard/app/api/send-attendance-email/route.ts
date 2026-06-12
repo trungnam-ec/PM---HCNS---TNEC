@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import * as XLSX from "xlsx";
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,6 +30,39 @@ export async function POST(request: NextRequest) {
         rejectUnauthorized: false // Bỏ qua lỗi SSL/TLS self-signed trên máy chủ doanh nghiệp
       }
     });
+
+    // Generate personalized Excel file for this recipient in memory
+    const excelRows = details.map((day: any) => ({
+      "Ngày": day.date,
+      "Thứ": day.dayOfWeek,
+      "Giờ Vào": day.checkin || "",
+      "Giờ Ra": day.checkout || "",
+      "Tổng Giờ Làm": day.hours || 0,
+      "Đi Trễ (phút)": day.late || 0,
+      "Về Sớm (phút)": day.early || 0,
+      "Trạng Thái / Ca": day.status || "",
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(excelRows);
+
+    // Auto-fit column widths
+    const colWidths = [
+      { wch: 12 }, // Ngày
+      { wch: 10 }, // Thứ
+      { wch: 10 }, // Giờ Vào
+      { wch: 10 }, // Giờ Ra
+      { wch: 15 }, // Tổng Giờ Làm
+      { wch: 15 }, // Đi Trễ (phút)
+      { wch: 15 }, // Về Sớm (phút)
+      { wch: 20 }, // Trạng Thái / Ca
+    ];
+    worksheet["!cols"] = colWidths;
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, `Chi tiết chấm công`);
+    
+    // Write workbook to buffer
+    const excelBuffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 
     // Build the details rows for the HTML table
     const tableRowsHtml = details.map((day: any) => {
@@ -82,44 +116,59 @@ export async function POST(request: NextRequest) {
               Phòng Hành chính Nhân sự (C&B) gửi đến Anh/Chị thông tin chi tiết dữ liệu chấm công được ghi nhận từ hệ thống máy chấm công vân tay trong tháng <strong>${month}</strong>. Vui lòng đối soát các thông tin bên dưới:
             </p>
           </div>
+
+          <!-- Attachment Notice (Table layout for email clients) -->
+          <div style="margin: 0 40px 24px 40px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; width: 100%;">
+              <tr>
+                <td style="padding: 16px 0 16px 16px; width: 32px; vertical-align: middle; text-align: center;">
+                  <span style="font-size: 22px;">📎</span>
+                </td>
+                <td style="padding: 16px 16px 16px 12px; vertical-align: middle; text-align: left;">
+                  <strong style="color: #0369a1; font-size: 14px; display: block; margin-bottom: 2px;">Đã đính kèm File Excel chi tiết!</strong>
+                  <span style="color: #0c4a6e; font-size: 13px; line-height: 1.4; display: block;">Hệ thống đã đính kèm file Excel cá nhân (.xlsx) bên dưới. Anh/Chị có thể tải xuống trực tiếp để kiểm tra chi tiết hoặc lưu trữ ngoại tuyến.</span>
+                </td>
+              </tr>
+            </table>
+          </div>
           
-          <!-- KPI Cards Section -->
-          <div style="padding: 0 40px; display: table; width: 100%; box-sizing: border-box; margin-bottom: 24px;">
-            <div style="display: table-row;">
-              
-              <!-- KPI Card 1: Days Worked -->
-              <div style="display: table-cell; width: 25%; padding: 0 6px 0 0;">
-                <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 16px; text-align: center;">
-                  <span style="display: block; font-size: 9px; font-weight: bold; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Ngày Công</span>
-                  <span style="font-size: 20px; font-weight: 900; color: #005BAC;">${summary.totalDays}</span>
-                </div>
-              </div>
-              
-              <!-- KPI Card 2: Late -->
-              <div style="display: table-cell; width: 25%; padding: 0 6px;">
-                <div style="background-color: #fef2f2; border: 1px solid #fca5a5; border-radius: 12px; padding: 16px; text-align: center;">
-                  <span style="display: block; font-size: 9px; font-weight: bold; color: #7f1d1d; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Đi Trễ (Phút)</span>
-                  <span style="font-size: 20px; font-weight: 900; color: #ef4444;">${summary.totalLate}</span>
-                </div>
-              </div>
+          <!-- KPI Cards Section (Using standard HTML table for Outlook compatibility) -->
+          <div style="padding: 0 40px; margin-bottom: 24px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <!-- KPI Card 1: Days Worked -->
+                <td width="25%" style="width: 25%; padding-right: 6px; vertical-align: top;">
+                  <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 16px; text-align: center;">
+                    <span style="display: block; font-size: 9px; font-weight: bold; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Ngày Công</span>
+                    <span style="font-size: 20px; font-weight: 900; color: #005BAC; display: block;">${summary.totalDays}</span>
+                  </div>
+                </td>
+                
+                <!-- KPI Card 2: Late -->
+                <td width="25%" style="width: 25%; padding-left: 3px; padding-right: 3px; vertical-align: top;">
+                  <div style="background-color: #fef2f2; border: 1px solid #fca5a5; border-radius: 12px; padding: 16px; text-align: center;">
+                    <span style="display: block; font-size: 9px; font-weight: bold; color: #7f1d1d; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Đi Trễ (Phút)</span>
+                    <span style="font-size: 20px; font-weight: 900; color: #ef4444; display: block;">${summary.totalLate}</span>
+                  </div>
+                </td>
 
-              <!-- KPI Card 3: Early -->
-              <div style="display: table-cell; width: 25%; padding: 0 6px;">
-                <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 16px; text-align: center;">
-                  <span style="display: block; font-size: 9px; font-weight: bold; color: #78350f; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Về Sớm (Phút)</span>
-                  <span style="font-size: 20px; font-weight: 900; color: #f59e0b;">${summary.totalEarly}</span>
-                </div>
-              </div>
+                <!-- KPI Card 3: Early -->
+                <td width="25%" style="width: 25%; padding-left: 3px; padding-right: 3px; vertical-align: top;">
+                  <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 16px; text-align: center;">
+                    <span style="display: block; font-size: 9px; font-weight: bold; color: #78350f; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Về Sớm (Phút)</span>
+                    <span style="font-size: 20px; font-weight: 900; color: #f59e0b; display: block;">${summary.totalEarly}</span>
+                  </div>
+                </td>
 
-              <!-- KPI Card 4: Overtime -->
-              <div style="display: table-cell; width: 25%; padding: 0 0 0 6px;">
-                <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; text-align: center;">
-                  <span style="display: block; font-size: 9px; font-weight: bold; color: #064e3b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Tăng Ca (Giờ)</span>
-                  <span style="font-size: 20px; font-weight: 900; color: #10b981;">${summary.totalOvertime}</span>
-                </div>
-              </div>
-
-            </div>
+                <!-- KPI Card 4: Overtime -->
+                <td width="25%" style="width: 25%; padding-left: 6px; vertical-align: top;">
+                  <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; text-align: center;">
+                    <span style="display: block; font-size: 9px; font-weight: bold; color: #064e3b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Tăng Ca (Giờ)</span>
+                    <span style="font-size: 20px; font-weight: 900; color: #10b981; display: block;">${summary.totalOvertime}</span>
+                  </div>
+                </td>
+              </tr>
+            </table>
           </div>
           
           <!-- Detailed Table Section -->
@@ -166,11 +215,19 @@ export async function POST(request: NextRequest) {
     `;
 
     // Send email
+    const safeMonthStr = month.replace("/", "_");
     await transporter.sendMail({
       from: `"Phòng Nhân Sự TNEC" <${smtpConfig.user}>`,
       to: recipient.email,
       subject: `[Trung Nam E&C] Bảng đối soát chi tiết chấm công - Tháng ${month} - ${recipient.name}`,
       html: mailHtmlContent,
+      attachments: [
+        {
+          filename: `Bang_cong_chi_tiet_${safeMonthStr}_${recipient.employeeCode}.xlsx`,
+          content: excelBuffer,
+          contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }
+      ]
     });
 
     return NextResponse.json({ success: true, message: `Đã gửi email thành công cho ${recipient.name} (${recipient.email})` });

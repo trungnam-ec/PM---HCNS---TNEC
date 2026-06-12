@@ -548,13 +548,39 @@ export default function CBPage() {
                 }
               }
 
-              const lateMins = colIndices.late !== -1 ? (Number(row[colIndices.late]) || 0) : 0;
-              const earlyMins = colIndices.early !== -1 ? (Number(row[colIndices.early]) || 0) : 0;
+              const dayOfWeekVal = colIndices.dayOfWeek !== -1 ? String(row[colIndices.dayOfWeek] || "").trim() : "";
+              
+              const isSat = (dayStr: string) => {
+                const d = dayStr.toLowerCase().trim();
+                return d.includes("bảy") || d === "bảy" || d === "t7" || d === "7" || d.includes("saturday") || d === "sat";
+              };
+
+              let lateMins = colIndices.late !== -1 ? (Number(row[colIndices.late]) || 0) : 0;
+              let earlyMins = colIndices.early !== -1 ? (Number(row[colIndices.early]) || 0) : 0;
               const otHours = colIndices.ot !== -1 ? (Number(row[colIndices.ot]) || 0) : 0;
               
               const checkin = colIndices.checkin !== -1 ? String(row[colIndices.checkin] || "").trim() : "";
               const checkout = colIndices.checkout !== -1 ? String(row[colIndices.checkout] || "").trim() : "";
-              
+
+              // Tối ưu hóa tính toán Trễ/Sớm cho Thứ Bảy
+              if (isSat(dayOfWeekVal)) {
+                // Tính lại Đi trễ cho Thứ Bảy (nếu có checkin)
+                const ciMins = getMinutes(checkin);
+                if (ciMins !== null) {
+                  lateMins = ciMins > 8 * 60 ? (ciMins - 8 * 60) : 0;
+                } else {
+                  lateMins = 0;
+                }
+
+                // Tính lại Về sớm cho Thứ Bảy (mốc là 12h00 trưa)
+                const coMins = getMinutes(checkout);
+                if (coMins !== null) {
+                  earlyMins = coMins < 12 * 60 ? (12 * 60 - coMins) : 0;
+                } else {
+                  earlyMins = 0;
+                }
+              }
+
               let rawWorkday = 0;
               if (colIndices.workday !== -1 && row[colIndices.workday] !== undefined && row[colIndices.workday] !== null && row[colIndices.workday] !== "") {
                 rawWorkday = Number(row[colIndices.workday]) || 0;
@@ -579,7 +605,15 @@ export default function CBPage() {
                   }
                 }
               }
-              const workdayVal = Math.round(rawWorkday * 2) / 2;
+              let workdayVal = Math.round(rawWorkday * 2) / 2;
+
+              // Nếu là Thứ Bảy và có đi làm (quét vân tay checkin/checkout hoặc Công > 0), tính tròn 1.0 ngày công
+              if (isSat(dayOfWeekVal)) {
+                const hasSwipes = checkin && checkin !== "-" && checkout && checkout !== "-";
+                if (rawWorkday > 0 || hasSwipes) {
+                  workdayVal = 1.0;
+                }
+              }
 
               totalDays += workdayVal;
               totalLate += lateMins;
@@ -588,7 +622,7 @@ export default function CBPage() {
 
               return {
                 date: dateVal,
-                dayOfWeek: colIndices.dayOfWeek !== -1 ? String(row[colIndices.dayOfWeek] || "").trim() : "",
+                dayOfWeek: dayOfWeekVal,
                 checkin,
                 checkout,
                 hours: colIndices.hours !== -1 ? (Number(row[colIndices.hours]) || 0) : 0,

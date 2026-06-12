@@ -358,6 +358,7 @@ export default function AdministrationPage() {
   const [reportLoading, setReportLoading] = useState(false);
   const [autoFillLoading, setAutoFillLoading] = useState(false);
   const [editingCell, setEditingCell] = useState<{ rowId: string; field: string } | null>(null);
+  const [editingInvoiceNumberId, setEditingInvoiceNumberId] = useState<string | null>(null);
 
   // State Management
   const [supplies, setSupplies] = useState<SupplyItem[]>(() => {
@@ -1764,55 +1765,252 @@ export default function AdministrationPage() {
   const handleAutoFillReport = async () => {
     setAutoFillLoading(true);
     try {
-      const updatedRows = reportRows.map(row => ({
-        ...row,
-        m1: 0, m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0, m8: 0, m9: 0, m10: 0, m11: 0, m12: 0
-      }));
+      // 1. Unpack all invoices (including grouped ones)
+      const unpackedItems: Array<{
+        date: string;
+        desc: string;
+        amount: number;
+        supplier: string;
+      }> = [];
 
-      invoices.forEach(inv => {
-        if (!inv.date || !inv.date.startsWith("2026")) return;
-        const dateParts = inv.date.split("-");
-        if (dateParts.length < 2) return;
-        const monthNum = parseInt(dateParts[1]);
-        if (monthNum < 1 || monthNum > 12) return;
-
-        const matchedRow = findMatchingRow(updatedRows, getInvoiceDesc(inv.desc), inv.beneficiary_name || "");
-        if (matchedRow) {
-          const field = `m${monthNum}` as keyof AdminMonthlyReport;
-          (matchedRow[field] as number) += Number(inv.amount) || 0;
+      invoices.filter(inv => !inv.number?.startsWith("HD-DK-")).forEach(inv => {
+        const desc = inv.desc || "";
+        if (desc.startsWith("{\"")) {
+          try {
+            const parsed = JSON.parse(desc);
+            const groupItems = parsed.items || [];
+            groupItems.forEach((item: any) => {
+              unpackedItems.push({
+                date: item.date || inv.date || "",
+                desc: item.desc || "",
+                amount: Number(item.amount) || 0,
+                supplier: inv.beneficiary_name || ""
+              });
+            });
+          } catch (e) {
+            unpackedItems.push({
+              date: inv.date || "",
+              desc: desc,
+              amount: Number(inv.amount) || 0,
+              supplier: inv.beneficiary_name || ""
+            });
+          }
+        } else {
+          unpackedItems.push({
+            date: inv.date || "",
+            desc: desc,
+            amount: Number(inv.amount) || 0,
+            supplier: inv.beneficiary_name || ""
+          });
         }
       });
 
+      // 2. Add pending payments (recurring)
       pendingPayments.forEach(p => {
-        if (!p.month || !p.month.includes("2026")) return;
-        const monthParts = p.month.split("/");
-        if (monthParts.length < 2) return;
-        const monthNum = parseInt(monthParts[0]);
+        // Parse month MM/YYYY to YYYY-MM-DD for consistency
+        let dateStr = "";
+        if (p.month) {
+          const parts = p.month.split("/");
+          if (parts.length === 2) {
+            dateStr = `${parts[1]}-${parts[0].padStart(2, "0")}-01`;
+          }
+        }
+        unpackedItems.push({
+          date: dateStr,
+          desc: p.content || "",
+          amount: Number(p.amount) || 0,
+          supplier: p.supplierName || ""
+        });
+      });
+
+      // Helper functions for categorization and name cleaning
+      const cleanInvoiceDesc = (description: string) => {
+        let clean = description || "";
+        clean = clean.replace(/^(thanh toán chi phí|thanh toán|chi phí|tt chi phí|tt cp|tt)\s+/i, "");
+        clean = clean.replace(/^(thanh toan chi phi|thanh toan|chi phi)\s+/i, "");
+        clean = clean.replace(/(tháng\s+\d{1,2}\/\d{4}|thang\s+\d{1,2}\/\d{4}|T\d{1,2}\/\d{4})/gi, "");
+        clean = clean.replace(/(tháng\s+\d{1,2}|thang\s+\d{1,2}|T\d{1,2})/gi, "");
+        clean = clean.replace(/\s*-\s*(công ty|cty|cổ phần|cp|tnhh|co phan).*/i, "");
+        clean = clean.replace(/\s+/g, " ").trim();
+        if (clean.length > 0) {
+          clean = clean.charAt(0).toUpperCase() + clean.slice(1);
+        }
+        return clean || "Chi phí khác";
+      };
+
+      const getProjectName = (description: string, supplier: string) => {
+        const fullText = (description + " " + supplier).toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[đĐ]/g, "d");
+
+        if (fullText.includes("vam leo")) {
+          return "BĐH dự án Vàm Lẽo";
+        }
+        if (fullText.includes("tinh lo 8")) {
+          return "BĐH dự án Tỉnh Lộ 8";
+        }
+        if (fullText.includes("rach xuyen tam")) {
+          return "BĐH dự án Rạch Xuyên Tâm";
+        }
+        if (fullText.includes("tay ninh")) {
+          return "BĐH dự án Tây Ninh";
+        }
+        if (fullText.includes("ca na")) {
+          return "BĐH dự án Cà Ná";
+        }
+        if (fullText.includes("tra vinh")) {
+          return "BĐH dự án Trà Vinh";
+        }
+        return null;
+      };
+
+      // 3. Group and compute monthly totals
+      const groups: Record<string, {
+        content: string;
+        category_type: "office" | "project";
+        m1: number; m2: number; m3: number; m4: number; m5: number; m6: number;
+        m7: number; m8: number; m9: number; m10: number; m11: number; m12: number;
+      }> = {};
+
+      unpackedItems.forEach(item => {
+        if (!item.date) return;
+        // Check 2026
+        if (!item.date.includes("2026")) return;
+        
+        let monthNum = 0;
+        if (item.date.includes("-")) {
+          const parts = item.date.split("-");
+          monthNum = parseInt(parts[1]);
+        } else if (item.date.includes("/")) {
+          const parts = item.date.split("/");
+          monthNum = parseInt(parts[0]);
+        }
         if (monthNum < 1 || monthNum > 12) return;
 
-        const matchedRow = findMatchingRow(updatedRows, p.content, p.supplierName);
-        if (matchedRow) {
-          const field = `m${monthNum}` as keyof AdminMonthlyReport;
-          (matchedRow[field] as number) += Number(p.amount) || 0;
+        const projName = getProjectName(item.desc, item.supplier);
+        const categoryType = projName ? "project" : "office";
+        const contentName = projName || cleanInvoiceDesc(item.desc);
+        const key = `${categoryType}::${contentName}`;
+
+        if (!groups[key]) {
+          groups[key] = {
+            content: contentName,
+            category_type: categoryType,
+            m1: 0, m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0, m8: 0, m9: 0, m10: 0, m11: 0, m12: 0
+          };
+        }
+        groups[key][`m${monthNum}` as keyof typeof groups[string]] += item.amount;
+      });
+
+      // 4. Merge with existing reportRows (preserving user custom edits & notes)
+      const finalRows: AdminMonthlyReport[] = [];
+      const usedIds = new Set<string>();
+
+      // Load latest report rows from DB first to get fresh state
+      const { data: dbRows, error: fetchErr } = await supabase
+        .from("admin_monthly_reports")
+        .select("*");
+      if (fetchErr) throw fetchErr;
+      const currentDbRows = (dbRows || []) as AdminMonthlyReport[];
+
+      // Reconcile
+      Object.values(groups).forEach(g => {
+        // Find if this category already exists in DB
+        const existing = currentDbRows.find(r => 
+          r.category_type === g.category_type && 
+          normalizeText(r.content) === normalizeText(g.content)
+        );
+
+        if (existing) {
+          finalRows.push({
+            ...existing,
+            ...g
+          });
+          usedIds.add(existing.id);
+        } else {
+          // Create new row in DB payload later
+          finalRows.push({
+            id: `new-${Date.now()}-${Math.random()}`,
+            stt: "", // will compute sequentially
+            content: g.content,
+            category_type: g.category_type,
+            m1: g.m1, m2: g.m2, m3: g.m3, m4: g.m4, m5: g.m5, m6: g.m6,
+            m7: g.m7, m8: g.m8, m9: g.m9, m10: g.m10, m11: g.m11, m12: g.m12,
+            notes: ""
+          });
         }
       });
 
-      const promises = updatedRows.map(row => {
+      // Add custom rows or remaining DB rows that did not match any active invoice
+      // But reset their months to 0 (since they have no invoices this year)
+      currentDbRows.forEach(r => {
+        if (!usedIds.has(r.id)) {
+          // If it was custom or has notes, keep it in the spreadsheet (with months = 0)
+          // Otherwise, we will delete it below
+          if (r.is_custom || (r.notes && r.notes.trim().length > 0)) {
+            finalRows.push({
+              ...r,
+              m1: 0, m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0, m8: 0, m9: 0, m10: 0, m11: 0, m12: 0
+            });
+            usedIds.add(r.id);
+          }
+        }
+      });
+
+      // Assign sequential STT to finalRows for office and project
+      const officeRows = finalRows.filter(r => r.category_type === "office");
+      officeRows.forEach((r, idx) => { r.stt = String(idx + 1); });
+
+      const projectRows = finalRows.filter(r => r.category_type === "project");
+      projectRows.forEach((r, idx) => { r.stt = String(idx + 1); });
+
+      // 5. Sync updates, inserts, and deletes back to Supabase
+      const toUpdate = finalRows.filter(r => !r.id.startsWith("new-"));
+      const toInsert = finalRows.filter(r => r.id.startsWith("new-"));
+      const toDelete = currentDbRows.filter(r => !usedIds.has(r.id));
+
+      // Run deletions
+      const deletePromises = toDelete.map(row => {
+        return supabase
+          .from("admin_monthly_reports")
+          .delete()
+          .eq("id", row.id);
+      });
+      await Promise.all(deletePromises);
+
+      // Run updates
+      const updatePromises = toUpdate.map(row => {
         return supabase
           .from("admin_monthly_reports")
           .update({
+            stt: row.stt,
             m1: row.m1, m2: row.m2, m3: row.m3, m4: row.m4, m5: row.m5, m6: row.m6,
             m7: row.m7, m8: row.m8, m9: row.m9, m10: row.m10, m11: row.m11, m12: row.m12
           })
           .eq("id", row.id);
       });
+      await Promise.all(updatePromises);
 
-      await Promise.all(promises);
-      setReportRows(updatedRows);
+      // Run inserts
+      const insertPromises = toInsert.map(async (row) => {
+        const { id, ...payload } = row;
+        const { data, error } = await supabase
+          .from("admin_monthly_reports")
+          .insert({ ...payload, is_custom: false })
+          .select();
+        if (error) throw error;
+        if (data && data[0]) {
+          row.id = data[0].id;
+        }
+      });
+      await Promise.all(insertPromises);
+
+      setReportRows(finalRows);
       alert("Đồng bộ dữ liệu chi phí từ hóa đơn và thanh toán định kỳ thành công!");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error during auto fill:", err);
-      alert("Lỗi khi đồng bộ dữ liệu!");
+      alert("Lỗi khi đồng bộ dữ liệu: " + err.message);
     } finally {
       setAutoFillLoading(false);
     }
@@ -2841,6 +3039,27 @@ export default function AdministrationPage() {
       } catch (err: any) {
         console.error("Delete invoice error:", err);
         alert("Lỗi khi xóa hóa đơn từ Supabase: " + err.message);
+      }
+    }
+  };
+
+  const handleUpdateInvoiceNumber = async (id: string, newNumber: string) => {
+    // 1. Update local state
+    setInvoices(prev => prev.map(inv => 
+      inv.id === id ? { ...inv, number: newNumber } : inv
+    ));
+
+    // 2. If it's a real database UUID, update in Supabase
+    if (!id.startsWith("INV-") && !id.startsWith("HD-DK-")) {
+      try {
+        const { error } = await supabase
+          .from("invoices")
+          .update({ number: newNumber })
+          .eq("id", id);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error("Failed to update invoice number:", err);
+        alert("Lỗi khi cập nhật số hóa đơn trên Supabase: " + err.message);
       }
     }
   };
@@ -5233,7 +5452,39 @@ export default function AdministrationPage() {
                         <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
                           {invoices.filter(inv => !inv.number?.startsWith("HD-DK-")).map((inv) => (
                             <tr key={inv.id} className="hover:bg-slate-50/50 bg-white">
-                              <td className="p-3 font-mono text-slate-800 font-bold">{inv.number}</td>
+                              <td className="p-3 font-mono text-slate-800 font-bold max-w-[150px]">
+                                {editingInvoiceNumberId === inv.id ? (
+                                  <input
+                                    type="text"
+                                    defaultValue={inv.number || ""}
+                                    onBlur={(e) => {
+                                      setEditingInvoiceNumberId(null);
+                                      const newVal = e.target.value.trim();
+                                      if (newVal && newVal !== inv.number) {
+                                        handleUpdateInvoiceNumber(inv.id, newVal);
+                                      }
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        (e.target as HTMLInputElement).blur();
+                                      }
+                                      if (e.key === "Escape") {
+                                        setEditingInvoiceNumberId(null);
+                                      }
+                                    }}
+                                    className="w-full text-xs font-bold font-mono px-1 py-0.5 border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500/20 text-slate-800 bg-white"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <div
+                                    onClick={() => setEditingInvoiceNumberId(inv.id)}
+                                    className="cursor-pointer hover:bg-slate-100 px-1 py-0.5 rounded transition-colors inline-block"
+                                    title="Click để sửa số hóa đơn"
+                                  >
+                                    {inv.number || "N/A"}
+                                  </div>
+                                )}
+                              </td>
                               <td className="p-3 text-slate-500">{inv.date}</td>
                               <td className="p-3 text-slate-600 max-w-xs truncate">{getInvoiceDesc(inv.desc)}</td>
                               <td className="p-3 text-right text-[#005BAC] font-mono font-bold">

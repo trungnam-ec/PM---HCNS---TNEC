@@ -243,13 +243,32 @@ export default function CBPage() {
   const [excelFileName, setExcelFileName] = useState("");
   const [timesheetMonth, setTimesheetMonth] = useState("");
 
-  // Load SMTP config from localStorage
+  const [importedTimesheets, setImportedTimesheets] = useState<any[]>([]);
+  const [isSavingTimesheet, setIsSavingTimesheet] = useState(false);
+  const [currentFileObject, setCurrentFileObject] = useState<File | null>(null);
+
+  const fetchImportedTimesheets = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("attendance_imports")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (!error && data) {
+        setImportedTimesheets(data);
+      }
+    } catch (err) {
+      console.error("Error fetching imported timesheets:", err);
+    }
+  };
+
+  // Load SMTP config and fetch imported timesheets
   useEffect(() => {
     if (typeof window !== "undefined") {
       const savedUser = localStorage.getItem("tnec_cb_smtp_user") || "";
       const savedPass = localStorage.getItem("tnec_cb_smtp_pass") || "";
       setSmtpConfig({ user: savedUser, pass: savedPass });
     }
+    fetchImportedTimesheets();
   }, []);
 
   const handleSaveSmtpConfig = (user: string, pass: string) => {
@@ -261,6 +280,92 @@ export default function CBPage() {
     setShowEmailConfigModal(false);
     alert("Đã lưu cấu hình gửi email SMTP!");
   };
+
+  const handleSaveTimesheetToDb = async () => {
+    if (!currentFileObject || parsedEmployees.length === 0) {
+      alert("Vui lòng tải lên file Excel trước!");
+      return;
+    }
+    setIsSavingTimesheet(true);
+    try {
+      const parts = timesheetMonth.split("/");
+      const monthVal = parts[0] || "06";
+      const year = parts[1] || "2026";
+      
+      // Clean file name
+      const cleanFileName = currentFileObject.name.replace(/[^a-zA-Z0-9.\-_ ()]/g, "");
+      const filePath = `${year}/${monthVal}/${Date.now()}_${cleanFileName}`;
+
+      // Upload file to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from("attendance-files")
+        .upload(filePath, currentFileObject, { cacheControl: "3600", upsert: true });
+
+      if (uploadError) {
+        throw new Error("Không thể tải file lên bộ lưu trữ Supabase Storage! Vui lòng đảm bảo đã chạy file cấu hình database SQL: " + uploadError.message);
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from("attendance-files")
+        .getPublicUrl(filePath);
+
+      // Save record to database
+      const { error: insertError } = await supabase
+        .from("attendance_imports")
+        .insert({
+          month: timesheetMonth,
+          year,
+          month_val: monthVal,
+          file_name: currentFileObject.name,
+          file_path: filePath,
+          file_url: urlData?.publicUrl || "",
+          parsed_data: parsedEmployees
+        });
+
+      if (insertError) {
+        throw new Error("Không thể lưu thông tin vào bảng dữ liệu Supabase! Vui lòng đảm bảo đã chạy file cấu hình database SQL: " + insertError.message);
+      }
+
+      alert("Lưu bảng công lên phần mềm thành công!");
+      fetchImportedTimesheets();
+    } catch (err: any) {
+      console.error("Error saving timesheet:", err);
+      alert(err.message || "Lỗi khi lưu bảng công!");
+    } finally {
+      setIsSavingTimesheet(false);
+    }
+  };
+
+  const handleDeleteTimesheet = async (id: string, filePath: string) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa bảng công này khỏi phần mềm không?")) return;
+    try {
+      // Delete file from Storage
+      await supabase.storage.from("attendance-files").remove([filePath]);
+
+      // Delete record from Database
+      const { error } = await supabase.from("attendance_imports").delete().eq("id", id);
+      if (error) throw error;
+
+      alert("Đã xóa bảng công thành công!");
+      fetchImportedTimesheets();
+    } catch (err: any) {
+      console.error("Error deleting timesheet:", err);
+      alert("Lỗi khi xóa bảng công: " + err.message);
+    }
+  };
+
+  const timesheetTree = useMemo(() => {
+    const tree: Record<string, Record<string, any[]>> = {};
+    importedTimesheets.forEach(item => {
+      const yr = item.year || "2026";
+      const mth = `Tháng ${item.month_val}`;
+      if (!tree[yr]) tree[yr] = {};
+      if (!tree[yr][mth]) tree[yr][mth] = [];
+      tree[yr][mth].push(item);
+    });
+    return tree;
+  }, [importedTimesheets]);
 
   const normalizeText = (text: string) => {
     return text
@@ -299,6 +404,7 @@ export default function CBPage() {
   const handleUploadExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setCurrentFileObject(file);
     setExcelFileName(file.name);
     setIsParsingExcel(true);
 
@@ -1634,21 +1740,38 @@ export default function CBPage() {
                           {smtpConfig.user ? `SMTP: ${smtpConfig.user}` : "Cấu hình gửi email"}
                         </button>
                         {parsedEmployees.length > 0 && (
-                          <button
-                            onClick={handleSendAllEmails}
-                            disabled={isSendingAllEmails}
-                            className="flex items-center gap-2 px-4 py-1.5 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer shadow disabled:opacity-50"
-                          >
-                            {isSendingAllEmails ? (
-                              <>
-                                <Loader2 size={13} className="animate-spin" /> Đang gửi...
-                              </>
-                            ) : (
-                              <>
-                                <Mail size={13} /> Gửi tất cả ({parsedEmployees.filter(e => e.emailFound && e.email && e.emailStatus !== "success").length})
-                              </>
-                            )}
-                          </button>
+                          <>
+                            <button
+                              onClick={handleSaveTimesheetToDb}
+                              disabled={isSavingTimesheet}
+                              className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer shadow disabled:opacity-50"
+                            >
+                              {isSavingTimesheet ? (
+                                <>
+                                  <Loader2 size={13} className="animate-spin" /> Đang lưu...
+                                </>
+                              ) : (
+                                <>
+                                  <FileText size={13} /> Lưu bảng công này
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={handleSendAllEmails}
+                              disabled={isSendingAllEmails}
+                              className="flex items-center gap-2 px-4 py-1.5 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer shadow disabled:opacity-50"
+                            >
+                              {isSendingAllEmails ? (
+                                <>
+                                  <Loader2 size={13} className="animate-spin" /> Đang gửi...
+                                </>
+                              ) : (
+                                <>
+                                  <Mail size={13} /> Gửi tất cả ({parsedEmployees.filter(e => e.emailFound && e.email && e.emailStatus !== "success").length})
+                                </>
+                              )}
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -1817,6 +1940,83 @@ export default function CBPage() {
                         </div>
                       </div>
                     )}
+
+                    {/* FOLDER DIRECTORY TREE */}
+                    <div className="space-y-3 pt-5 border-t border-slate-100">
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Thư mục lưu trữ bảng công trên phần mềm</h4>
+                      {importedTimesheets.length === 0 ? (
+                        <div className="text-slate-400 text-xs italic py-4 text-center bg-slate-50 rounded-2xl border border-slate-100">
+                          Chưa có bảng công nào được lưu trữ trên phần mềm. Vui lòng tải lên file Excel và bấm "Lưu bảng công này" để lưu trữ.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {Object.entries(timesheetTree).map(([year, months]) => (
+                            <div key={year} className="bg-slate-50 border border-slate-150 p-4 rounded-2xl space-y-3">
+                              <div className="flex items-center gap-2 text-slate-800 font-extrabold text-xs">
+                                <span className="text-amber-500 text-sm">📁</span> Năm {year}
+                              </div>
+                              <div className="pl-4 space-y-3 border-l border-slate-200">
+                                {Object.entries(months).map(([monthName, files]) => (
+                                  <div key={monthName} className="space-y-1.5">
+                                    <div className="flex items-center gap-1.5 text-slate-600 font-bold text-xs">
+                                      <span className="text-amber-400 text-sm">📁</span> {monthName}
+                                    </div>
+                                    <div className="pl-4 space-y-1.5">
+                                      {files.map((file) => (
+                                        <div key={file.id} className="bg-white border border-slate-100 p-2.5 rounded-xl flex items-center justify-between gap-3 shadow-xs hover:border-[#005BAC]/30 transition-all">
+                                          <div className="min-w-0 flex-1">
+                                            <div className="text-[11px] font-bold text-slate-700 truncate" title={file.file_name}>
+                                              {file.file_name}
+                                            </div>
+                                            <div className="text-[9px] text-slate-400 font-semibold mt-0.5">
+                                              Đã lưu: {new Date(file.created_at).toLocaleDateString("vi-VN")} | {file.parsed_data?.length || 0} nhân sự
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center gap-1 shrink-0">
+                                            <button
+                                              onClick={() => {
+                                                setParsedEmployees(file.parsed_data);
+                                                setTimesheetMonth(file.month);
+                                                setExcelFileName(file.file_name);
+                                                // Clear current file object as we are loading from db
+                                                setCurrentFileObject(null);
+                                                alert(`Đã tải dữ liệu bảng công Tháng ${file.month} từ cơ sở dữ liệu!`);
+                                              }}
+                                              className="p-1 text-slate-500 hover:text-[#005BAC] hover:bg-blue-50 rounded transition-all cursor-pointer"
+                                              title="Xem dữ liệu bảng công"
+                                            >
+                                              <Eye size={13} />
+                                            </button>
+                                            {file.file_url && (
+                                              <a
+                                                href={file.file_url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="p-1 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-all cursor-pointer flex items-center justify-center"
+                                                title="Tải xuống file Excel gốc"
+                                              >
+                                                <Download size={13} />
+                                              </a>
+                                            )}
+                                            <button
+                                              onClick={() => handleDeleteTimesheet(file.id, file.file_path)}
+                                              className="p-1 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded transition-all cursor-pointer"
+                                              title="Xóa bảng công"
+                                            >
+                                              <Trash2 size={13} />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

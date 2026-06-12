@@ -31,10 +31,16 @@ import {
   Loader2,
   Gift,
   AlertTriangle,
-  RefreshCw,
   Info,
-  X
+  X,
+  Send,
+  Eye,
+  Settings,
+  UploadCloud,
+  Trash2,
+  RefreshCw
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, LineChart, Line
@@ -203,6 +209,313 @@ export default function CBPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [hasFullAccess, setHasFullAccess] = useState(false);
   const [loadingAuth, setLoadingAuth] = useState(true);
+
+  // --- STATE FOR EXCEL TIMESHEET & EMAIL ROUTING ---
+  interface ParsedEmployeeAttendance {
+    employeeCode: string;
+    name: string;
+    department: string;
+    email: string;
+    emailFound: boolean;
+    totalDays: number;
+    totalLate: number;
+    totalEarly: number;
+    totalOvertime: number;
+    details: Array<{
+      date: string;
+      dayOfWeek: string;
+      checkin: string;
+      checkout: string;
+      hours: number;
+      late: number;
+      early: number;
+      status: string;
+    }>;
+    emailStatus?: "idle" | "sending" | "success" | "error";
+    emailMessage?: string;
+  }
+  const [parsedEmployees, setParsedEmployees] = useState<ParsedEmployeeAttendance[]>([]);
+  const [selectedEmployeeForDetail, setSelectedEmployeeForDetail] = useState<ParsedEmployeeAttendance | null>(null);
+  const [isParsingExcel, setIsParsingExcel] = useState(false);
+  const [smtpConfig, setSmtpConfig] = useState({ user: "", pass: "" });
+  const [showEmailConfigModal, setShowEmailConfigModal] = useState(false);
+  const [isSendingAllEmails, setIsSendingAllEmails] = useState(false);
+  const [excelFileName, setExcelFileName] = useState("");
+  const [timesheetMonth, setTimesheetMonth] = useState("");
+
+  // Load SMTP config from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedUser = localStorage.getItem("tnec_cb_smtp_user") || "";
+      const savedPass = localStorage.getItem("tnec_cb_smtp_pass") || "";
+      setSmtpConfig({ user: savedUser, pass: savedPass });
+    }
+  }, []);
+
+  const handleSaveSmtpConfig = (user: string, pass: string) => {
+    setSmtpConfig({ user, pass });
+    if (typeof window !== "undefined") {
+      localStorage.setItem("tnec_cb_smtp_user", user);
+      localStorage.setItem("tnec_cb_smtp_pass", pass);
+    }
+    setShowEmailConfigModal(false);
+    alert("Đã lưu cấu hình gửi email SMTP!");
+  };
+
+  const normalizeText = (text: string) => {
+    return text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[đĐ]/g, "d")
+      .replace(/[^a-z0-9\s]/g, "")
+      .trim();
+  };
+
+  const handleUploadExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setExcelFileName(file.name);
+    setIsParsingExcel(true);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+        try {
+          const data = evt.target?.result;
+          if (!data) return;
+          const workbook = XLSX.read(data, { type: "array" });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const rawRows = XLSX.utils.sheet_to_json<any>(worksheet, { header: 1 });
+          
+          let headerRowIndex = -1;
+          for (let i = 0; i < rawRows.length; i++) {
+            const rowStr = JSON.stringify(rawRows[i]);
+            if (rowStr.includes("Mã nhân viên") || rowStr.includes("Mã NV") || rowStr.includes("MÃ NHÂN VIÊN")) {
+              headerRowIndex = i;
+              break;
+            }
+          }
+
+          if (headerRowIndex === -1) {
+            alert("Không tìm thấy dòng tiêu đề cột (Mã nhân viên, Tên nhân viên...) trong file Excel!");
+            setIsParsingExcel(false);
+            return;
+          }
+
+          const headers = rawRows[headerRowIndex].map((h: any) => String(h || "").trim());
+          const colIndices = {
+            code: headers.findIndex((h: string) => h === "Mã nhân viên" || h === "Mã NV" || h === "MÃ NHÂN VIÊN"),
+            name: headers.findIndex((h: string) => h === "Tên nhân viên" || h === "TÊN NHÂN VIÊN" || h === "Họ và tên"),
+            dept: headers.findIndex((h: string) => h === "Phòng ban" || h === "PHÒNG BAN"),
+            date: headers.findIndex((h: string) => h === "Ngày" || h === "NGÀY"),
+            dayOfWeek: headers.findIndex((h: string) => h === "Thứ" || h === "THỨ"),
+            checkin: headers.findIndex((h: string) => h === "Giờ vào" || h === "GIỜ VÀO"),
+            checkout: headers.findIndex((h: string) => h === "Giờ ra" || h === "GIỜ RA"),
+            late: headers.findIndex((h: string) => h === "Trễ" || h === "TRỄ"),
+            early: headers.findIndex((h: string) => h === "Sớm" || h === "SỚM"),
+            workday: headers.findIndex((h: string) => h === "Công" || h === "CÔNG"),
+            hours: headers.findIndex((h: string) => h === "Tổng giờ" || h === "TỔNG GIỜ"),
+            ot: headers.findIndex((h: string) => h === "Tăng ca" || h === "TĂNG CA"),
+            status: headers.findIndex((h: string) => h === "Ca" || h === "CA")
+          };
+
+          if (colIndices.code === -1 || colIndices.name === -1) {
+            alert("File Excel thiếu cột bắt buộc: 'Mã nhân viên' hoặc 'Tên nhân viên'!");
+            setIsParsingExcel(false);
+            return;
+          }
+
+          // Group rows by employee
+          const employeeMap: Record<string, any[]> = {};
+          let detectedMonth = "";
+
+          for (let i = headerRowIndex + 1; i < rawRows.length; i++) {
+            const row = rawRows[i];
+            if (!row || row.length === 0) continue;
+            
+            const codeVal = String(row[colIndices.code] || "").trim();
+            if (!codeVal || codeVal === "undefined" || codeVal === "null" || codeVal === "") continue;
+
+            if (codeVal.toLowerCase().includes("tổng") || codeVal.toLowerCase().includes("cộng")) continue;
+
+            if (!employeeMap[codeVal]) {
+              employeeMap[codeVal] = [];
+            }
+            employeeMap[codeVal].push(row);
+          }
+
+          // Fetch employees from database to map email
+          const { data: dbEmployees, error: empError } = await supabase
+            .from("employees")
+            .select("employee_code, name, email, department");
+          if (empError) throw empError;
+
+          const parsedList: ParsedEmployeeAttendance[] = [];
+
+          Object.entries(employeeMap).forEach(([code, rows]) => {
+            const firstRow = rows[0];
+            const rawName = String(firstRow[colIndices.name] || "");
+            const cleanedName = rawName.replace(/^EC\s*-\s*/gi, "").trim();
+            const dept = colIndices.dept !== -1 ? String(firstRow[colIndices.dept] || "").trim() : "";
+
+            const dbEmp = dbEmployees?.find(e => 
+              (e.employee_code && String(e.employee_code).trim() === code) ||
+              (normalizeText(e.name) === normalizeText(cleanedName))
+            );
+
+            const email = dbEmp?.email || "";
+            const emailFound = !!email;
+
+            let totalDays = 0;
+            let totalLate = 0;
+            let totalEarly = 0;
+            let totalOvertime = 0;
+
+            const details = rows.map(row => {
+              const dateVal = colIndices.date !== -1 ? String(row[colIndices.date] || "").trim() : "";
+              if (dateVal && !detectedMonth) {
+                const parts = dateVal.split(/[-\/]/);
+                if (parts.length === 3) {
+                  if (parts[2].length === 4) {
+                    detectedMonth = `${parts[1]}/${parts[2]}`;
+                  } else if (parts[0].length === 4) {
+                    detectedMonth = `${parts[1]}/${parts[0]}`;
+                  }
+                }
+              }
+
+              const lateMins = colIndices.late !== -1 ? (Number(row[colIndices.late]) || 0) : 0;
+              const earlyMins = colIndices.early !== -1 ? (Number(row[colIndices.early]) || 0) : 0;
+              const workdayVal = colIndices.workday !== -1 ? (Number(row[colIndices.workday]) || 0) : 0;
+              const otHours = colIndices.ot !== -1 ? (Number(row[colIndices.ot]) || 0) : 0;
+
+              totalDays += workdayVal;
+              totalLate += lateMins;
+              totalEarly += earlyMins;
+              totalOvertime += otHours;
+
+              return {
+                date: dateVal,
+                dayOfWeek: colIndices.dayOfWeek !== -1 ? String(row[colIndices.dayOfWeek] || "").trim() : "",
+                checkin: colIndices.checkin !== -1 ? String(row[colIndices.checkin] || "").trim() : "",
+                checkout: colIndices.checkout !== -1 ? String(row[colIndices.checkout] || "").trim() : "",
+                hours: colIndices.hours !== -1 ? (Number(row[colIndices.hours]) || 0) : 0,
+                late: lateMins,
+                early: earlyMins,
+                status: colIndices.status !== -1 ? String(row[colIndices.status] || "").trim() : ""
+              };
+            });
+
+            parsedList.push({
+              employeeCode: code,
+              name: cleanedName,
+              department: dept || dbEmp?.department || "",
+              email,
+              emailFound,
+              totalDays: parseFloat(totalDays.toFixed(2)),
+              totalLate,
+              totalEarly,
+              totalOvertime: parseFloat(totalOvertime.toFixed(2)),
+              details,
+              emailStatus: "idle"
+            });
+          });
+
+          setParsedEmployees(parsedList);
+          setTimesheetMonth(detectedMonth || "06/2026");
+          setIsParsingExcel(false);
+          alert(`Đã nhận diện thành công ${parsedList.length} nhân viên từ file chấm công!`);
+        } catch (err: any) {
+          console.error("Error processing Excel:", err);
+          alert("Lỗi khi xử lý file Excel: " + err.message);
+          setIsParsingExcel(false);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } catch (err: any) {
+      console.error("FileReader error:", err);
+      alert("Lỗi đọc file: " + err.message);
+      setIsParsingExcel(false);
+    }
+  };
+
+  const handleSendEmail = async (emp: ParsedEmployeeAttendance) => {
+    if (!smtpConfig.user || !smtpConfig.pass) {
+      setShowEmailConfigModal(true);
+      return;
+    }
+    if (!emp.emailFound || !emp.email) {
+      alert(`Nhân viên ${emp.name} không có địa chỉ email trong danh bạ! Vui lòng cập nhật email trước.`);
+      return;
+    }
+
+    setParsedEmployees(prev => prev.map(e => 
+      e.employeeCode === emp.employeeCode ? { ...e, emailStatus: "sending" } : e
+    ));
+
+    try {
+      const response = await fetch("/api/send-attendance-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          smtpConfig,
+          recipient: {
+            email: emp.email,
+            name: emp.name,
+            employeeCode: emp.employeeCode
+          },
+          summary: {
+            totalDays: emp.totalDays,
+            totalLate: emp.totalLate,
+            totalEarly: emp.totalEarly,
+            totalOvertime: emp.totalOvertime
+          },
+          details: emp.details,
+          month: timesheetMonth
+        })
+      });
+
+      const resData = await response.json();
+      if (!response.ok) throw new Error(resData.error || "Gửi email thất bại!");
+
+      setParsedEmployees(prev => prev.map(e => 
+        e.employeeCode === emp.employeeCode ? { ...e, emailStatus: "success", emailMessage: "Đã gửi thành công!" } : e
+      ));
+    } catch (err: any) {
+      console.error("Error sending email:", err);
+      setParsedEmployees(prev => prev.map(e => 
+        e.employeeCode === emp.employeeCode ? { ...e, emailStatus: "error", emailMessage: err.message || "Lỗi gửi!" } : e
+      ));
+    }
+  };
+
+  const handleSendAllEmails = async () => {
+    if (!smtpConfig.user || !smtpConfig.pass) {
+      setShowEmailConfigModal(true);
+      return;
+    }
+
+    const readyEmps = parsedEmployees.filter(e => e.emailFound && e.email && e.emailStatus !== "success");
+    if (readyEmps.length === 0) {
+      alert("Không có nhân viên nào đủ điều kiện gửi email (hoặc tất cả đã gửi thành công)!");
+      return;
+    }
+
+    if (!confirm(`Bạn có chắc chắn muốn gửi email chấm công cho ${readyEmps.length} nhân viên không?`)) return;
+
+    setIsSendingAllEmails(true);
+
+    for (const emp of readyEmps) {
+      await handleSendEmail(emp);
+    }
+
+    setIsSendingAllEmails(false);
+    alert("Đã hoàn thành tiến trình gửi email chấm công hàng loạt!");
+  };
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
@@ -1183,69 +1496,273 @@ export default function CBPage() {
           {activeTab === "attendance" && (
             <div className="space-y-6">
               {activeSubTab === "machine" && (
-                <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-5">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-4 gap-4">
-                    <div>
-                      <h3 className="font-heading font-extrabold text-slate-800 text-sm">ĐỒNG BỘ DỮ LIỆU TỪ MÁY CHẤM CÔNG VÂN TAY / FINGERPRINT</h3>
-                      <p className="text-slate-400 text-[10px] font-semibold mt-1">Kết nối mạng TCP/IP trực tiếp với máy chấm công tại văn phòng và công trường</p>
+                <div className="space-y-6">
+                  {/* CARD 1: ĐỒNG BỘ TRỰC TIẾP TỪ MÁY CHẤM CÔNG */}
+                  <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-5">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-4 gap-4">
+                      <div>
+                        <h3 className="font-heading font-extrabold text-slate-800 text-sm">ĐỒNG BỘ DỮ LIỆU TỪ MÁY CHẤM CÔNG VÂN TAY / FINGERPRINT</h3>
+                        <p className="text-slate-400 text-[10px] font-semibold mt-1">Kết nối mạng TCP/IP trực tiếp với máy chấm công tại văn phòng và công trường</p>
+                      </div>
+                      {hasFullAccess && (
+                        <button
+                          onClick={handleSyncBiometricMachine}
+                          disabled={isSyncingMachine}
+                          className="flex items-center justify-center gap-2 px-4 py-2 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer shadow disabled:opacity-50"
+                        >
+                          {isSyncingMachine ? (
+                            <>
+                              <Loader2 size={13} className="animate-spin" /> Đang đồng bộ...
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw size={13} /> Lấy dữ liệu công máy chấm công
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
-                    {hasFullAccess && (
-                      <button
-                        onClick={handleSyncBiometricMachine}
-                        disabled={isSyncingMachine}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer shadow disabled:opacity-50"
-                      >
-                        {isSyncingMachine ? (
-                          <>
-                            <Loader2 size={13} className="animate-spin" /> Đang đồng bộ...
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw size={13} /> Lấy dữ liệu công máy chấm công
-                          </>
-                        )}
-                      </button>
+
+                    {syncedCount > 0 && (
+                      <div className="bg-emerald-50 border border-emerald-250 p-3 rounded-xl flex items-center gap-2.5 text-emerald-800 text-xs font-semibold">
+                        <CheckCircle size={15} /> Đồng bộ hoàn tất! Hệ thống đã ghi nhận {syncedCount} bản ghi chấm công từ văn phòng và các dự án trong ngày.
+                      </div>
                     )}
+
+                    <div className="space-y-3">
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Bản ghi chấm công hôm nay (Mẫu)</h4>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
+                              <th className="py-2.5 px-3">Ngày</th>
+                              <th className="py-2.5 px-3">Họ và tên</th>
+                              <th className="py-2.5 px-3 text-center">Giờ vào (Check-in)</th>
+                              <th className="py-2.5 px-3 text-center">Giờ ra (Check-out)</th>
+                              <th className="py-2.5 px-3 text-center">Tổng giờ làm</th>
+                              <th className="py-2.5 px-3 text-center">Trạng thái công</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                            {filteredAttendanceLogs.map((log, idx) => (
+                              <tr key={idx} className="hover:bg-slate-50/50">
+                                <td className="py-3 px-3 font-semibold">{new Date(log.date).toLocaleDateString("vi-VN")}</td>
+                                <td className="py-3 px-3 font-bold text-slate-800">{log.name}</td>
+                                <td className="py-3 px-3 text-center font-mono font-bold text-emerald-600">{log.checkin}</td>
+                                <td className="py-3 px-3 text-center font-mono font-bold text-[#005BAC]">{log.checkout}</td>
+                                <td className="py-3 px-3 text-center">{log.hours} tiếng</td>
+                                <td className="py-3 px-3 text-center">
+                                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                    log.status === "Đúng giờ" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                                  }`}>{log.status}</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
 
-                  {syncedCount > 0 && (
-                    <div className="bg-emerald-50 border border-emerald-250 p-3 rounded-xl flex items-center gap-2.5 text-emerald-800 text-xs font-semibold">
-                      <CheckCircle size={15} /> Đồng bộ hoàn tất! Hệ thống đã ghi nhận {syncedCount} bản ghi chấm công từ văn phòng và các dự án trong ngày.
+                  {/* CARD 2: PHÂN PHỐI BẢNG CÔNG HÀNG THÁNG QUA EMAIL */}
+                  <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-5">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-4 gap-4">
+                      <div>
+                        <h3 className="font-heading font-extrabold text-slate-800 text-sm">PHÂN PHỐI BẢNG CÔNG HÀNG THÁNG QUA EMAIL</h3>
+                        <p className="text-slate-400 text-[10px] font-semibold mt-1">Tải lên file Excel từ máy chấm công để tự động tổng hợp ngày công và gửi email báo cáo chi tiết cho từng nhân viên.</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => setShowEmailConfigModal(true)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer"
+                        >
+                          <Settings size={13} />
+                          {smtpConfig.user ? `SMTP: ${smtpConfig.user}` : "Cấu hình gửi email"}
+                        </button>
+                        {parsedEmployees.length > 0 && (
+                          <button
+                            onClick={handleSendAllEmails}
+                            disabled={isSendingAllEmails}
+                            className="flex items-center gap-2 px-4 py-1.5 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer shadow disabled:opacity-50"
+                          >
+                            {isSendingAllEmails ? (
+                              <>
+                                <Loader2 size={13} className="animate-spin" /> Đang gửi...
+                              </>
+                            ) : (
+                              <>
+                                <Mail size={13} /> Gửi tất cả ({parsedEmployees.filter(e => e.emailFound && e.email && e.emailStatus !== "success").length})
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  )}
 
-                  <div className="space-y-3">
-                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Bản ghi chấm công hôm nay (Mẫu)</h4>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
-                            <th className="py-2.5 px-3">Ngày</th>
-                            <th className="py-2.5 px-3">Họ và tên</th>
-                            <th className="py-2.5 px-3 text-center">Giờ vào (Check-in)</th>
-                            <th className="py-2.5 px-3 text-center">Giờ ra (Check-out)</th>
-                            <th className="py-2.5 px-3 text-center">Tổng giờ làm</th>
-                            <th className="py-2.5 px-3 text-center">Trạng thái công</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                          {filteredAttendanceLogs.map((log, idx) => (
-                            <tr key={idx} className="hover:bg-slate-50/50">
-                              <td className="py-3 px-3 font-semibold">{new Date(log.date).toLocaleDateString("vi-VN")}</td>
-                              <td className="py-3 px-3 font-bold text-slate-800">{log.name}</td>
-                              <td className="py-3 px-3 text-center font-mono font-bold text-emerald-600">{log.checkin}</td>
-                              <td className="py-3 px-3 text-center font-mono font-bold text-[#005BAC]">{log.checkout}</td>
-                              <td className="py-3 px-3 text-center">{log.hours} tiếng</td>
-                              <td className="py-3 px-3 text-center">
-                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                                  log.status === "Đúng giờ" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                                }`}>{log.status}</span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    {/* UPLOAD BOX */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-center">
+                      <div className="md:col-span-2">
+                        <label className="border-2 border-dashed border-slate-200 hover:border-[#005BAC]/50 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer transition-all bg-slate-50/50 hover:bg-blue-50/10 group relative">
+                          <input
+                            type="file"
+                            accept=".xlsx, .xls"
+                            className="hidden"
+                            onChange={handleUploadExcel}
+                            disabled={isParsingExcel}
+                          />
+                          {isParsingExcel ? (
+                            <>
+                              <Loader2 size={28} className="text-[#005BAC] animate-spin mb-2" />
+                              <span className="text-xs font-bold text-slate-700">Đang phân tích file Excel chấm công...</span>
+                            </>
+                          ) : (
+                            <>
+                              <UploadCloud size={28} className="text-slate-400 group-hover:text-[#005BAC] transition-all mb-2" />
+                              <span className="text-xs font-bold text-slate-700 group-hover:text-slate-900 transition-all">
+                                {excelFileName ? `Đã chọn: ${excelFileName}` : "Kéo thả hoặc click để chọn file Excel máy chấm công"}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-semibold mt-1 font-sans">Hỗ trợ định dạng .xlsx, .xls</span>
+                            </>
+                          )}
+                        </label>
+                      </div>
+
+                      {/* STATS */}
+                      <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-150">
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Thông tin tóm tắt</h4>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="bg-white p-2 rounded-xl border border-slate-100">
+                            <div className="text-[9px] font-bold text-slate-400">Số nhân viên</div>
+                            <div className="text-base font-black text-slate-800">{parsedEmployees.length}</div>
+                          </div>
+                          <div className="bg-white p-2 rounded-xl border border-slate-100">
+                            <div className="text-[9px] font-bold text-slate-400">Tháng chấm công</div>
+                            <div className="text-base font-black text-[#005BAC]">{timesheetMonth || "--/----"}</div>
+                          </div>
+                          <div className="bg-white p-2 rounded-xl border border-slate-100">
+                            <div className="text-[9px] font-bold text-slate-400">Đã khớp email</div>
+                            <div className="text-base font-black text-emerald-600">
+                              {parsedEmployees.filter(e => e.emailFound).length}
+                            </div>
+                          </div>
+                          <div className="bg-white p-2 rounded-xl border border-slate-100">
+                            <div className="text-[9px] font-bold text-slate-400">Chưa có email</div>
+                            <div className="text-base font-black text-amber-500">
+                              {parsedEmployees.filter(e => !e.emailFound).length}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
+
+                    {/* TABLE PREVIEW */}
+                    {parsedEmployees.length > 0 && (
+                      <div className="space-y-3 pt-3 border-t border-slate-100">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Danh sách nhân viên nhận diện từ Excel</h4>
+                          {parsedEmployees.filter(e => !e.emailFound).length > 0 && (
+                            <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                              <AlertCircle size={10} /> Có {parsedEmployees.filter(e => !e.emailFound).length} nhân viên chưa có email. Vui lòng cập nhật trực tiếp tại dòng tương ứng.
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="overflow-x-auto border border-slate-100 rounded-xl">
+                          <table className="w-full text-xs text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50 border-b border-slate-250 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
+                                <th className="py-2.5 px-3">Mã NV / Họ và tên</th>
+                                <th className="py-2.5 px-3">Phòng ban</th>
+                                <th className="py-2.5 px-3 text-center">Tổng công</th>
+                                <th className="py-2.5 px-3 text-center">Trễ (phút)</th>
+                                <th className="py-2.5 px-3 text-center">Sớm (phút)</th>
+                                <th className="py-2.5 px-3 text-center">Tăng ca (giờ)</th>
+                                <th className="py-2.5 px-3 w-64">Email nhận báo cáo</th>
+                                <th className="py-2.5 px-3 text-center">Trạng thái gửi</th>
+                                <th className="py-2.5 px-3 text-center">Hành động</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                              {parsedEmployees.map((emp) => (
+                                <tr key={emp.employeeCode} className="hover:bg-slate-50/50">
+                                  <td className="py-3 px-3">
+                                    <div className="font-bold text-slate-800">{emp.name}</div>
+                                    <div className="text-[10px] text-slate-400 font-bold font-mono uppercase">{emp.employeeCode}</div>
+                                  </td>
+                                  <td className="py-3 px-3 text-slate-500">{emp.department || "Chưa phân loại"}</td>
+                                  <td className="py-3 px-3 text-center font-bold text-slate-800">{emp.totalDays} ngày</td>
+                                  <td className="py-3 px-3 text-center text-amber-600 font-bold">{emp.totalLate}</td>
+                                  <td className="py-3 px-3 text-center text-orange-500 font-bold">{emp.totalEarly}</td>
+                                  <td className="py-3 px-3 text-center text-emerald-600 font-bold">{emp.totalOvertime}</td>
+                                  <td className="py-3 px-3">
+                                    <div className="relative flex items-center">
+                                      <input
+                                        type="email"
+                                        value={emp.email}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setParsedEmployees(prev => prev.map(p => 
+                                            p.employeeCode === emp.employeeCode ? { ...p, email: val, emailFound: !!val } : p
+                                          ));
+                                        }}
+                                        className={`w-full px-2 py-1 bg-slate-50 border rounded-lg text-xs font-semibold focus:bg-white outline-none transition-all ${
+                                          emp.emailFound ? "border-slate-200 focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC]" : "border-amber-300 focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                                        }`}
+                                        placeholder="Nhập email thủ công..."
+                                      />
+                                      {!emp.emailFound && (
+                                        <AlertTriangle size={12} className="text-amber-500 absolute right-2 pointer-events-none animate-pulse" />
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-3 text-center">
+                                    {emp.emailStatus === "idle" && (
+                                      <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[9px] font-bold">Chờ gửi</span>
+                                    )}
+                                    {emp.emailStatus === "sending" && (
+                                      <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-[9px] font-bold flex items-center justify-center gap-1 max-w-[80px] mx-auto">
+                                        <Loader2 size={10} className="animate-spin" /> Đang gửi
+                                      </span>
+                                    )}
+                                    {emp.emailStatus === "success" && (
+                                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-[9px] font-bold">Thành công</span>
+                                    )}
+                                    {emp.emailStatus === "error" && (
+                                      <span className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded-full text-[9px] font-bold border border-rose-200 cursor-pointer" title={emp.emailMessage}>
+                                        Lỗi gửi
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-3 text-center">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button
+                                        onClick={() => setSelectedEmployeeForDetail(emp)}
+                                        className="p-1.5 text-slate-500 hover:text-[#005BAC] hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
+                                        title="Xem chi tiết bảng công"
+                                      >
+                                        <Eye size={14} />
+                                      </button>
+                                      <button
+                                        onClick={() => handleSendEmail(emp)}
+                                        disabled={emp.emailStatus === "sending"}
+                                        className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                                          emp.emailStatus === "success" 
+                                            ? "text-emerald-600 hover:bg-emerald-50" 
+                                            : "text-slate-500 hover:text-emerald-600 hover:bg-emerald-50"
+                                        }`}
+                                        title="Gửi báo cáo email"
+                                      >
+                                        <Send size={14} />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1648,6 +2165,200 @@ export default function CBPage() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ─── MODAL CẤU HÌNH SMTP GỬI THƯ ─── */}
+          {showEmailConfigModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+              <div className="bg-white w-full max-w-md rounded-2xl shadow-premium border border-slate-100 overflow-hidden transform transition-all animate-scale-up">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-[#005BAC] text-white">
+                  <h3 className="font-heading font-black text-sm flex items-center gap-2">
+                    <Settings size={16} /> Cấu hình tài khoản SMTP gửi email
+                  </h3>
+                  <button
+                    onClick={() => setShowEmailConfigModal(false)}
+                    className="text-white/80 hover:text-white transition-all cursor-pointer p-1 rounded-lg hover:bg-white/10"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const formData = new FormData(e.currentTarget);
+                    const user = String(formData.get("smtp_user") || "").trim();
+                    const pass = String(formData.get("smtp_pass") || "").trim();
+                    if (!user || !pass) {
+                      alert("Vui lòng điền đầy đủ email và mật khẩu ứng dụng!");
+                      return;
+                    }
+                    handleSaveSmtpConfig(user, pass);
+                  }}
+                  className="p-6 space-y-4 text-xs font-semibold text-slate-700"
+                >
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Email Gmail gửi đi</label>
+                    <input
+                      type="email"
+                      name="smtp_user"
+                      defaultValue={smtpConfig.user}
+                      placeholder="vidu@gmail.com"
+                      required
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none transition-all"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                      <span>Mật khẩu ứng dụng (App Password)</span>
+                      <a
+                        href="https://myaccount.google.com/apppasswords"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#005BAC] hover:underline normal-case font-bold"
+                      >
+                        Cách lấy mật khẩu?
+                      </a>
+                    </label>
+                    <input
+                      type="password"
+                      name="smtp_pass"
+                      defaultValue={smtpConfig.pass}
+                      placeholder="xxxx xxxx xxxx xxxx"
+                      required
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none transition-all font-mono tracking-widest"
+                    />
+                  </div>
+
+                  <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl space-y-1 text-blue-800 text-[10px] leading-relaxed">
+                    <p className="font-bold flex items-center gap-1 text-xs">
+                      <Info size={13} /> Lưu ý bảo mật quan trọng:
+                    </p>
+                    <p>
+                      1. Gmail yêu cầu bạn phải kích hoạt Xác minh 2 bước (2-Step Verification) trên tài khoản Google, sau đó tạo một "Mật khẩu ứng dụng" (App Password) gồm 16 ký tự để ứng dụng này kết nối được.
+                    </p>
+                    <p>
+                      2. Thông tin SMTP được lưu cục bộ trên trình duyệt của bạn (localStorage), không gửi hoặc lưu trữ trên bất kỳ máy chủ trung gian nào.
+                    </p>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowEmailConfigModal(false)}
+                      className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold rounded-xl active:scale-95 transition-all cursor-pointer"
+                    >
+                      Hủy bỏ
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl active:scale-95 transition-all cursor-pointer shadow-premium"
+                    >
+                      Lưu cấu hình
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ─── MODAL CHI TIẾT BẢNG CÔNG NHÂN VIÊN ─── */}
+          {selectedEmployeeForDetail && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
+              <div className="bg-white w-full max-w-4xl rounded-2xl shadow-premium border border-slate-100 overflow-hidden transform transition-all animate-scale-up max-h-[85vh] flex flex-col">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-[#005BAC] text-white shrink-0">
+                  <div>
+                    <h3 className="font-heading font-black text-sm">
+                      Chi tiết bảng công - {selectedEmployeeForDetail.name}
+                    </h3>
+                    <p className="text-white/80 text-[10px] font-bold mt-0.5">
+                      Mã nhân viên: {selectedEmployeeForDetail.employeeCode} | Phòng ban: {selectedEmployeeForDetail.department || "Chưa phân loại"} | Tháng {timesheetMonth}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedEmployeeForDetail(null)}
+                    className="text-white/80 hover:text-white transition-all cursor-pointer p-1 rounded-lg hover:bg-white/10"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto space-y-4 text-xs font-semibold text-slate-700 flex-1">
+                  {/* Tóm tắt công */}
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 text-center">
+                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Tổng ngày công</div>
+                      <div className="text-lg font-black text-slate-800">{selectedEmployeeForDetail.totalDays} ngày</div>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 text-center">
+                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Tổng giờ tăng ca</div>
+                      <div className="text-lg font-black text-emerald-600">{selectedEmployeeForDetail.totalOvertime} giờ</div>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 text-center">
+                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Số lần đi trễ</div>
+                      <div className="text-lg font-black text-amber-600">{selectedEmployeeForDetail.totalLate} phút</div>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 text-center">
+                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Số lần về sớm</div>
+                      <div className="text-lg font-black text-orange-500">{selectedEmployeeForDetail.totalEarly} phút</div>
+                    </div>
+                  </div>
+
+                  {/* Bảng chi tiết từng ngày */}
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nhật ký chấm công chi tiết theo ngày</h4>
+                    <div className="border border-slate-100 rounded-xl overflow-hidden">
+                      <table className="w-full text-xs text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
+                            <th className="py-2 px-3">Ngày</th>
+                            <th className="py-2 px-3">Thứ</th>
+                            <th className="py-2 px-3 text-center">Giờ vào</th>
+                            <th className="py-2 px-3 text-center">Giờ ra</th>
+                            <th className="py-2 px-3 text-center">Trễ (phút)</th>
+                            <th className="py-2 px-3 text-center">Sớm (phút)</th>
+                            <th className="py-2 px-3 text-center">Mô tả ca</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
+                          {selectedEmployeeForDetail.details.map((day, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/50">
+                              <td className="py-2.5 px-3 font-semibold text-slate-800">{day.date}</td>
+                              <td className="py-2.5 px-3 text-slate-400 font-bold">{day.dayOfWeek}</td>
+                              <td className="py-2.5 px-3 text-center font-mono font-bold text-emerald-600">{day.checkin || "--:--"}</td>
+                              <td className="py-2.5 px-3 text-center font-mono font-bold text-[#005BAC]">{day.checkout || "--:--"}</td>
+                              <td className="py-2.5 px-3 text-center text-amber-600 font-bold">{day.late > 0 ? day.late : "-"}</td>
+                              <td className="py-2.5 px-3 text-center text-orange-500 font-bold">{day.early > 0 ? day.early : "-"}</td>
+                              <td className="py-2.5 px-3 text-[10px] text-slate-400 font-bold uppercase">{day.status || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-2 shrink-0">
+                  <button
+                    onClick={() => setSelectedEmployeeForDetail(null)}
+                    className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl active:scale-95 transition-all cursor-pointer text-xs"
+                  >
+                    Đóng lại
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleSendEmail(selectedEmployeeForDetail);
+                      setSelectedEmployeeForDetail(null);
+                    }}
+                    disabled={selectedEmployeeForDetail.emailStatus === "sending" || !selectedEmployeeForDetail.emailFound}
+                    className="px-5 py-2 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl active:scale-95 transition-all cursor-pointer shadow-premium text-xs disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <Send size={12} /> Gửi email báo cáo
+                  </button>
+                </div>
+              </div>
             </div>
           )}
           </>

@@ -1900,7 +1900,8 @@ export default function AdministrationPage() {
             m1: 0, m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0, m8: 0, m9: 0, m10: 0, m11: 0, m12: 0
           };
         }
-        groups[key][`m${monthNum}` as keyof typeof groups[string]] += item.amount;
+        const mKey = `m${monthNum}` as "m1" | "m2" | "m3" | "m4" | "m5" | "m6" | "m7" | "m8" | "m9" | "m10" | "m11" | "m12";
+        groups[key][mKey] += item.amount;
       });
 
       // 4. Merge with existing reportRows (preserving user custom edits & notes)
@@ -1937,7 +1938,8 @@ export default function AdministrationPage() {
             category_type: g.category_type,
             m1: g.m1, m2: g.m2, m3: g.m3, m4: g.m4, m5: g.m5, m6: g.m6,
             m7: g.m7, m8: g.m8, m9: g.m9, m10: g.m10, m11: g.m11, m12: g.m12,
-            notes: ""
+            notes: "",
+            is_custom: false
           });
         }
       });

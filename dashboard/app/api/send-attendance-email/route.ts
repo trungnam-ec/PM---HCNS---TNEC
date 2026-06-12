@@ -13,15 +13,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Thông tin nhân viên nhận email không hợp lệ!" }, { status: 400 });
     }
 
-    // Create a Nodemailer transporter
+    // Create a Nodemailer transporter with dynamic configuration
+    const portNum = Number(smtpConfig.port) || 465;
+    const isSecure = smtpConfig.secure === undefined ? (portNum === 465) : smtpConfig.secure;
+
     const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true, // true for 465, false for other ports
+      host: smtpConfig.host || "smtp.gmail.com",
+      port: portNum,
+      secure: isSecure,
       auth: {
         user: smtpConfig.user,
         pass: smtpConfig.pass,
       },
+      tls: {
+        rejectUnauthorized: false // Bỏ qua lỗi SSL/TLS self-signed trên máy chủ doanh nghiệp
+      }
     });
 
     // Build the details rows for the HTML table

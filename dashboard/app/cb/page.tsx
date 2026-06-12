@@ -237,8 +237,23 @@ export default function CBPage() {
   const [parsedEmployees, setParsedEmployees] = useState<ParsedEmployeeAttendance[]>([]);
   const [selectedEmployeeForDetail, setSelectedEmployeeForDetail] = useState<ParsedEmployeeAttendance | null>(null);
   const [isParsingExcel, setIsParsingExcel] = useState(false);
-  const [smtpConfig, setSmtpConfig] = useState({ user: "", pass: "" });
+  const [smtpConfig, setSmtpConfig] = useState({
+    user: "",
+    pass: "",
+    provider: "gmail",
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true
+  });
   const [showEmailConfigModal, setShowEmailConfigModal] = useState(false);
+  const [modalProvider, setModalProvider] = useState("gmail");
+
+  useEffect(() => {
+    if (showEmailConfigModal) {
+      setModalProvider(smtpConfig.provider || "gmail");
+    }
+  }, [showEmailConfigModal, smtpConfig.provider]);
+
   const [isSendingAllEmails, setIsSendingAllEmails] = useState(false);
   const [excelFileName, setExcelFileName] = useState("");
   const [timesheetMonth, setTimesheetMonth] = useState("");
@@ -266,16 +281,31 @@ export default function CBPage() {
     if (typeof window !== "undefined") {
       const savedUser = localStorage.getItem("tnec_cb_smtp_user") || "";
       const savedPass = localStorage.getItem("tnec_cb_smtp_pass") || "";
-      setSmtpConfig({ user: savedUser, pass: savedPass });
+      const savedProvider = localStorage.getItem("tnec_cb_smtp_provider") || "gmail";
+      const savedHost = localStorage.getItem("tnec_cb_smtp_host") || "smtp.gmail.com";
+      const savedPort = Number(localStorage.getItem("tnec_cb_smtp_port")) || 465;
+      const savedSecure = localStorage.getItem("tnec_cb_smtp_secure") !== "false";
+      setSmtpConfig({
+        user: savedUser,
+        pass: savedPass,
+        provider: savedProvider,
+        host: savedHost,
+        port: savedPort,
+        secure: savedSecure
+      });
     }
     fetchImportedTimesheets();
   }, []);
 
-  const handleSaveSmtpConfig = (user: string, pass: string) => {
-    setSmtpConfig({ user, pass });
+  const handleSaveSmtpConfig = (user: string, pass: string, provider: string, host: string, port: number, secure: boolean) => {
+    setSmtpConfig({ user, pass, provider, host, port, secure });
     if (typeof window !== "undefined") {
       localStorage.setItem("tnec_cb_smtp_user", user);
       localStorage.setItem("tnec_cb_smtp_pass", pass);
+      localStorage.setItem("tnec_cb_smtp_provider", provider);
+      localStorage.setItem("tnec_cb_smtp_host", host);
+      localStorage.setItem("tnec_cb_smtp_port", String(port));
+      localStorage.setItem("tnec_cb_smtp_secure", String(secure));
     }
     setShowEmailConfigModal(false);
     alert("Đã lưu cấu hình gửi email SMTP!");
@@ -2444,21 +2474,54 @@ export default function CBPage() {
                     const formData = new FormData(e.currentTarget);
                     const user = String(formData.get("smtp_user") || "").trim();
                     const pass = String(formData.get("smtp_pass") || "").trim();
+                    const provider = modalProvider;
+                    
+                    let host = "smtp.gmail.com";
+                    let port = 465;
+                    let secure = true;
+
+                    if (provider === "gmail") {
+                      host = "smtp.gmail.com";
+                      port = 465;
+                      secure = true;
+                    } else if (provider === "outlook") {
+                      host = "smtp.office365.com";
+                      port = 587;
+                      secure = false;
+                    } else {
+                      host = String(formData.get("smtp_host") || "").trim() || "smtp.gmail.com";
+                      port = Number(formData.get("smtp_port")) || 465;
+                      secure = formData.get("smtp_secure") === "true";
+                    }
+
                     if (!user || !pass) {
-                      alert("Vui lòng điền đầy đủ email và mật khẩu ứng dụng!");
+                      alert("Vui lòng điền đầy đủ email và mật khẩu!");
                       return;
                     }
-                    handleSaveSmtpConfig(user, pass);
+                    handleSaveSmtpConfig(user, pass, provider, host, port, secure);
                   }}
                   className="p-6 space-y-4 text-xs font-semibold text-slate-700"
                 >
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Email Gmail gửi đi</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Nhà cung cấp Email</label>
+                    <select
+                      value={modalProvider}
+                      onChange={(e) => setModalProvider(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none transition-all cursor-pointer"
+                    >
+                      <option value="gmail">Gmail</option>
+                      <option value="outlook">Outlook / Microsoft Office 365 (Doanh nghiệp)</option>
+                      <option value="custom">Cấu hình SMTP khác (Thủ công)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Tài khoản Email gửi đi</label>
                     <input
                       type="email"
                       name="smtp_user"
                       defaultValue={smtpConfig.user}
-                      placeholder="vidu@gmail.com"
+                      placeholder={modalProvider === "gmail" ? "vidu@gmail.com" : "phuonglnl@trungnamgroup.com.vn"}
                       required
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none transition-all"
                     />
@@ -2466,36 +2529,96 @@ export default function CBPage() {
 
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center justify-between">
-                      <span>Mật khẩu ứng dụng (App Password)</span>
-                      <a
-                        href="https://myaccount.google.com/apppasswords"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[#005BAC] hover:underline normal-case font-bold"
-                      >
-                        Cách lấy mật khẩu?
-                      </a>
+                      <span>Mật khẩu hoặc Mật khẩu ứng dụng</span>
+                      {modalProvider === "gmail" && (
+                        <a
+                          href="https://myaccount.google.com/apppasswords"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#005BAC] hover:underline normal-case font-bold"
+                        >
+                          Cách lấy mật khẩu Gmail?
+                        </a>
+                      )}
+                      {modalProvider === "outlook" && (
+                        <a
+                          href="https://mysignins.microsoft.com/security-info"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#005BAC] hover:underline normal-case font-bold"
+                        >
+                          Cài đặt bảo mật Microsoft?
+                        </a>
+                      )}
                     </label>
                     <input
                       type="password"
                       name="smtp_pass"
                       defaultValue={smtpConfig.pass}
-                      placeholder="xxxx xxxx xxxx xxxx"
+                      placeholder="Mật khẩu tài khoản hoặc mật khẩu ứng dụng"
                       required
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none transition-all font-mono tracking-widest"
                     />
                   </div>
 
-                  <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl space-y-1 text-blue-800 text-[10px] leading-relaxed">
+                  {modalProvider === "custom" && (
+                    <div className="grid grid-cols-2 gap-3 border border-slate-100 p-3 rounded-2xl bg-slate-50/50">
+                      <div className="space-y-1.5 col-span-2">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">SMTP Server Host</label>
+                        <input
+                          type="text"
+                          name="smtp_host"
+                          defaultValue={smtpConfig.host}
+                          placeholder="smtp.example.com"
+                          required
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl focus:border-[#005BAC] outline-none transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Cổng (Port)</label>
+                        <input
+                          type="number"
+                          name="smtp_port"
+                          defaultValue={smtpConfig.port}
+                          placeholder="465"
+                          required
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl focus:border-[#005BAC] outline-none transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Bảo mật SSL/TLS</label>
+                        <select
+                          name="smtp_secure"
+                          defaultValue={String(smtpConfig.secure)}
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl focus:border-[#005BAC] outline-none transition-all cursor-pointer"
+                        >
+                          <option value="true">SSL (Port 465)</option>
+                          <option value="false">TLS/STARTTLS (Port 587 hoặc khác)</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Hướng dẫn bảo mật dựa theo nhà cung cấp */}
+                  <div className="bg-blue-50 border border-blue-100 p-3.5 rounded-xl space-y-1 text-blue-800 text-[10px] leading-relaxed">
                     <p className="font-bold flex items-center gap-1 text-xs">
-                      <Info size={13} /> Lưu ý bảo mật quan trọng:
+                      <Info size={13} /> Hướng dẫn cấu hình gửi email:
                     </p>
-                    <p>
-                      1. Gmail yêu cầu bạn phải kích hoạt Xác minh 2 bước (2-Step Verification) trên tài khoản Google, sau đó tạo một "Mật khẩu ứng dụng" (App Password) gồm 16 ký tự để ứng dụng này kết nối được.
-                    </p>
-                    <p>
-                      2. Thông tin SMTP được lưu cục bộ trên trình duyệt của bạn (localStorage), không gửi hoặc lưu trữ trên bất kỳ máy chủ trung gian nào.
-                    </p>
+                    {modalProvider === "gmail" ? (
+                      <>
+                        <p>1. Gmail yêu cầu bạn phải bật **Xác minh 2 bước** trên tài khoản Google, sau đó tạo một **Mật khẩu ứng dụng (App Password)** gồm 16 ký tự để kết nối.</p>
+                        <p>2. Không dùng mật khẩu đăng nhập Gmail thông thường vì Google chặn kết nối ứng dụng trực tiếp từ bên ngoài.</p>
+                      </>
+                    ) : modalProvider === "outlook" ? (
+                      <>
+                        <p>1. Đối với email Outlook doanh nghiệp (ví dụ `@trungnamgroup.com.vn`), hệ thống sử dụng SMTP của Microsoft (`smtp.office365.com` qua cổng `587`).</p>
+                        <p>2. Nếu công ty bạn yêu cầu xác thực MFA (bảo mật 2 lớp), bạn cần tạo **Mật khẩu ứng dụng (App Password)** từ tài khoản Microsoft của mình để kết nối.</p>
+                        <p>3. Nếu công ty không sử dụng bảo mật 2 lớp cho Outlook, bạn có thể điền mật khẩu đăng nhập email thông thường.</p>
+                      </>
+                    ) : (
+                      <p>Vui lòng liên hệ bộ phận IT quản lý hệ thống email của công ty để xin thông tin **SMTP Host**, **Port** và kiểm tra xem có cần mật khẩu ứng dụng riêng hay không.</p>
+                    )}
+                    <p className="pt-1 text-slate-400 border-t border-blue-100/50 mt-1">Thông tin SMTP được lưu cục bộ trên trình duyệt của bạn (localStorage), đảm bảo an toàn tuyệt đối.</p>
                   </div>
 
                   <div className="flex justify-end gap-2 pt-2">

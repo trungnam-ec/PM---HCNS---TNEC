@@ -27,7 +27,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Trash2, AlertTriangle } from "lucide-react";
+import { Trash2, AlertTriangle, CheckCircle2, XCircle, Info } from "lucide-react";
 
 export type ConfirmRequest = {
   title: string;
@@ -118,5 +118,98 @@ export function useConfirmBox() {
   return {
     ask,
     confirmNode: box ? <ConfirmDialog box={box} onClose={close} /> : null,
+  };
+}
+
+// ============================================================
+// NoticeDialog — hộp THÔNG BÁO một nút "OK" căn GIỮA màn hình.
+//
+// Thay cho window.alert(): hộp của trình duyệt dính mép trên, hiện tên miền
+// "www.nhansutrungnamec.com cho biết" và không theo giao diện chung. Dùng chung
+// một mẫu với ConfirmDialog cho đồng bộ.
+//
+// CÁCH DÙNG:
+//   const { notify, noticeNode } = useNoticeBox();
+//   ...
+//   notify("Đã lưu nhóm.", "success");
+//   ...
+//   return (<>...{noticeNode}</>);
+// ============================================================
+
+export type NoticeTone = "success" | "error" | "warn" | "info";
+
+export type NoticeRequest = {
+  message: string;
+  tone?: NoticeTone;
+  /** Chữ trên nút. Mặc định "OK". */
+  okLabel?: string;
+};
+
+const NOTICE_STYLE: Record<
+  NoticeTone,
+  { title: string; ring: string; btn: string; Icon: typeof Info }
+> = {
+  success: { title: "Thành công", ring: "bg-emerald-50 text-emerald-500 ring-emerald-500/10", btn: "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20", Icon: CheckCircle2 },
+  error: { title: "Có lỗi", ring: "bg-rose-50 text-rose-500 ring-rose-500/10", btn: "bg-rose-600 hover:bg-rose-700 shadow-rose-500/20", Icon: XCircle },
+  warn: { title: "Lưu ý", ring: "bg-amber-50 text-amber-500 ring-amber-500/10", btn: "bg-[#005BAC] hover:bg-blue-700 shadow-blue-500/20", Icon: AlertTriangle },
+  info: { title: "Thông báo", ring: "bg-blue-50 text-[#005BAC] ring-blue-500/10", btn: "bg-[#005BAC] hover:bg-blue-700 shadow-blue-500/20", Icon: Info },
+};
+
+export function NoticeDialog({ box, onClose }: { box: NoticeRequest; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" || e.key === "Enter") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const s = NOTICE_STYLE[box.tone ?? "info"];
+  const { Icon } = s;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[90] flex items-center justify-center p-4 animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-white rounded-2xl w-full max-w-sm p-7 shadow-2xl border border-slate-100 text-center space-y-5 animate-in fade-in-50 zoom-in-95 duration-200"
+      >
+        <div className="flex justify-center">
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center ring-8 ${s.ring}`}>
+            <Icon size={32} strokeWidth={2.2} />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="font-heading font-extrabold text-sm text-slate-800">{s.title}</h3>
+          <p className="text-[11px] font-semibold text-slate-500 leading-relaxed whitespace-pre-line">
+            {box.message}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          autoFocus
+          onClick={onClose}
+          className={`w-full text-white text-xs font-bold py-2.5 rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer ${s.btn}`}
+        >
+          {box.okLabel || "OK"}
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/** Gói sẵn state cho component dùng: trả về hàm thông báo + phần tử cần render. */
+export function useNoticeBox() {
+  const [box, setBox] = useState<NoticeRequest | null>(null);
+  const notify = useCallback((message: string, tone: NoticeTone = "info", okLabel?: string) => {
+    setBox({ message, tone, okLabel });
+  }, []);
+  const close = useCallback(() => setBox(null), []);
+  return {
+    notify,
+    noticeNode: box ? <NoticeDialog box={box} onClose={close} /> : null,
   };
 }

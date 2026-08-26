@@ -84,6 +84,10 @@ export default function DocumentControlPage() {
   const [previewUrl, setPreviewUrl] = useState("");
   const [previewTitle, setPreviewTitle] = useState("");
 
+  // Popup xác nhận xoá công văn — thay window.confirm của trình duyệt, hiện giữa màn hình.
+  const [deleteDocId, setDeleteDocId] = useState<string | null>(null);
+  const [deletingDoc, setDeletingDoc] = useState(false);
+
   // Handle open preview
   // Tệp công văn nằm ở kho RIÊNG TƯ nên phải ký link mới xem được (migration 024).
   // Link Drive/OneDrive người dùng dán và tệp cũ ở kho công khai đi qua nguyên vẹn.
@@ -616,15 +620,24 @@ export default function DocumentControlPage() {
     setShowModal(true);
   };
 
-  // Delete Document
-  const handleDeleteDoc = async (id: string) => {
-    if (!window.confirm("Bạn có chắc chắn muốn xoá công văn này không? Dữ liệu sẽ bị xoá vĩnh viễn trên Supabase.")) return;
+  // Delete Document — mở popup xác nhận giữa màn hình (thay window.confirm).
+  const handleDeleteDoc = (id: string) => {
+    setDeleteDocId(id);
+  };
+
+  const confirmDeleteDoc = async () => {
+    if (!deleteDocId) return;
+    const id = deleteDocId;
     try {
+      setDeletingDoc(true);
       const { error } = await supabase.from("clerical_documents").delete().eq("id", id);
       if (error) throw error;
       setDocs((prev) => prev.filter((d) => d.id !== id));
+      setDeleteDocId(null);
     } catch (e) {
       alert("Lỗi khi xoá: " + (e as Error).message);
+    } finally {
+      setDeletingDoc(false);
     }
   };
 
@@ -1865,6 +1878,60 @@ export default function DocumentControlPage() {
               ) : (
                 <div className="text-slate-400 text-xs font-semibold">Không tìm thấy tài liệu</div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup xác nhận xoá công văn — thay window.confirm của trình duyệt, hiện giữa màn hình */}
+      {deleteDocId && (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          onClick={() => !deletingDoc && setDeleteDocId(null)}
+        >
+          <div
+            className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-rose-600 text-white px-6 py-4 flex items-center justify-between gap-3">
+              <h3 className="font-heading font-bold text-sm flex items-center gap-2">
+                <Trash2 size={16} /> Xoá công văn
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDeleteDocId(null)}
+                disabled={deletingDoc}
+                className="text-white/80 hover:text-white cursor-pointer disabled:opacity-50 bg-transparent border-none p-0"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <p className="text-sm text-slate-600 font-semibold leading-relaxed">
+                Bạn có chắc xoá công văn này không?{" "}
+                <span className="text-rose-600">Dữ liệu sẽ xoá trên hệ thống.</span>
+              </p>
+            </div>
+
+            <div className="px-6 pb-5 pt-1 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteDocId(null)}
+                disabled={deletingDoc}
+                className="text-xs font-bold text-slate-500 hover:text-slate-700 px-4 py-2 rounded-xl cursor-pointer disabled:opacity-50 bg-transparent border-none"
+              >
+                Huỷ
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteDoc}
+                disabled={deletingDoc}
+                className="inline-flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-sm border-none"
+              >
+                {deletingDoc ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                {deletingDoc ? "Đang xoá..." : "Xoá công văn"}
+              </button>
             </div>
           </div>
         </div>

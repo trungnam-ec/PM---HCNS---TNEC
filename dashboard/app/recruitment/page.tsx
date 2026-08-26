@@ -1253,6 +1253,10 @@ export default function RecruitmentPage() {
   });
   const [exportingReport, setExportingReport] = useState(false);
 
+  // Popup xác nhận xoá hồ sơ ứng viên — thay window.confirm, hiện giữa màn hình.
+  const [deleteCandId, setDeleteCandId] = useState<string | null>(null);
+  const [deletingCand, setDeletingCand] = useState(false);
+
   // Fetch candidates from Supabase
   const fetchCandidates = async () => {
     try {
@@ -1651,22 +1655,31 @@ export default function RecruitmentPage() {
     }
   };
 
-  // Delete Candidate
-  const handleDeleteCandidate = async (id: string) => {
+  // Delete Candidate — mở popup xác nhận giữa màn hình (thay window.confirm).
+  const handleDeleteCandidate = (id: string) => {
     if (!canManage) {
       alert("Bạn không có quyền thực hiện thao tác này.");
       return;
     }
-    if (!confirm("Bạn có chắc chắn muốn xóa hồ sơ ứng viên này?")) return;
+    setDeleteCandId(id);
+  };
+
+  const confirmDeleteCandidate = async () => {
+    if (!deleteCandId) return;
+    const id = deleteCandId;
     try {
+      setDeletingCand(true);
       const { error } = await supabase
         .from("candidates")
         .delete()
         .eq("id", id);
       if (error) throw error;
+      setDeleteCandId(null);
       fetchCandidates();
     } catch (err) {
       console.error("Error deleting candidate:", err);
+    } finally {
+      setDeletingCand(false);
     }
   };
 
@@ -3575,6 +3588,60 @@ export default function RecruitmentPage() {
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup xác nhận xoá hồ sơ ứng viên — thay window.confirm, hiện giữa màn hình */}
+      {deleteCandId && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+          onClick={() => !deletingCand && setDeleteCandId(null)}
+        >
+          <div
+            className="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-rose-600 text-white px-6 py-4 flex items-center justify-between gap-3">
+              <h3 className="font-heading font-black text-sm flex items-center gap-2">
+                <Trash2 size={16} /> Xoá hồ sơ ứng viên
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDeleteCandId(null)}
+                disabled={deletingCand}
+                className="text-white/80 hover:text-white disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <p className="text-xs text-slate-600 font-semibold leading-relaxed">
+                Bạn có chắc chắn muốn xoá hồ sơ ứng viên này?{" "}
+                <span className="text-rose-600">Dữ liệu sẽ xoá trên hệ thống.</span>
+              </p>
+            </div>
+
+            <div className="px-6 pb-5 pt-1 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteCandId(null)}
+                disabled={deletingCand}
+                className="px-4 py-2 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 text-xs disabled:opacity-50"
+              >
+                Huỷ
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteCandidate}
+                disabled={deletingCand}
+                className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-white font-bold rounded-xl shadow-md transition-all active:scale-95 text-xs"
+              >
+                {deletingCand ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                {deletingCand ? "Đang xoá..." : "Xoá hồ sơ"}
+              </button>
             </div>
           </div>
         </div>

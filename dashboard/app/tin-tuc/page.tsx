@@ -49,6 +49,8 @@ import {
   FileText,
   ArrowRight,
   RefreshCw,
+  X,
+  AlertTriangle,
 } from "lucide-react";
 
 type TabKey = NewsCategory | "all";
@@ -69,6 +71,10 @@ export default function NewsPage() {
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<NewsPost | null>(null);
+
+  // Popup xác nhận xoá bài — thay window.confirm, hiện giữa màn hình.
+  const [deleteTarget, setDeleteTarget] = useState<NewsPost | null>(null);
+  const [deletingPost, setDeletingPost] = useState(false);
 
   const load = useCallback(async () => {
     if (user.loading) return;
@@ -108,16 +114,26 @@ export default function NewsPage() {
     load();
   }, [load]);
 
-  const handleDelete = async (post: NewsPost) => {
-    if (!confirm(`Xoá bài "${post.title}"?\n\nToàn bộ tệp đính kèm và lượt thích của bài sẽ mất theo, không khôi phục được.`)) return;
+  // Mở popup xác nhận giữa màn hình (thay window.confirm).
+  const handleDelete = (post: NewsPost) => {
+    setDeleteTarget(post);
+  };
+
+  const confirmDeletePost = async () => {
+    if (!deleteTarget) return;
+    const post = deleteTarget;
     try {
+      setDeletingPost(true);
       const { data: atts } = await supabase.from("news_attachments").select("path").eq("post_id", post.id);
       const { error: delErr } = await supabase.from("news_posts").delete().eq("id", post.id);
       if (delErr) throw delErr;
       await removeNewsFiles([...(atts || []).map((a) => a.path as string), post.cover_path]);
+      setDeleteTarget(null);
       load();
     } catch (err: unknown) {
       setError(`Không xoá được bài viết: ${errMessage(err)}`);
+    } finally {
+      setDeletingPost(false);
     }
   };
 
@@ -284,6 +300,63 @@ export default function NewsPage() {
           onClose={() => setEditorOpen(false)}
           onSaved={load}
         />
+      )}
+
+      {/* Popup xác nhận xoá bài — thay window.confirm, hiện giữa màn hình */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4"
+          onClick={() => !deletingPost && setDeleteTarget(null)}
+        >
+          <div
+            className="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-rose-600 text-white px-6 py-4 flex items-center justify-between gap-3">
+              <h3 className="font-heading font-black text-sm flex items-center gap-2">
+                <Trash2 size={16} /> Xoá bài viết
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deletingPost}
+                className="text-white/80 hover:text-white disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-3">
+              <p className="text-xs text-slate-600 font-semibold leading-relaxed">
+                Xoá bài <b className="text-slate-800">&ldquo;{deleteTarget.title}&rdquo;</b>?
+              </p>
+              <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-semibold text-amber-700 leading-relaxed flex gap-1.5">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                Toàn bộ tệp đính kèm và lượt thích của bài sẽ mất theo, không khôi phục được.
+              </p>
+            </div>
+
+            <div className="px-6 pb-5 pt-1 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deletingPost}
+                className="px-4 py-2 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 text-xs disabled:opacity-50"
+              >
+                Huỷ
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeletePost}
+                disabled={deletingPost}
+                className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-white font-bold rounded-xl shadow-md transition-all active:scale-95 text-xs"
+              >
+                {deletingPost ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                {deletingPost ? "Đang xoá..." : "Xoá bài viết"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

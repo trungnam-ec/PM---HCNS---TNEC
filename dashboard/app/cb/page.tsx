@@ -591,6 +591,21 @@ export default function CBPage() {
   const [activeTab, setActiveTab] = useState("employee_profile");
   const [activeSubTab, setActiveSubTab] = useState("personal");
 
+  // Popup xác nhận giữa màn hình — thay window.confirm/confirm của trình duyệt.
+  // Dùng promise: gọi `await askConfirm("...")` ở đâu cần, trả true khi bấm Đồng ý.
+  const [confirmDialog, setConfirmDialog] = useState<{
+    message: string;
+    resolve: (ok: boolean) => void;
+  } | null>(null);
+  const askConfirm = (message: string) =>
+    new Promise<boolean>((resolve) => setConfirmDialog({ message, resolve }));
+  const closeConfirm = (ok: boolean) => {
+    setConfirmDialog((cur) => {
+      cur?.resolve(ok);
+      return null;
+    });
+  };
+
   // --- BENEFIT CLAIMS & HOLIDAY BONUS STATES ---
   const [benefitClaims, setBenefitClaims] = useState<any[]>([]);
   const [holidayBonusAdjustments, setHolidayBonusAdjustments] = useState<Record<string, number>>({});
@@ -1050,7 +1065,7 @@ export default function CBPage() {
   };
 
   const handleDeleteTimesheet = async (id: string, filePath: string) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa bảng công này khỏi phần mềm không?")) return;
+    if (!(await askConfirm("Bạn có chắc chắn muốn xóa bảng công này khỏi phần mềm không?"))) return;
     try {
       // Delete file from Storage
       await supabase.storage.from("attendance-files").remove([filePath]);
@@ -1868,7 +1883,7 @@ export default function CBPage() {
       return;
     }
 
-    if (!confirm(`Bạn có chắc chắn muốn gửi email chấm công cho ${readyEmps.length} nhân viên không?`)) return;
+    if (!(await askConfirm(`Bạn có chắc chắn muốn gửi email chấm công cho ${readyEmps.length} nhân viên không?`))) return;
 
     setIsSendingAllEmails(true);
 
@@ -1945,7 +1960,7 @@ export default function CBPage() {
   };
 
   const handleDeleteClaim = async (claimId: string) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa yêu cầu trợ cấp này không?")) return;
+    if (!(await askConfirm("Bạn có chắc chắn muốn xóa yêu cầu trợ cấp này không?"))) return;
     const prev = benefitClaims;
     const target = benefitClaims.find(c => c.id === claimId);
     const updatedClaims = benefitClaims.filter(c => c.id !== claimId);
@@ -1980,7 +1995,7 @@ export default function CBPage() {
     if (decision === "Từ chối") {
       reason = (prompt("Nhập lý do từ chối (bắt buộc):") || "").trim();
       if (!reason) return;
-    } else if (!confirm(`Xác nhận chuyển phiếu sang trạng thái "${decision}"?`)) {
+    } else if (!(await askConfirm(`Xác nhận chuyển phiếu sang trạng thái "${decision}"?`))) {
       return;
     }
 
@@ -2189,7 +2204,7 @@ export default function CBPage() {
       alert("Đơn nghỉ phép đã được duyệt — bạn không thể tự xóa. Vui lòng liên hệ HCNS.");
       return;
     }
-    if (!confirm("Bạn có chắc chắn muốn xóa yêu cầu nghỉ phép này không?")) return;
+    if (!(await askConfirm("Bạn có chắc chắn muốn xóa yêu cầu nghỉ phép này không?"))) return;
     try {
       // `.select()` là phần QUAN TRỌNG: RLS chặn thì Supabase trả về error = null
       // và 0 dòng, không báo lỗi gì. Không đếm lại số dòng đã xoá thì người không
@@ -2250,7 +2265,7 @@ export default function CBPage() {
   };
 
   const handleApproveAllHolidayBonuses = async () => {
-    if (!confirm("Bạn có chắc chắn muốn phê duyệt mức đề xuất cho toàn bộ nhân sự chưa được duyệt trong danh sách đang hiển thị?")) return;
+    if (!(await askConfirm("Bạn có chắc chắn muốn phê duyệt mức đề xuất cho toàn bộ nhân sự chưa được duyệt trong danh sách đang hiển thị?"))) return;
 
     const pending: { employee_id: string; employee_name?: string; amount: number }[] = [];
     const updatedAdjustments = { ...holidayBonusAdjustments };
@@ -2874,7 +2889,7 @@ export default function CBPage() {
         alert(`Không có dòng nào cần cập nhật — dữ liệu đã khớp với Excel.${unmatched.length ? `\n(${unmatched.length} mã NV trong Excel không có hợp đồng trong hệ thống)` : ""}`);
         return;
       }
-      if (!confirm(`Sẽ điền Ngày ký HĐTV (Từ/Đến) từ Excel cho ${pending.length} hợp đồng khớp Mã NV. Tiếp tục?`)) return;
+      if (!(await askConfirm(`Sẽ điền Ngày ký HĐTV (Từ/Đến) từ Excel cho ${pending.length} hợp đồng khớp Mã NV. Tiếp tục?`))) return;
 
       let updated = 0;
       const failed: string[] = [];
@@ -3084,7 +3099,7 @@ export default function CBPage() {
   const handleDeleteContractRow = async (index: number) => {
     const contract = tempContracts[index];
     
-    if (confirm(`Bạn có chắc chắn muốn xoá hợp đồng số "${contract.contract_number || 'chưa nhập'}" của ${contract.employee_name || 'chưa rõ tên'}?`)) {
+    if (await askConfirm(`Bạn có chắc chắn muốn xoá hợp đồng số "${contract.contract_number || 'chưa nhập'}" của ${contract.employee_name || 'chưa rõ tên'}?`)) {
       try {
         if (!contract.id.startsWith("new-")) {
           const { error } = await supabase.from("contracts").delete().eq("id", contract.id);
@@ -3770,7 +3785,7 @@ export default function CBPage() {
   };
 
   const handleDeleteTravel = async (idOrIndex: any) => {
-    if (!window.confirm("Bạn có chắc chắn muốn xóa lịch trình công tác này không?")) {
+    if (!(await askConfirm("Bạn có chắc chắn muốn xóa lịch trình công tác này không?"))) {
       return;
     }
     const isUuid = typeof idOrIndex === "string" && idOrIndex.length > 8;
@@ -3879,7 +3894,7 @@ export default function CBPage() {
   };
 
   const handleDeleteExplanation = async (idOrIndex: any) => {
-    if (!window.confirm("Bạn có chắc chắn muốn xóa bản ghi giải trình này không?")) {
+    if (!(await askConfirm("Bạn có chắc chắn muốn xóa bản ghi giải trình này không?"))) {
       return;
     }
     if (isUsingDbForExplanations) {
@@ -4055,7 +4070,7 @@ export default function CBPage() {
   // Supabase — không chỉ ẩn ở phía trình duyệt như nút xóa bên tab Nghỉ phép.
   const handleDeleteRegime = async (leaveId: string) => {
     if (!canDeleteRegime) return;
-    if (!window.confirm("Bạn có chắc chắn muốn xóa đơn nghỉ chế độ này không?")) return;
+    if (!(await askConfirm("Bạn có chắc chắn muốn xóa đơn nghỉ chế độ này không?"))) return;
     try {
       const { error } = await supabase
         .from("tasks")
@@ -9132,6 +9147,55 @@ export default function CBPage() {
           )}
         </main>
       </div>
+
+      {/* Popup xác nhận giữa màn hình — thay window.confirm/confirm của trình duyệt */}
+      {confirmDialog && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[300] flex items-center justify-center p-4"
+          onClick={() => closeConfirm(false)}
+        >
+          <div
+            className="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-[#005BAC] text-white px-6 py-4 flex items-center justify-between gap-3">
+              <h3 className="font-heading font-black text-sm flex items-center gap-2">
+                <AlertTriangle size={16} /> Xác nhận
+              </h3>
+              <button
+                type="button"
+                onClick={() => closeConfirm(false)}
+                className="text-white/80 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <p className="text-xs text-slate-600 font-semibold leading-relaxed whitespace-pre-line">
+                {confirmDialog.message}
+              </p>
+            </div>
+
+            <div className="px-6 pb-5 pt-1 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => closeConfirm(false)}
+                className="px-4 py-2 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 text-xs"
+              >
+                Huỷ
+              </button>
+              <button
+                type="button"
+                onClick={() => closeConfirm(true)}
+                className="flex items-center gap-1.5 px-5 py-2 bg-[#005BAC] hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition-all active:scale-95 text-xs"
+              >
+                Đồng ý
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

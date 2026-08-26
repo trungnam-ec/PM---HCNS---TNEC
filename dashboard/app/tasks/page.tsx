@@ -30,7 +30,8 @@ import {
   Users,
   Filter,
   CheckCircle2,
-  Building2
+  Building2,
+  Trash2
 } from "lucide-react";
 import TaskAttachmentField from "@/components/TaskAttachmentField";
 import {
@@ -288,6 +289,10 @@ export default function TaskManagementPage() {
   // Edit Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+
+  // Popup xác nhận xoá công việc — thay window.confirm, hiện giữa màn hình.
+  const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
+  const [deletingTask, setDeletingTask] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editAssignee, setEditAssignee] = useState("");
   const [editPriority, setEditPriority] = useState("Trung bình");
@@ -815,23 +820,32 @@ export default function TaskManagementPage() {
     }
   };
 
-  // Delete Task
-  const handleDeleteTask = async (id: string) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa công việc này?")) return;
+  // Delete Task — mở popup xác nhận giữa màn hình (thay window.confirm).
+  const handleDeleteTask = (id: string) => {
+    setDeleteTaskId(id);
+  };
+
+  const confirmDeleteTask = async () => {
+    if (!deleteTaskId) return;
+    const id = deleteTaskId;
     try {
+      setDeletingTask(true);
       const { error } = await supabase
         .from("tasks")
         .delete()
         .eq("id", id);
-      
+
       if (error) throw error;
       if (editingTask?.id === id) {
         setIsEditModalOpen(false);
         setEditingTask(null);
       }
+      setDeleteTaskId(null);
       fetchTasks();
     } catch (err) {
       console.error("Error deleting task:", err);
+    } finally {
+      setDeletingTask(false);
     }
   };
 
@@ -2491,6 +2505,60 @@ export default function TaskManagementPage() {
                   className="w-full h-[78vh] rounded-lg bg-white"
                 />
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup xác nhận xoá công việc — thay window.confirm, hiện giữa màn hình */}
+      {deleteTaskId && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[70] flex items-center justify-center p-4"
+          onClick={() => !deletingTask && setDeleteTaskId(null)}
+        >
+          <div
+            className="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-rose-600 text-white px-6 py-4 flex items-center justify-between gap-3">
+              <h3 className="font-heading font-black text-sm flex items-center gap-2">
+                <Trash2 size={16} /> Xoá công việc
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDeleteTaskId(null)}
+                disabled={deletingTask}
+                className="text-white/80 hover:text-white disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <p className="text-xs text-slate-600 font-semibold leading-relaxed">
+                Bạn có chắc chắn muốn xoá công việc này?{" "}
+                <span className="text-rose-600">Dữ liệu sẽ xoá trên hệ thống.</span>
+              </p>
+            </div>
+
+            <div className="px-6 pb-5 pt-1 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteTaskId(null)}
+                disabled={deletingTask}
+                className="px-4 py-2 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 text-xs disabled:opacity-50"
+              >
+                Huỷ
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteTask}
+                disabled={deletingTask}
+                className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-white font-bold rounded-xl shadow-md transition-all active:scale-95 text-xs"
+              >
+                {deletingTask ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                {deletingTask ? "Đang xoá..." : "Xoá công việc"}
+              </button>
             </div>
           </div>
         </div>

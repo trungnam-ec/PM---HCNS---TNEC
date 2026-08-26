@@ -10,7 +10,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { X, ShieldCheck, UserPlus, Trash2, Save, Info, Users, CalendarClock, Plus, Search } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { invalidateApproverCaches, normalizeName } from "@/lib/approvers";
-import { useNoticeBox } from "@/components/ConfirmDialog";
+import { useNoticeBox, useConfirmBox } from "@/components/ConfirmDialog";
 
 type PermissionRow = {
   id: string;
@@ -168,8 +168,9 @@ export default function UserPermissionsModal({
 }) {
   const [tab, setTab] = useState<UserPermissionsTab>(initialTab);
 
-  // Hộp thông báo căn giữa màn hình — thay window.alert của trình duyệt.
+  // Hộp thông báo / xác nhận căn giữa màn hình — thay window.alert / window.confirm.
   const { notify, noticeNode } = useNoticeBox();
+  const { ask, confirmNode } = useConfirmBox();
 
   // ─── Tab 1: cờ quyền ───
   const [rows, setRows] = useState<PermissionRow[]>([]);
@@ -395,24 +396,31 @@ export default function UserPermissionsModal({
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!selectedRow) return;
-    if (!confirm(`Thu hồi TOÀN BỘ quyền của ${selectedRow.name || selectedRow.email}?\nDòng phân quyền sẽ bị xoá khỏi bảng.`)) return;
-    try {
-      setSaving(true);
-      const { error } = await supabase
-        .from("approval_permissions")
-        .delete()
-        .eq("id", selectedRow.id);
-      if (error) throw error;
-      setSelectedId(null);
-      await fetchRows();
-    } catch (err: any) {
-      console.error("Error deleting permission row:", err);
-      notify("Không xoá được: " + (err.message || err), "error");
-    } finally {
-      setSaving(false);
-    }
+    const row = selectedRow;
+    ask({
+      title: `Thu hồi TOÀN BỘ quyền của ${row.name || row.email}?`,
+      message: "Dòng phân quyền sẽ bị xoá khỏi bảng.",
+      confirmLabel: "Thu hồi",
+      onConfirm: async () => {
+        try {
+          setSaving(true);
+          const { error } = await supabase
+            .from("approval_permissions")
+            .delete()
+            .eq("id", row.id);
+          if (error) throw error;
+          setSelectedId(null);
+          await fetchRows();
+        } catch (err: any) {
+          console.error("Error deleting permission row:", err);
+          notify("Không xoá được: " + (err.message || err), "error");
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
   // ━━━ Tab 2 handlers (nhóm duyệt riêng) ━━━
@@ -469,20 +477,25 @@ export default function UserPermissionsModal({
     }
   };
 
-  const handleDeleteGroup = async (g: GroupRow) => {
-    if (!confirm(`Xoá nhóm duyệt "${g.name}"?\nThành viên nhóm sẽ quay lại luồng duyệt thường (Trưởng phòng ban duyệt cấp 1).`)) return;
-    try {
-      setSaving(true);
-      const { error } = await supabase.from("approval_groups").delete().eq("id", g.id);
-      if (error) throw error;
-      invalidateApproverCaches();
-      await fetchGroups();
-    } catch (err: any) {
-      console.error("Error deleting approval group:", err);
-      notify("Không xoá được nhóm: " + (err.message || err), "error");
-    } finally {
-      setSaving(false);
-    }
+  const handleDeleteGroup = (g: GroupRow) => {
+    ask({
+      title: `Xoá nhóm duyệt "${g.name}"?`,
+      message: "Thành viên nhóm sẽ quay lại luồng duyệt thường (Trưởng phòng ban duyệt cấp 1).",
+      onConfirm: async () => {
+        try {
+          setSaving(true);
+          const { error } = await supabase.from("approval_groups").delete().eq("id", g.id);
+          if (error) throw error;
+          invalidateApproverCaches();
+          await fetchGroups();
+        } catch (err: any) {
+          console.error("Error deleting approval group:", err);
+          notify("Không xoá được nhóm: " + (err.message || err), "error");
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
   // ━━━ Tab 3 handlers (đặc cách nghỉ 1 ngày) ━━━
@@ -540,20 +553,24 @@ export default function UserPermissionsModal({
     }
   };
 
-  const handleDeleteException = async (e: ExceptionRow) => {
-    if (!confirm(`Xoá đặc cách "${e.approver_name} duyệt ${e.assignee_name}"?`)) return;
-    try {
-      setSaving(true);
-      const { error } = await supabase.from("leave_exceptions").delete().eq("id", e.id);
-      if (error) throw error;
-      invalidateApproverCaches();
-      await fetchExceptions();
-    } catch (err: any) {
-      console.error("Error deleting leave exception:", err);
-      notify("Không xoá được đặc cách: " + (err.message || err), "error");
-    } finally {
-      setSaving(false);
-    }
+  const handleDeleteException = (e: ExceptionRow) => {
+    ask({
+      title: `Xoá đặc cách "${e.approver_name} duyệt ${e.assignee_name}"?`,
+      onConfirm: async () => {
+        try {
+          setSaving(true);
+          const { error } = await supabase.from("leave_exceptions").delete().eq("id", e.id);
+          if (error) throw error;
+          invalidateApproverCaches();
+          await fetchExceptions();
+        } catch (err: any) {
+          console.error("Error deleting leave exception:", err);
+          notify("Không xoá được đặc cách: " + (err.message || err), "error");
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
   if (!open) return null;
@@ -1085,8 +1102,9 @@ export default function UserPermissionsModal({
         </div>
       </div>
 
-      {/* Hộp thông báo căn giữa — thay window.alert */}
+      {/* Hộp thông báo / xác nhận căn giữa — thay window.alert / window.confirm */}
       {noticeNode}
+      {confirmNode}
     </div>
   );
 }

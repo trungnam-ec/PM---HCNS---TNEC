@@ -17,6 +17,7 @@ import {
   CARRY_OVER_LAST_MONTH,
 } from "@/lib/annualLeave";
 import { isResignedRow } from "@/lib/resigned";
+import { useNoticeBox } from "@/components/ConfirmDialog";
 import {
   User,
   Clock,
@@ -609,6 +610,9 @@ export default function CBPage() {
     });
   };
 
+  // Hộp thông báo giữa màn hình — thay window.alert (dùng chung NoticeDialog).
+  const { notify, noticeNode } = useNoticeBox();
+
   // --- BENEFIT CLAIMS & HOLIDAY BONUS STATES ---
   const [benefitClaims, setBenefitClaims] = useState<any[]>([]);
   const [holidayBonusAdjustments, setHolidayBonusAdjustments] = useState<Record<string, number>>({});
@@ -633,15 +637,20 @@ export default function CBPage() {
     reason: ""
   });
 
-  // ─── Đăng ký nghỉ cho TOÀN CÔNG TY (Admin hoặc cờ Duyệt nghỉ phép) ───
-  // Ví dụ công ty cho nghỉ chính sách 1 ngày: một cú bấm tạo đơn (đã duyệt sẵn)
-  // cho mọi nhân sự đang làm việc, bỏ qua ai đã có đơn nghỉ trùng ngày.
+  // ─── Đăng ký / chỉnh phép nghỉ theo TỪNG NGƯỜI (Admin hoặc cờ Duyệt nghỉ phép) ───
+  // Bảng nhân sự (lọc theo phòng ban), tick chọn ai áp dụng, mỗi người chọn loại
+  // nghỉ riêng; đặt chung khoảng ngày. Tạo đơn đã duyệt sẵn, bỏ qua ai đã có đơn
+  // trùng ngày. Dùng cho ngày nghỉ chính sách / nghỉ bù của công ty.
   const [canBulkLeave, setCanBulkLeave] = useState(false);
   const [bulkLeaveOpen, setBulkLeaveOpen] = useState(false);
-  const [bulkLeaveType, setBulkLeaveType] = useState("Phép năm");
   const [bulkLeaveFrom, setBulkLeaveFrom] = useState(() => new Date().toISOString().split("T")[0]);
   const [bulkLeaveTo, setBulkLeaveTo] = useState(() => new Date().toISOString().split("T")[0]);
   const [bulkLeaveReason, setBulkLeaveReason] = useState("");
+  const [bulkDeptFilter, setBulkDeptFilter] = useState("all");
+  const [bulkSetAllType, setBulkSetAllType] = useState("Phép năm");
+  // Trạng thái theo từng nhân viên (key = employee id).
+  const [bulkSelected, setBulkSelected] = useState<Record<string, boolean>>({});
+  const [bulkTypeById, setBulkTypeById] = useState<Record<string, string>>({});
   const [creatingBulkLeave, setCreatingBulkLeave] = useState(false);
   const creatingBulkLeaveRef = useRef(false);
   const [claimForm, setClaimForm] = useState({
@@ -1464,7 +1473,7 @@ export default function CBPage() {
     employeeCode: string;
     name: string;
     department: string;
-    days: string[]; // tag mỗi ngày trong tháng: "x" | "CT" | "P" | "P/2" | "Ro" | ""
+    days: string[]; // tag mỗi ngày: "x" | "CT" | "GT" | "P" | "P/2" | "Ro" | "OM" | "TS" | ""
     vanPhong: number;
     phepCoLuong: number;
     congTac: number;
@@ -1560,14 +1569,26 @@ export default function CBPage() {
               return dayKey >= fromKey && dayKey <= toKey;
             });
             if (approvedLeave) {
-              const isUnpaid = normalizeText(approvedLeave.type || "").includes("khong luong");
-              if (isUnpaid) {
+              const t = normalizeText(approvedLeave.type || "");
+              // "Làm online" KHÔNG phải nghỉ mà là ĐI LÀM từ xa -> tính đủ công như
+              // ngày văn phòng, chỉ khác ký hiệu "OL" để nhận ra trên bảng.
+              if (t.includes("online")) {
+                tag = "OL";
+                vanPhong += 1;
+              // BHXH trả lương, công ty KHÔNG trả -> không cộng vào ngày công.
+              // Thai sản (TS) và ốm chế độ BHXH (OM) chỉ hiện ký hiệu trên bảng công.
+              } else if (t.includes("thai san")) {
+                tag = "TS";
+              } else if (t.includes("bhxh") || t.includes("om che do")) {
+                tag = "OM";
+              } else if (t.includes("khong luong")) {
                 tag = "Ro";
                 nghiKhongLuong += 1;
               } else if (approvedLeave.days === 0.5) {
                 tag = "P/2";
                 phepCoLuong += 0.5;
               } else {
+                // Phép năm, phép tang, kết hôn, nghỉ bù... đều cty trả lương -> tính công.
                 tag = "P";
                 phepCoLuong += 1;
               }
@@ -1753,6 +1774,10 @@ export default function CBPage() {
             cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFBBF7D0" } };
           } else if (tag === "Ro") {
             cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF08A" } };
+          } else if (tag === "OM" || tag === "TS") {
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDDD6FE" } };
+          } else if (tag === "OL") {
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF99F6E4" } };
           }
         });
         sheet.getCell(r, fixedCols + daysInMonth + 1).value = row.vanPhong;
@@ -1785,11 +1810,14 @@ export default function CBPage() {
     r += 1;
     const legendItems: [string, string, string?][] = [
       ["x, x/2", "Đi làm", undefined],
+      ["OL", "Làm online thứ 7 (tính đủ công)", "FF99F6E4"],
       ["CT", "Công tác (đã duyệt)", "FFBFDBFE"],
       ["GT", "Giải trình chấm công (đã duyệt)", "FFFDBA74"],
-      ["P", "Nghỉ phép hưởng lương", "FFBBF7D0"],
+      ["P", "Nghỉ phép hưởng lương (phép năm, tang, kết hôn, nghỉ bù)", "FFBBF7D0"],
       ["P/2", "Phép nửa ngày", "FFBBF7D0"],
-      ["Ro", "Nghỉ không lương", "FFFEF08A"],
+      ["OM", "Nghỉ ốm chế độ BHXH (BHXH trả, cty không tính công)", "FFDDD6FE"],
+      ["TS", "Nghỉ thai sản (BHXH trả, cty không tính công)", "FFDDD6FE"],
+      ["Ro", "Nghỉ không hưởng lương", "FFFEF08A"],
       ["(ô xám)", "Chủ nhật / không có dữ liệu chấm công", "FFD1D5DB"]
     ];
     legendItems.forEach(([code, label, color], i) => {
@@ -2203,7 +2231,7 @@ export default function CBPage() {
     }
   };
 
-  // ─── Đăng ký nghỉ cho TOÀN CÔNG TY ───
+  // ─── Đăng ký / chỉnh phép nghỉ theo từng người ───
   // Số ngày của đợt nghỉ (Từ → Đến, tính cả hai đầu).
   const bulkLeaveDuration = useMemo(() => {
     const d1 = new Date(bulkLeaveFrom);
@@ -2213,27 +2241,115 @@ export default function CBPage() {
     return Math.round(diff / (1000 * 60 * 60 * 24)) + 1;
   }, [bulkLeaveFrom, bulkLeaveTo]);
 
-  // Nhân sự sẽ được tạo đơn: đang làm việc (bỏ "NV Nghỉ việc") và CHƯA có đơn
-  // nghỉ nào (đã duyệt hoặc đang chờ) trùng khoảng ngày này — tránh đơn trùng làm
-  // trừ quota hai lần.
-  const bulkLeaveTargets = useMemo(() => {
-    if (bulkLeaveDuration <= 0) return [] as Employee[];
-    const overlaps = (name: string) =>
-      leaves.some(
-        (l) =>
-          l.name === name &&
-          l.status !== "Từ chối" &&
-          String(l.from) <= bulkLeaveTo &&
-          String(l.to) >= bulkLeaveFrom
-      );
-    return employees.filter((e) => !isResignedRow(e) && !overlaps(e.name));
-  }, [employees, leaves, bulkLeaveFrom, bulkLeaveTo, bulkLeaveDuration]);
+  // Khoá loại nghỉ (nội bộ) -> chuỗi label ghi vào title/notes. parseLeaveTask và
+  // computeLeaveQuota đọc lại chuỗi này, còn bảng công dò để ra ký hiệu ngày.
+  // LƯU Ý: label KHÔNG được chứa dấu ngoặc "()" — regex đọc số ngày sẽ vỡ.
+  //  • CHỈ "Phép năm" TRỪ vào hạn mức phép năm.
+  //  • Phép năm / Tang / Kết hôn / Nghỉ bù: cty trả lương -> bảng công "P".
+  //  • Ốm BHXH / Thai sản: BHXH trả, cty KHÔNG trả -> bảng công "OM" / "TS",
+  //    không tính vào ngày công.
+  //  • Không lương: bảng công "Ro".
+  const bulkTypeLabel = (type: string) =>
+    type === "Phép năm"
+      ? "Nghỉ phép năm hưởng lương"
+      : type === "Làm online"
+      ? "Làm online thứ 7"
+      : type === "Ốm BHXH"
+      ? "Nghỉ ốm chế độ BHXH"
+      : type === "Thai sản"
+      ? "Nghỉ thai sản"
+      : type === "Tang"
+      ? "Nghỉ phép tang"
+      : type === "Kết hôn"
+      ? "Nghỉ kết hôn"
+      : type === "Nghỉ bù"
+      ? "Nghỉ bù hưởng lương"
+      : type === "Không lương"
+      ? "Nghỉ không hưởng lương"
+      : "Nghỉ phép năm hưởng lương";
 
-  // Số người bị bỏ qua vì đã có đơn trùng ngày (để báo cho người bấm biết).
-  const bulkLeaveSkipped = useMemo(() => {
-    const active = employees.filter((e) => !isResignedRow(e));
-    return active.length - bulkLeaveTargets.length;
-  }, [employees, bulkLeaveTargets]);
+  // Danh sách phòng ban để lọc = ĐẦY ĐỦ danh mục phòng ban + BĐH theo module gốc
+  // (bảng departments qua useDepartments), kể cả BĐH chưa có nhân sự nào — lỡ sau
+  // này có người thì khỏi chỉnh lại. Thêm phần bù: phòng ban lạ đang gắn trên nhân
+  // sự mà chưa có trong danh mục, để không ai bị ẩn khỏi bộ lọc.
+  const bulkDeptOptions = useMemo(() => {
+    const set = new Set<string>();
+    deptLists.all.forEach((d) => set.add(d));
+    employees.filter((e) => !isResignedRow(e)).forEach((e) => e.department && set.add(e.department));
+    return Array.from(set);
+  }, [deptLists, employees]);
+
+  // Tên nhân sự đã có đơn nghỉ (đã duyệt / đang chờ) trùng khoảng ngày -> chặn tạo trùng.
+  const bulkOverlapNames = useMemo(() => {
+    if (bulkLeaveDuration <= 0) return new Set<string>();
+    const s = new Set<string>();
+    leaves.forEach((l) => {
+      if (l.status !== "Từ chối" && String(l.from) <= bulkLeaveTo && String(l.to) >= bulkLeaveFrom) {
+        s.add(l.name);
+      }
+    });
+    return s;
+  }, [leaves, bulkLeaveFrom, bulkLeaveTo, bulkLeaveDuration]);
+
+  // Nhân sự hiện trong bảng: đang làm việc + đúng bộ lọc phòng ban.
+  const bulkVisibleEmployees = useMemo(() => {
+    return employees
+      .filter((e) => !isResignedRow(e))
+      .filter((e) => bulkDeptFilter === "all" || e.department === bulkDeptFilter);
+  }, [employees, bulkDeptFilter]);
+
+  // Số người đang được chọn thực sự (bỏ người trùng ngày).
+  const bulkChosenCount = useMemo(
+    () =>
+      employees.filter(
+        (e) => !isResignedRow(e) && bulkSelected[e.id] && !bulkOverlapNames.has(e.name)
+      ).length,
+    [employees, bulkSelected, bulkOverlapNames]
+  );
+
+  // Mở bảng: dựng sẵn trạng thái từng người. Ai còn 0 phép năm thì gợi ý sẵn
+  // "Nghỉ bù" (có lương, không trừ phép) — đúng cái vướng của nhân sự chưa có phép.
+  const openBulkLeave = () => {
+    const today = new Date().toISOString().split("T")[0];
+    setBulkLeaveFrom(today);
+    setBulkLeaveTo(today);
+    setBulkLeaveReason("");
+    setBulkDeptFilter("all");
+    setBulkSetAllType("Phép năm");
+    const sel: Record<string, boolean> = {};
+    const types: Record<string, string> = {};
+    employees
+      .filter((e) => !isResignedRow(e))
+      .forEach((e) => {
+        sel[e.id] = true;
+        const q = annualLeaveData.find((d) => d.id === e.id);
+        types[e.id] = q && !q.isConcurrent && q.remainingLeave > 0 ? "Phép năm" : "Nghỉ bù";
+      });
+    setBulkSelected(sel);
+    setBulkTypeById(types);
+    setBulkLeaveOpen(true);
+  };
+
+  // Đặt 1 loại nghỉ cho TẤT CẢ người đang hiện trong bảng (theo bộ lọc phòng ban).
+  const applyBulkTypeToVisible = () => {
+    setBulkTypeById((prev) => {
+      const next = { ...prev };
+      bulkVisibleEmployees.forEach((e) => {
+        next[e.id] = bulkSetAllType;
+      });
+      return next;
+    });
+  };
+
+  const setAllVisibleSelected = (value: boolean) => {
+    setBulkSelected((prev) => {
+      const next = { ...prev };
+      bulkVisibleEmployees.forEach((e) => {
+        next[e.id] = value;
+      });
+      return next;
+    });
+  };
 
   const handleCreateBulkLeave = async () => {
     if (creatingBulkLeaveRef.current) return;
@@ -2241,41 +2357,38 @@ export default function CBPage() {
       alert("Từ ngày không thể lớn hơn Đến ngày!");
       return;
     }
-    if (bulkLeaveTargets.length === 0) {
-      alert("Không có nhân sự nào để đăng ký (mọi người đã có đơn trùng ngày hoặc đã nghỉ việc).");
+    // Người thực sự tạo đơn: đang làm việc, được tick, và chưa có đơn trùng ngày.
+    const targets = employees.filter(
+      (e) => !isResignedRow(e) && bulkSelected[e.id] && !bulkOverlapNames.has(e.name)
+    );
+    if (targets.length === 0) {
+      alert("Chưa chọn nhân sự hợp lệ nào (bỏ tick hết hoặc mọi người đã có đơn trùng ngày).");
       return;
     }
-    const typeLabel =
-      bulkLeaveType === "Phép năm"
-        ? "Nghỉ phép năm hưởng lương"
-        : bulkLeaveType === "Nghỉ không lương"
-        ? "Nghỉ việc riêng không hưởng lương"
-        : "Nghỉ việc riêng hưởng nguyên lương";
 
+    const annualCount = targets.filter((e) => (bulkTypeById[e.id] || "Phép năm") === "Phép năm").length;
     const ok = await askConfirm(
-      `Đăng ký "${typeLabel}" từ ${bulkLeaveFrom} đến ${bulkLeaveTo} (${bulkLeaveDuration} ngày) ` +
-        `cho ${bulkLeaveTargets.length} nhân sự đang làm việc?` +
-        (bulkLeaveSkipped > 0 ? `\nBỏ qua ${bulkLeaveSkipped} người đã có đơn trùng ngày.` : "") +
-        (bulkLeaveType === "Phép năm"
-          ? `\n\nLưu ý: sẽ trừ vào phép năm của từng người (cộng vào "Đã nghỉ").`
-          : "") +
+      `Tạo đơn nghỉ ${bulkLeaveDuration} ngày (${bulkLeaveFrom} → ${bulkLeaveTo}) cho ${targets.length} nhân sự?` +
+        (annualCount > 0 ? `\n\n${annualCount} người dùng loại "Phép năm" — sẽ trừ vào phép năm của họ.` : "") +
         `\n\nĐơn tạo ở trạng thái ĐÃ DUYỆT, không gửi email.`
     );
     if (!ok) return;
 
-    // Đơn nghỉ phép mỗi người là MỘT DÒNG trong `tasks`, đúng khuôn parseLeaveTask.
-    // Đăng ký toàn công ty là chính sách -> vào thẳng trạng thái đã duyệt.
-    const rows = bulkLeaveTargets.map((emp) => ({
-      title: `Nghỉ phép (${typeLabel}): ${emp.name} (${bulkLeaveDuration} ngày)`,
-      assignee: emp.name,
-      start_date: bulkLeaveFrom,
-      due_date: bulkLeaveTo,
-      priority: "Thấp",
-      progress: 100,
-      status: "completed",
-      notes: `Loại nghỉ phép: ${typeLabel}.${bulkLeaveReason ? ` Lý do: ${bulkLeaveReason}` : ""} (Đăng ký nghỉ toàn công ty: ${currentUser?.name || "—"})`,
-      approval_stage: "approved",
-    }));
+    // Mỗi người MỘT DÒNG trong `tasks`, đúng khuôn parseLeaveTask, đã duyệt sẵn.
+    const rows = targets.map((emp) => {
+      const label = bulkTypeLabel(bulkTypeById[emp.id] || "Phép năm");
+      return {
+        title: `Nghỉ phép (${label}): ${emp.name} (${bulkLeaveDuration} ngày)`,
+        assignee: emp.name,
+        start_date: bulkLeaveFrom,
+        due_date: bulkLeaveTo,
+        priority: "Thấp",
+        progress: 100,
+        status: "completed",
+        notes: `Loại nghỉ phép: ${label}.${bulkLeaveReason ? ` Lý do: ${bulkLeaveReason}` : ""} (HCNS đăng ký hàng loạt: ${currentUser?.name || "—"})`,
+        approval_stage: "approved",
+      };
+    });
 
     creatingBulkLeaveRef.current = true;
     setCreatingBulkLeave(true);
@@ -2284,11 +2397,10 @@ export default function CBPage() {
       if (error) throw error;
       await fetchLeavesFromSupabase();
       setBulkLeaveOpen(false);
-      setBulkLeaveReason("");
-      alert(`Đã đăng ký nghỉ cho ${rows.length} nhân sự.`);
+      alert(`Đã tạo đơn nghỉ cho ${rows.length} nhân sự.`);
     } catch (err: any) {
       console.error("Error creating bulk leave:", err);
-      alert("Không đăng ký được nghỉ hàng loạt: " + (err.message || "Lỗi không xác định"));
+      alert("Không tạo được đơn nghỉ: " + (err.message || "Lỗi không xác định"));
     } finally {
       creatingBulkLeaveRef.current = false;
       setCreatingBulkLeave(false);
@@ -5724,7 +5836,7 @@ export default function CBPage() {
                                                 setExcelFileName(file.file_name);
                                                 // Clear current file object as we are loading from db
                                                 setCurrentFileObject(null);
-                                                alert(`Đã tải dữ liệu bảng công Tháng ${file.month} từ cơ sở dữ liệu!`);
+                                                notify(`Đã tải dữ liệu bảng công Tháng ${file.month} từ cơ sở dữ liệu!`, "success");
                                               }}
                                               className="p-1 text-slate-500 hover:text-[#005BAC] hover:bg-blue-50 rounded transition-all cursor-pointer"
                                               title="Xem dữ liệu bảng công"
@@ -6117,18 +6229,11 @@ export default function CBPage() {
                       {canBulkLeave && (
                         <button
                           type="button"
-                          onClick={() => {
-                            const today = new Date().toISOString().split("T")[0];
-                            setBulkLeaveType("Phép năm");
-                            setBulkLeaveFrom(today);
-                            setBulkLeaveTo(today);
-                            setBulkLeaveReason("");
-                            setBulkLeaveOpen(true);
-                          }}
-                          title="Tạo đơn nghỉ (đã duyệt) cho toàn bộ nhân sự đang làm việc"
+                          onClick={openBulkLeave}
+                          title="Tạo đơn nghỉ (đã duyệt) theo từng người / phòng ban, chọn loại nghỉ riêng"
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg cursor-pointer text-[10px] transition-all shadow-md shadow-amber-500/10 active:scale-95 shrink-0"
                         >
-                          <Users size={12} /> Đăng ký nghỉ toàn công ty
+                          <Users size={12} /> Đăng ký nghỉ hàng loạt
                         </button>
                       )}
 
@@ -6377,19 +6482,19 @@ export default function CBPage() {
                     </div>
                   )}
 
-                  {/* ─── MODAL ĐĂNG KÝ NGHỈ CHO TOÀN CÔNG TY ─── */}
+                  {/* ─── MODAL ĐĂNG KÝ / CHỈNH PHÉP NGHỈ THEO TỪNG NGƯỜI ─── */}
                   {bulkLeaveOpen && (
                     <div
                       className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in"
                       onClick={() => !creatingBulkLeave && setBulkLeaveOpen(false)}
                     >
                       <div
-                        className="bg-white w-full max-w-lg rounded-2xl shadow-premium border border-slate-100 overflow-hidden animate-scale-up"
+                        className="bg-white w-full max-w-3xl rounded-2xl shadow-premium border border-slate-100 overflow-hidden animate-scale-up flex flex-col max-h-[92vh]"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-amber-500 text-white">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-amber-500 text-white shrink-0">
                           <h3 className="font-heading font-black text-sm flex items-center gap-2">
-                            <Users size={16} /> Đăng ký nghỉ cho toàn công ty
+                            <Users size={16} /> Đăng ký nghỉ hàng loạt — chọn loại phép theo từng người
                           </h3>
                           <button
                             type="button"
@@ -6401,30 +6506,10 @@ export default function CBPage() {
                           </button>
                         </div>
 
-                        <div className="p-6 space-y-4 text-xs font-semibold text-slate-700">
-                          <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-semibold text-amber-800 leading-relaxed flex gap-1.5">
-                            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                            Tạo đơn nghỉ (đã duyệt sẵn, không cần cấp quản lý duyệt, không gửi email)
-                            cho <b>toàn bộ nhân sự đang làm việc</b>. Dùng cho ngày nghỉ theo chính sách công ty.
-                          </p>
-
-                          {/* Loại nghỉ */}
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Loại nghỉ phép</label>
-                            <select
-                              value={bulkLeaveType}
-                              onChange={(e) => setBulkLeaveType(e.target.value)}
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-all cursor-pointer"
-                            >
-                              <option value="Việc riêng">Hưởng nguyên lương (Không trừ phép năm)</option>
-                              <option value="Phép năm">Nghỉ phép năm (Trừ vào phép năm từng người)</option>
-                              <option value="Nghỉ không lương">Nghỉ không hưởng lương (Không trừ phép năm)</option>
-                            </select>
-                          </div>
-
-                          {/* Thời gian */}
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
+                        {/* Thanh cấu hình chung */}
+                        <div className="p-5 space-y-3 text-xs font-semibold text-slate-700 border-b border-slate-100 shrink-0">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="space-y-1">
                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Từ ngày</label>
                               <input
                                 type="date"
@@ -6433,7 +6518,7 @@ export default function CBPage() {
                                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-all"
                               />
                             </div>
-                            <div className="space-y-1.5">
+                            <div className="space-y-1">
                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Đến ngày</label>
                               <input
                                 type="date"
@@ -6442,52 +6527,143 @@ export default function CBPage() {
                                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-all"
                               />
                             </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Lọc phòng ban</label>
+                              <select
+                                value={bulkDeptFilter}
+                                onChange={(e) => setBulkDeptFilter(e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-all cursor-pointer"
+                              >
+                                <option value="all">Tất cả phòng ban</option>
+                                {bulkDeptOptions.map((d) => (
+                                  <option key={d} value={d}>{d}</option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
 
-                          {/* Lý do */}
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Lý do (gắn vào mọi đơn)</label>
+                          <div className="flex flex-wrap items-center gap-2">
                             <input
                               value={bulkLeaveReason}
                               onChange={(e) => setBulkLeaveReason(e.target.value)}
-                              placeholder="VD: Công ty cho nghỉ lễ 31/10"
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-all"
+                              placeholder="Lý do gắn vào mọi đơn (VD: Công ty cho nghỉ lễ 31/10)"
+                              className="flex-1 min-w-[180px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-all"
                             />
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                value={bulkSetAllType}
+                                onChange={(e) => setBulkSetAllType(e.target.value)}
+                                className="px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-500 cursor-pointer text-[11px]"
+                              >
+                                <option value="Phép năm">Nghỉ phép năm (trừ phép)</option>
+                                <option value="Ốm BHXH">Nghỉ ốm chế độ BHXH</option>
+                                <option value="Thai sản">Nghỉ thai sản</option>
+                                <option value="Tang">Nghỉ phép tang</option>
+                                <option value="Kết hôn">Nghỉ kết hôn</option>
+                                <option value="Nghỉ bù">Nghỉ bù</option>
+                                <option value="Không lương">Nghỉ không hưởng lương</option>
+                                <option value="Làm online">Làm online thứ 7</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={applyBulkTypeToVisible}
+                                className="px-3 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-xl text-[11px] font-bold cursor-pointer whitespace-nowrap"
+                              >
+                                Áp cho DS đang hiện
+                              </button>
+                            </div>
                           </div>
 
-                          {/* Tóm tắt số người */}
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] font-semibold text-slate-600 leading-relaxed">
-                            {bulkLeaveDuration <= 0 ? (
-                              <span className="text-rose-600">Khoảng ngày chưa hợp lệ (Đến ngày phải ≥ Từ ngày).</span>
-                            ) : (
-                              <>
-                                Sẽ tạo đơn <b className="text-slate-800">{bulkLeaveDuration} ngày</b> cho{" "}
-                                <b className="text-amber-700">{bulkLeaveTargets.length} nhân sự</b> đang làm việc.
-                                {bulkLeaveSkipped > 0 && (
-                                  <> Bỏ qua <b>{bulkLeaveSkipped}</b> người đã có đơn nghỉ trùng ngày.</>
-                                )}
-                              </>
-                            )}
+                          <div className="flex items-center gap-3 text-[11px]">
+                            <button type="button" onClick={() => setAllVisibleSelected(true)} className="text-amber-700 hover:underline font-bold cursor-pointer">Chọn tất cả</button>
+                            <button type="button" onClick={() => setAllVisibleSelected(false)} className="text-slate-500 hover:underline font-bold cursor-pointer">Bỏ chọn tất cả</button>
+                            <span className="ml-auto text-slate-500">Đang chọn: <b className="text-amber-700">{bulkChosenCount}</b> người · {bulkLeaveDuration > 0 ? <b>{bulkLeaveDuration} ngày</b> : <span className="text-rose-600">ngày chưa hợp lệ</span>}</span>
                           </div>
                         </div>
 
-                        <div className="px-6 pb-5 pt-1 flex items-center justify-end gap-2">
+                        {/* Bảng nhân sự */}
+                        <div className="flex-1 overflow-y-auto">
+                          <table className="w-full text-xs text-left border-collapse">
+                            <thead className="sticky top-0 bg-slate-50 z-10">
+                              <tr className="border-b border-slate-200 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
+                                <th className="py-2.5 px-4 w-10"></th>
+                                <th className="py-2.5 px-3">Nhân viên</th>
+                                <th className="py-2.5 px-3">Phòng ban</th>
+                                <th className="py-2.5 px-3 text-center w-24">Phép còn lại</th>
+                                <th className="py-2.5 px-3 w-56">Loại nghỉ</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                              {bulkVisibleEmployees.length === 0 ? (
+                                <tr><td colSpan={5} className="py-8 text-center text-slate-400">Không có nhân sự trong bộ lọc này.</td></tr>
+                              ) : bulkVisibleEmployees.map((e) => {
+                                const q = annualLeaveData.find((d) => d.id === e.id);
+                                const overlap = bulkOverlapNames.has(e.name);
+                                const checked = !!bulkSelected[e.id] && !overlap;
+                                return (
+                                  <tr key={e.id} className={overlap ? "bg-slate-50/60 opacity-60" : "hover:bg-amber-50/30"}>
+                                    <td className="py-2.5 px-4">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        disabled={overlap}
+                                        onChange={(ev) => setBulkSelected((prev) => ({ ...prev, [e.id]: ev.target.checked }))}
+                                        className="w-4 h-4 accent-amber-500 cursor-pointer disabled:cursor-not-allowed"
+                                      />
+                                    </td>
+                                    <td className="py-2.5 px-3 font-bold text-slate-800">
+                                      {e.name}
+                                      {overlap && <span className="ml-2 text-[9px] font-black text-rose-500 uppercase">đã có đơn trùng ngày</span>}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-slate-500">{e.department}</td>
+                                    <td className="py-2.5 px-3 text-center">
+                                      {q?.isConcurrent ? (
+                                        <span className="text-slate-300">—</span>
+                                      ) : (
+                                        <span className={`font-bold ${(q?.remainingLeave ?? 0) > 0 ? "text-indigo-600" : "text-rose-500"}`}>{q?.remainingLeave ?? 0} ngày</span>
+                                      )}
+                                    </td>
+                                    <td className="py-2.5 px-3">
+                                      <select
+                                        value={bulkTypeById[e.id] || "Phép năm"}
+                                        disabled={overlap}
+                                        onChange={(ev) => setBulkTypeById((prev) => ({ ...prev, [e.id]: ev.target.value }))}
+                                        className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg outline-none focus:border-amber-500 cursor-pointer text-[11px] disabled:opacity-50 disabled:cursor-not-allowed"
+                                      >
+                                        <option value="Phép năm">Nghỉ phép năm (trừ phép, có lương)</option>
+                                        <option value="Ốm BHXH">Nghỉ ốm chế độ BHXH (BHXH trả)</option>
+                                        <option value="Thai sản">Nghỉ thai sản (BHXH trả)</option>
+                                        <option value="Tang">Nghỉ phép tang (có lương)</option>
+                                        <option value="Kết hôn">Nghỉ kết hôn (có lương)</option>
+                                        <option value="Nghỉ bù">Nghỉ bù (có lương, không trừ)</option>
+                                        <option value="Không lương">Nghỉ không hưởng lương</option>
+                                        <option value="Làm online">Làm online thứ 7 (tính đủ công)</option>
+                                      </select>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-2 bg-slate-50/60 shrink-0">
                           <button
                             type="button"
                             onClick={() => setBulkLeaveOpen(false)}
                             disabled={creatingBulkLeave}
-                            className="px-4 py-2 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 text-xs disabled:opacity-50 cursor-pointer"
+                            className="px-4 py-2 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-white text-xs disabled:opacity-50 cursor-pointer"
                           >
                             Huỷ
                           </button>
                           <button
                             type="button"
                             onClick={handleCreateBulkLeave}
-                            disabled={creatingBulkLeave || bulkLeaveDuration <= 0 || bulkLeaveTargets.length === 0}
+                            disabled={creatingBulkLeave || bulkLeaveDuration <= 0 || bulkChosenCount === 0}
                             className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-bold rounded-xl shadow-md transition-all active:scale-95 text-xs cursor-pointer disabled:cursor-not-allowed"
                           >
                             {creatingBulkLeave ? <Loader2 size={13} className="animate-spin" /> : <Users size={13} />}
-                            {creatingBulkLeave ? "Đang tạo đơn..." : `Đăng ký cho ${bulkLeaveTargets.length} người`}
+                            {creatingBulkLeave ? "Đang tạo đơn..." : `Tạo đơn cho ${bulkChosenCount} người`}
                           </button>
                         </div>
                       </div>
@@ -9156,7 +9332,7 @@ export default function CBPage() {
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-[#005BAC] text-white shrink-0">
                   <div>
                     <h3 className="font-heading font-black text-sm">Bảng tổng hợp ngày công trong tháng {timesheetMonth}</h3>
-                    <p className="text-white/80 text-[10px] font-bold mt-0.5">x = Đi làm · x/2 = Làm nửa ngày · CT = Công tác · GT = Giải trình chấm công (đã duyệt) · P = Phép · P/2 = Phép nửa ngày · Ro = Nghỉ không lương</p>
+                    <p className="text-white/80 text-[10px] font-bold mt-0.5">x = Đi làm · x/2 = Làm nửa ngày · OL = Làm online thứ 7 · CT = Công tác · GT = Giải trình chấm công (đã duyệt) · P = Phép hưởng lương (phép năm, tang, kết hôn, nghỉ bù) · P/2 = Phép nửa ngày · OM = Ốm chế độ BHXH · TS = Thai sản · Ro = Nghỉ không lương</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <select
@@ -9222,6 +9398,8 @@ export default function CBPage() {
                                 tag === "CT" ? "bg-blue-50 text-blue-700" :
                                 tag === "GT" ? "bg-orange-100 text-orange-700" :
                                 tag === "P" || tag === "P/2" ? "bg-emerald-50 text-emerald-700" :
+                                tag === "OM" || tag === "TS" ? "bg-violet-50 text-violet-700" :
+                                tag === "OL" ? "bg-teal-50 text-teal-700" :
                                 tag === "Ro" ? "bg-amber-50 text-amber-700" : ""
                               }`}>{tag}</td>
                             );
@@ -9480,6 +9658,9 @@ export default function CBPage() {
           )}
         </main>
       </div>
+
+      {/* Hộp thông báo giữa màn hình — thay window.alert */}
+      {noticeNode}
 
       {/* Popup xác nhận giữa màn hình — thay window.confirm/confirm của trình duyệt */}
       {confirmDialog && (

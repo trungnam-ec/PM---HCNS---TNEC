@@ -1822,13 +1822,16 @@ ${cap1Approver ? `Người duyệt: ${cap1Approver}` : ""}
                   onChange={(e) => setLeaveType(e.target.value)}
                   className="w-full border border-slate-200 rounded-xl p-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white font-semibold text-slate-800 text-xs cursor-pointer"
                 >
-                  <option value="Nghỉ phép năm hưởng lương">Nghỉ phép năm hưởng lương</option>
-                  <option value="Nghỉ việc riêng không hưởng lương">Nghỉ việc riêng không hưởng lương</option>
-                  <option value="Nghỉ việc riêng hưởng nguyên lương">Nghỉ việc riêng hưởng nguyên lương (Hiếu hỷ...)</option>
-                  <option value="Nghỉ ốm đau hưởng BHXH">Nghỉ ốm đau hưởng BHXH</option>
-                  <option value="Nghỉ thai sản hưởng BHXH">Nghỉ thai sản hưởng BHXH</option>
-                  <option value="Nghỉ tai nạn lao động hưởng BHXH">Nghỉ tai nạn lao động hưởng BHXH</option>
-                  <option value="Nghỉ chế độ khác">Nghỉ chế độ khác</option>
+                  {/* Đồng bộ với popup "Đăng ký nghỉ hàng loạt" bên C&B. Chuỗi value
+                      chính là nhãn ghi vào title -> bảng công & hạn mức phép đọc lại,
+                      nên phải giữ đúng khuôn. CHỈ "Nghỉ phép năm hưởng lương" trừ phép. */}
+                  <option value="Nghỉ phép năm hưởng lương">Nghỉ phép năm (trừ phép, có lương)</option>
+                  <option value="Nghỉ ốm chế độ BHXH">Nghỉ ốm chế độ BHXH</option>
+                  <option value="Nghỉ thai sản">Nghỉ thai sản</option>
+                  <option value="Nghỉ phép tang">Nghỉ phép tang (có lương)</option>
+                  <option value="Nghỉ kết hôn">Nghỉ kết hôn (có lương)</option>
+                  <option value="Nghỉ bù hưởng lương">Nghỉ bù (có lương, không trừ)</option>
+                  <option value="Nghỉ không hưởng lương">Nghỉ không hưởng lương</option>
                 </select>
               </div>
 

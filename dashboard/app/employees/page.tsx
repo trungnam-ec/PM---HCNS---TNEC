@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { useDepartments } from "@/lib/departments";
 import { useTenantConfig, invalidateTenantConfig } from "@/lib/tenantConfig";
+import { useNoticeBox, useConfirmBox } from "@/components/ConfirmDialog";
 import {
   Search,
   Plus,
@@ -75,6 +76,10 @@ export default function EmployeeManagementPage() {
   // Popup xác nhận xoá nhân viên — thay window.confirm, hiện giữa màn hình.
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deletingEmp, setDeletingEmp] = useState(false);
+
+  // Hộp thông báo / xác nhận căn giữa màn hình — thay window.alert / window.confirm.
+  const { notify, noticeNode } = useNoticeBox();
+  const { ask, confirmNode } = useConfirmBox();
   
   // New Employee Form State
   const [newName, setNewName] = useState("");
@@ -731,9 +736,16 @@ export default function EmployeeManagementPage() {
   // cột can_manage_employees trong bảng approval_permissions — không sửa code.
   const canUploadEmployeeList = isOnlyAdmin;
 
-  const handleRestoreAccess = async (emp: Employee) => {
-    if (!confirm(`Mở lại quyền truy cập hệ thống cho "${emp.name}"?\n\nTrạng thái sẽ được đổi từ "NV Nghỉ việc" về "Chính thức", tài khoản Google của họ sẽ đăng nhập được ngay lập tức.`)) return;
-    await handleUpdateEmployeeField(emp.id, "status", "Chính thức");
+  const handleRestoreAccess = (emp: Employee) => {
+    ask({
+      title: `Mở lại quyền truy cập hệ thống cho "${emp.name}"?`,
+      message: `Trạng thái sẽ được đổi từ "NV Nghỉ việc" về "Chính thức", tài khoản Google của họ sẽ đăng nhập được ngay lập tức.`,
+      tone: "normal",
+      confirmLabel: "Mở lại",
+      onConfirm: () => {
+        handleUpdateEmployeeField(emp.id, "status", "Chính thức");
+      },
+    });
   };
 
   const handleOpenHandoverModal = (emp: Employee) => {
@@ -749,12 +761,12 @@ export default function EmployeeManagementPage() {
     setShowHandoverModal(true);
   };
 
-  const handleExecuteHandover = async () => {
+  const handleExecuteHandover = () => {
     if (!selectedEmployeeToHandover) return;
 
     if (transferTasks || transferPermissions) {
       if (!targetEmployeeId) {
-        alert("Vui lòng chọn nhân sự tiếp nhận bàn giao!");
+        notify("Vui lòng chọn nhân sự tiếp nhận bàn giao!", "warn");
         return;
       }
     }
@@ -766,17 +778,30 @@ export default function EmployeeManagementPage() {
     const newName = targetEmp ? targetEmp.name.trim() : "";
     const newEmail = targetEmp ? (targetEmp.email || "").trim().toLowerCase() : "";
 
-    const confirmMsg = `XÁC NHẬN BÀN GIAO & KHÓA TÀI KHOẢN:\n\n` +
+    const confirmMsg =
       `• Nhân sự nghỉ việc: ${oldName} (${oldEmail || "Không có email"})\n` +
       `• Nhân sự tiếp nhận: ${newName ? `${newName} (${newEmail})` : "Không chọn"}\n\n` +
       `Các hành động sẽ được xử lý tự động:\n` +
       `${transferPermissions ? "1. Chuyển toàn bộ quyền duyệt (xe, phòng họp, nghỉ phép, công tác) sang email mới.\n" : ""}` +
       `${transferTasks ? "2. Chuyển tất cả Task công việc dở dang sang nhân sự mới.\n" : ""}` +
-      `${lockAccount ? "3. Cập nhật trạng thái 'NV Nghỉ việc' & khóa tài khoản đăng nhập Google ngay lập tức." : ""}\n\n` +
-      `Bạn có chắc chắn muốn thực hiện?`;
+      `${lockAccount ? "3. Cập nhật trạng thái 'NV Nghỉ việc' & khóa tài khoản đăng nhập Google ngay lập tức." : ""}`;
 
-    if (!confirm(confirmMsg)) return;
+    ask({
+      title: "Xác nhận bàn giao & khóa tài khoản",
+      message: confirmMsg,
+      confirmLabel: "Thực hiện",
+      onConfirm: () => doExecuteHandover(oldName, oldEmail, newName, newEmail, targetEmp),
+    });
+  };
 
+  const doExecuteHandover = async (
+    oldName: string,
+    oldEmail: string,
+    newName: string,
+    newEmail: string,
+    targetEmp: Employee | undefined,
+  ) => {
+    if (!selectedEmployeeToHandover) return;
     try {
       setIsSubmittingHandover(true);
 
@@ -852,13 +877,13 @@ export default function EmployeeManagementPage() {
         if (empErr) throw empErr;
       }
 
-      alert(`Đã hoàn tất bàn giao & khóa tài khoản của nhân sự ${oldName}!`);
       setShowHandoverModal(false);
       setSelectedEmployeeToHandover(null);
       fetchEmployees();
+      notify(`Đã hoàn tất bàn giao & khóa tài khoản của nhân sự ${oldName}!`, "success");
     } catch (err: any) {
       console.error("Error executing handover:", err);
-      alert("Lỗi khi bàn giao: " + (err.message || err));
+      notify("Lỗi khi bàn giao: " + (err.message || err), "error");
     } finally {
       setIsSubmittingHandover(false);
     }
@@ -983,7 +1008,7 @@ export default function EmployeeManagementPage() {
                     if (activeEmps.length > 0) {
                       handleOpenHandoverModal(activeEmps[0]);
                     } else {
-                      alert("Không tìm thấy nhân sự khả thi để bàn giao.");
+                      notify("Không tìm thấy nhân sự khả thi để bàn giao.", "warn");
                     }
                   }}
                   className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md shadow-amber-500/20 active:scale-95 transition-all cursor-pointer"
@@ -1950,6 +1975,10 @@ export default function EmployeeManagementPage() {
           </div>
         </div>
       )}
+
+      {/* Hộp thông báo / xác nhận căn giữa — thay window.alert / window.confirm */}
+      {noticeNode}
+      {confirmNode}
     </div>
   );
 }

@@ -166,6 +166,8 @@ export interface LeaveQuota {
   isConcurrent: boolean;
   /** Admin có nhập tay tổng phép cho người này không */
   hasOverride: boolean;
+  /** Admin/HCNS có nhập tay số ngày ĐÃ NGHỈ cho người này không */
+  hasUsedOverride: boolean;
   tenureStr: string;
 }
 
@@ -222,7 +224,12 @@ export const computeLeaveQuota = (
   }
 
   const thisYear = annualOfYear(year);
-  const used = sum(thisYear.filter(l => l.status === "Đã duyệt"));
+  // "Đã nghỉ" mặc định đếm từ đơn ĐÃ DUYỆT năm nay. Admin/HCNS nhập tay được
+  // (used_leave_override): có số là CHỐT CỨNG, bỏ qua đếm tự động tới khi xoá.
+  const usedOverride = emp?.used_leave_override;
+  const hasUsedOverride = usedOverride !== null && usedOverride !== undefined;
+  const usedAuto = sum(thisYear.filter(l => l.status === "Đã duyệt"));
+  const used = hasUsedOverride ? Number(usedOverride) : usedAuto;
   const pending = sum(thisYear.filter(l => l.status === "Chờ duyệt"));
 
   // QUAN TRỌNG: quỹ cũ chỉ bù cho ngày nghỉ RƠI VÀO quý I. Ngày nghỉ tháng 6 mà
@@ -244,17 +251,27 @@ export const computeLeaveQuota = (
   const carry = carryStillValid ? carryPool : 0;
   const carryLeft = carryStillValid ? Math.max(0, carryPool - carryUsed) : 0;
 
+  const total = accrued + carry;
+
+  // Nhập tay "Đã nghỉ" thì tính đơn giản, dễ đoán: Còn lại = Tổng phép − Đã nghỉ
+  // − Đang chờ duyệt (đơn chờ vẫn giữ chỗ). Không tách quỹ cũ theo quý nữa vì số
+  // đã nghỉ giờ là do người dùng chốt tay. Áp dụng cả sang chặn đăng ký ở Lịch.
+  const remaining = hasUsedOverride
+    ? Math.max(0, total - used - pending)
+    : Math.max(0, accrued - spentFromNew) + carryLeft;
+
   return {
     base: isConcurrent ? 0 : base,
     senior: isConcurrent ? 0 : senior,
     carry,
     carryLeft,
-    total: accrued + carry,
+    total,
     used,
     pending,
-    remaining: Math.max(0, accrued - spentFromNew) + carryLeft,
+    remaining,
     isConcurrent,
     hasOverride,
+    hasUsedOverride,
     tenureStr: getTenureStr(emp, ref),
   };
 };

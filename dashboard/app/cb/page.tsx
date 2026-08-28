@@ -16,6 +16,7 @@ import {
   computeLeaveQuota,
   CARRY_OVER_LAST_MONTH,
 } from "@/lib/annualLeave";
+import { isResignedRow } from "@/lib/resigned";
 import {
   User,
   Clock,
@@ -97,6 +98,8 @@ interface Employee {
   notes?: string;
   /** Tổng phép năm do Admin nhập tay (migration 054). null = để hệ thống tự tính. */
   annual_leave_override?: number | null;
+  /** Số ngày ĐÃ NGHỈ do Admin/HCNS nhập tay (migration 066). null = tự đếm. */
+  used_leave_override?: number | null;
 }
 
 interface Contract {
@@ -629,6 +632,18 @@ export default function CBPage() {
     to: new Date().toISOString().split("T")[0],
     reason: ""
   });
+
+  // ─── Đăng ký nghỉ cho TOÀN CÔNG TY (Admin hoặc cờ Duyệt nghỉ phép) ───
+  // Ví dụ công ty cho nghỉ chính sách 1 ngày: một cú bấm tạo đơn (đã duyệt sẵn)
+  // cho mọi nhân sự đang làm việc, bỏ qua ai đã có đơn nghỉ trùng ngày.
+  const [canBulkLeave, setCanBulkLeave] = useState(false);
+  const [bulkLeaveOpen, setBulkLeaveOpen] = useState(false);
+  const [bulkLeaveType, setBulkLeaveType] = useState("Phép năm");
+  const [bulkLeaveFrom, setBulkLeaveFrom] = useState(() => new Date().toISOString().split("T")[0]);
+  const [bulkLeaveTo, setBulkLeaveTo] = useState(() => new Date().toISOString().split("T")[0]);
+  const [bulkLeaveReason, setBulkLeaveReason] = useState("");
+  const [creatingBulkLeave, setCreatingBulkLeave] = useState(false);
+  const creatingBulkLeaveRef = useRef(false);
   const [claimForm, setClaimForm] = useState({
     employeeId: "",
     category: "Sinh nhật" as any,
@@ -773,6 +788,8 @@ export default function CBPage() {
   // Định mức trợ cấp phúc lợi (benefit_policies) + sửa tay cả bảng một lượt
   const [benefitPolicies, setBenefitPolicies] = useState<BenefitPolicy[]>(BENEFIT_POLICY_FALLBACK);
   const [canEditBenefitPolicy, setCanEditBenefitPolicy] = useState(false);
+  // Sửa tay cột "Đã nghỉ" ở Hạn mức phép năm: Admin hoặc cờ can_manage_employees.
+  const [canEditUsedLeave, setCanEditUsedLeave] = useState(false);
   const [editingBenefitPolicy, setEditingBenefitPolicy] = useState(false);
   const [benefitPolicyDraft, setBenefitPolicyDraft] = useState<BenefitPolicy[] | null>(null);
   const [savingBenefitPolicy, setSavingBenefitPolicy] = useState(false);
@@ -2186,6 +2203,98 @@ export default function CBPage() {
     }
   };
 
+  // ─── Đăng ký nghỉ cho TOÀN CÔNG TY ───
+  // Số ngày của đợt nghỉ (Từ → Đến, tính cả hai đầu).
+  const bulkLeaveDuration = useMemo(() => {
+    const d1 = new Date(bulkLeaveFrom);
+    const d2 = new Date(bulkLeaveTo);
+    const diff = d2.getTime() - d1.getTime();
+    if (isNaN(diff) || diff < 0) return 0;
+    return Math.round(diff / (1000 * 60 * 60 * 24)) + 1;
+  }, [bulkLeaveFrom, bulkLeaveTo]);
+
+  // Nhân sự sẽ được tạo đơn: đang làm việc (bỏ "NV Nghỉ việc") và CHƯA có đơn
+  // nghỉ nào (đã duyệt hoặc đang chờ) trùng khoảng ngày này — tránh đơn trùng làm
+  // trừ quota hai lần.
+  const bulkLeaveTargets = useMemo(() => {
+    if (bulkLeaveDuration <= 0) return [] as Employee[];
+    const overlaps = (name: string) =>
+      leaves.some(
+        (l) =>
+          l.name === name &&
+          l.status !== "Từ chối" &&
+          String(l.from) <= bulkLeaveTo &&
+          String(l.to) >= bulkLeaveFrom
+      );
+    return employees.filter((e) => !isResignedRow(e) && !overlaps(e.name));
+  }, [employees, leaves, bulkLeaveFrom, bulkLeaveTo, bulkLeaveDuration]);
+
+  // Số người bị bỏ qua vì đã có đơn trùng ngày (để báo cho người bấm biết).
+  const bulkLeaveSkipped = useMemo(() => {
+    const active = employees.filter((e) => !isResignedRow(e));
+    return active.length - bulkLeaveTargets.length;
+  }, [employees, bulkLeaveTargets]);
+
+  const handleCreateBulkLeave = async () => {
+    if (creatingBulkLeaveRef.current) return;
+    if (bulkLeaveDuration <= 0) {
+      alert("Từ ngày không thể lớn hơn Đến ngày!");
+      return;
+    }
+    if (bulkLeaveTargets.length === 0) {
+      alert("Không có nhân sự nào để đăng ký (mọi người đã có đơn trùng ngày hoặc đã nghỉ việc).");
+      return;
+    }
+    const typeLabel =
+      bulkLeaveType === "Phép năm"
+        ? "Nghỉ phép năm hưởng lương"
+        : bulkLeaveType === "Nghỉ không lương"
+        ? "Nghỉ việc riêng không hưởng lương"
+        : "Nghỉ việc riêng hưởng nguyên lương";
+
+    const ok = await askConfirm(
+      `Đăng ký "${typeLabel}" từ ${bulkLeaveFrom} đến ${bulkLeaveTo} (${bulkLeaveDuration} ngày) ` +
+        `cho ${bulkLeaveTargets.length} nhân sự đang làm việc?` +
+        (bulkLeaveSkipped > 0 ? `\nBỏ qua ${bulkLeaveSkipped} người đã có đơn trùng ngày.` : "") +
+        (bulkLeaveType === "Phép năm"
+          ? `\n\nLưu ý: sẽ trừ vào phép năm của từng người (cộng vào "Đã nghỉ").`
+          : "") +
+        `\n\nĐơn tạo ở trạng thái ĐÃ DUYỆT, không gửi email.`
+    );
+    if (!ok) return;
+
+    // Đơn nghỉ phép mỗi người là MỘT DÒNG trong `tasks`, đúng khuôn parseLeaveTask.
+    // Đăng ký toàn công ty là chính sách -> vào thẳng trạng thái đã duyệt.
+    const rows = bulkLeaveTargets.map((emp) => ({
+      title: `Nghỉ phép (${typeLabel}): ${emp.name} (${bulkLeaveDuration} ngày)`,
+      assignee: emp.name,
+      start_date: bulkLeaveFrom,
+      due_date: bulkLeaveTo,
+      priority: "Thấp",
+      progress: 100,
+      status: "completed",
+      notes: `Loại nghỉ phép: ${typeLabel}.${bulkLeaveReason ? ` Lý do: ${bulkLeaveReason}` : ""} (Đăng ký nghỉ toàn công ty: ${currentUser?.name || "—"})`,
+      approval_stage: "approved",
+    }));
+
+    creatingBulkLeaveRef.current = true;
+    setCreatingBulkLeave(true);
+    try {
+      const { error } = await supabase.from("tasks").insert(rows);
+      if (error) throw error;
+      await fetchLeavesFromSupabase();
+      setBulkLeaveOpen(false);
+      setBulkLeaveReason("");
+      alert(`Đã đăng ký nghỉ cho ${rows.length} nhân sự.`);
+    } catch (err: any) {
+      console.error("Error creating bulk leave:", err);
+      alert("Không đăng ký được nghỉ hàng loạt: " + (err.message || "Lỗi không xác định"));
+    } finally {
+      creatingBulkLeaveRef.current = false;
+      setCreatingBulkLeave(false);
+    }
+  };
+
   // Đơn nghỉ phép là MỘT DÒNG trong bảng `tasks` (title chứa "Nghỉ phép"), xem
   // fetchLeavesFromSupabase. Trước đây hàm này chỉ lọc dòng ra khỏi state rồi ghi
   // localStorage — mà localStorage đó KHÔNG có chỗ nào đọc lại. Nên F5 là
@@ -3333,6 +3442,13 @@ export default function CBPage() {
       // ("Quản lý hồ sơ nhân sự") — RLS benefit_policies chặn y hệt ở tầng DB.
       setCanEditBenefitPolicy(!!(isAdmin || perms.canManageEmployees));
 
+      // Sửa tay cột "Đã nghỉ" (Hạn mức phép năm): Admin hoặc cờ can_manage_employees.
+      // RLS employees (migration 007) đã cho đúng nhóm này ghi cột override.
+      setCanEditUsedLeave(!!(isAdmin || perms.canManageEmployees));
+
+      // Đăng ký nghỉ cho toàn công ty: Admin hoặc cờ can_approve_leave (HCNS duyệt phép).
+      setCanBulkLeave(!!(isAdmin || perms.canApproveLeave));
+
       const userInfo = {
         email,
         name: empData?.name || session.user.user_metadata?.full_name || session.user.user_metadata?.name || "Người dùng",
@@ -3971,6 +4087,7 @@ export default function CBPage() {
         seniorLeave: quota.senior,
         totalLeave: quota.total,
         hasOverride: quota.hasOverride,
+        usedHasOverride: quota.hasUsedOverride,
         usedLeave: quota.used,
         pendingLeave: quota.pending,
         carryLeave: quota.carry,
@@ -4017,6 +4134,44 @@ export default function CBPage() {
       alert("Không lưu được số phép. Kiểm tra lại quyền hoặc kết nối!");
     } finally {
       setSavingLeaveQuota(false);
+    }
+  };
+
+  // ─── Sửa tay cột "Đã nghỉ" (Admin hoặc cờ can_manage_employees) ───
+  // Ghi thẳng vào employees.used_leave_override (migration 066). RLS (migration
+  // 007) đã cho đúng Admin + can_manage_employees ghi bảng employees.
+  const [editingUsedLeaveId, setEditingUsedLeaveId] = useState<string | null>(null);
+  const [usedLeaveDraft, setUsedLeaveDraft] = useState("");
+  const [savingUsedLeave, setSavingUsedLeave] = useState(false);
+  const cancelUsedLeaveRef = useRef(false);
+
+  const handleSaveUsedLeave = async (empId: string) => {
+    if (cancelUsedLeaveRef.current) {
+      cancelUsedLeaveRef.current = false;
+      return;
+    }
+    if (savingUsedLeave) return;
+    const raw = usedLeaveDraft.trim();
+    // Bỏ trống = gỡ ghi đè, trả về cho hệ thống tự đếm từ đơn đã duyệt.
+    const value = raw === "" ? null : Number(raw);
+    if (value !== null && (!Number.isFinite(value) || value < 0)) {
+      alert("Số ngày đã nghỉ không hợp lệ!");
+      return;
+    }
+    setSavingUsedLeave(true);
+    try {
+      const { error } = await supabase
+        .from("employees")
+        .update({ used_leave_override: value })
+        .eq("id", empId);
+      if (error) throw error;
+      setEmployees(prev => prev.map(e => e.id === empId ? { ...e, used_leave_override: value } : e));
+      setEditingUsedLeaveId(null);
+    } catch (err) {
+      console.error("Error saving used leave:", err);
+      alert("Không lưu được số ngày đã nghỉ. Kiểm tra lại quyền hoặc kết nối!");
+    } finally {
+      setSavingUsedLeave(false);
     }
   };
 
@@ -5959,6 +6114,24 @@ export default function CBPage() {
                         )}
                       </div>
 
+                      {canBulkLeave && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const today = new Date().toISOString().split("T")[0];
+                            setBulkLeaveType("Phép năm");
+                            setBulkLeaveFrom(today);
+                            setBulkLeaveTo(today);
+                            setBulkLeaveReason("");
+                            setBulkLeaveOpen(true);
+                          }}
+                          title="Tạo đơn nghỉ (đã duyệt) cho toàn bộ nhân sự đang làm việc"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg cursor-pointer text-[10px] transition-all shadow-md shadow-amber-500/10 active:scale-95 shrink-0"
+                        >
+                          <Users size={12} /> Đăng ký nghỉ toàn công ty
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => {
@@ -6080,7 +6253,50 @@ export default function CBPage() {
                                   `${d.totalLeave} ngày`
                                 )}
                               </td>
-                              <td className="py-3.5 px-3 text-center text-emerald-600">{d.usedLeave} ngày</td>
+                              {/* Admin / người có cờ Quản lý hồ sơ nhân sự bấm vào số
+                                  để sửa tay "Đã nghỉ". Bỏ trống ô rồi lưu là gỡ ghi đè,
+                                  quay về đếm tự động từ đơn đã duyệt. */}
+                              <td className="py-3.5 px-3 text-center text-emerald-600">
+                                {editingUsedLeaveId === d.id ? (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="0.5"
+                                    autoFocus
+                                    disabled={savingUsedLeave}
+                                    value={usedLeaveDraft}
+                                    onChange={(e) => setUsedLeaveDraft(e.target.value)}
+                                    onBlur={() => handleSaveUsedLeave(d.id)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") e.currentTarget.blur();
+                                      if (e.key === "Escape") {
+                                        cancelUsedLeaveRef.current = true;
+                                        setEditingUsedLeaveId(null);
+                                      }
+                                    }}
+                                    placeholder="Tự đếm"
+                                    className="w-20 px-2 py-1 text-center text-xs font-bold border border-emerald-500 rounded-lg outline-none disabled:opacity-50"
+                                  />
+                                ) : canEditUsedLeave ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setUsedLeaveDraft(d.usedHasOverride ? String(d.usedLeave) : "");
+                                      setEditingUsedLeaveId(d.id);
+                                    }}
+                                    title="Bấm để sửa tay số ngày đã nghỉ"
+                                    className={`px-2 py-0.5 rounded-lg border border-dashed transition-colors cursor-pointer ${
+                                      d.usedHasOverride
+                                        ? "border-emerald-500 text-emerald-600 bg-emerald-50/60"
+                                        : "border-slate-300 text-emerald-600 hover:bg-slate-100"
+                                    }`}
+                                  >
+                                    {d.usedLeave} ngày
+                                  </button>
+                                ) : (
+                                  `${d.usedLeave} ngày`
+                                )}
+                              </td>
                               <td className="py-3.5 px-3 text-center">
                                 {d.isConcurrent ? (
                                   <span className="text-slate-400 font-normal">-</span>
@@ -6158,6 +6374,123 @@ export default function CBPage() {
                           )}
                         </tbody>
                       </table>
+                    </div>
+                  )}
+
+                  {/* ─── MODAL ĐĂNG KÝ NGHỈ CHO TOÀN CÔNG TY ─── */}
+                  {bulkLeaveOpen && (
+                    <div
+                      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in"
+                      onClick={() => !creatingBulkLeave && setBulkLeaveOpen(false)}
+                    >
+                      <div
+                        className="bg-white w-full max-w-lg rounded-2xl shadow-premium border border-slate-100 overflow-hidden animate-scale-up"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-amber-500 text-white">
+                          <h3 className="font-heading font-black text-sm flex items-center gap-2">
+                            <Users size={16} /> Đăng ký nghỉ cho toàn công ty
+                          </h3>
+                          <button
+                            type="button"
+                            onClick={() => setBulkLeaveOpen(false)}
+                            disabled={creatingBulkLeave}
+                            className="text-white/80 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-white/10 disabled:opacity-50"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+
+                        <div className="p-6 space-y-4 text-xs font-semibold text-slate-700">
+                          <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-semibold text-amber-800 leading-relaxed flex gap-1.5">
+                            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                            Tạo đơn nghỉ (đã duyệt sẵn, không cần cấp quản lý duyệt, không gửi email)
+                            cho <b>toàn bộ nhân sự đang làm việc</b>. Dùng cho ngày nghỉ theo chính sách công ty.
+                          </p>
+
+                          {/* Loại nghỉ */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Loại nghỉ phép</label>
+                            <select
+                              value={bulkLeaveType}
+                              onChange={(e) => setBulkLeaveType(e.target.value)}
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-all cursor-pointer"
+                            >
+                              <option value="Việc riêng">Hưởng nguyên lương (Không trừ phép năm)</option>
+                              <option value="Phép năm">Nghỉ phép năm (Trừ vào phép năm từng người)</option>
+                              <option value="Nghỉ không lương">Nghỉ không hưởng lương (Không trừ phép năm)</option>
+                            </select>
+                          </div>
+
+                          {/* Thời gian */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Từ ngày</label>
+                              <input
+                                type="date"
+                                value={bulkLeaveFrom}
+                                onChange={(e) => setBulkLeaveFrom(e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-all"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Đến ngày</label>
+                              <input
+                                type="date"
+                                value={bulkLeaveTo}
+                                onChange={(e) => setBulkLeaveTo(e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-all"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Lý do */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Lý do (gắn vào mọi đơn)</label>
+                            <input
+                              value={bulkLeaveReason}
+                              onChange={(e) => setBulkLeaveReason(e.target.value)}
+                              placeholder="VD: Công ty cho nghỉ lễ 31/10"
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-all"
+                            />
+                          </div>
+
+                          {/* Tóm tắt số người */}
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] font-semibold text-slate-600 leading-relaxed">
+                            {bulkLeaveDuration <= 0 ? (
+                              <span className="text-rose-600">Khoảng ngày chưa hợp lệ (Đến ngày phải ≥ Từ ngày).</span>
+                            ) : (
+                              <>
+                                Sẽ tạo đơn <b className="text-slate-800">{bulkLeaveDuration} ngày</b> cho{" "}
+                                <b className="text-amber-700">{bulkLeaveTargets.length} nhân sự</b> đang làm việc.
+                                {bulkLeaveSkipped > 0 && (
+                                  <> Bỏ qua <b>{bulkLeaveSkipped}</b> người đã có đơn nghỉ trùng ngày.</>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="px-6 pb-5 pt-1 flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setBulkLeaveOpen(false)}
+                            disabled={creatingBulkLeave}
+                            className="px-4 py-2 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 text-xs disabled:opacity-50 cursor-pointer"
+                          >
+                            Huỷ
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCreateBulkLeave}
+                            disabled={creatingBulkLeave || bulkLeaveDuration <= 0 || bulkLeaveTargets.length === 0}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-bold rounded-xl shadow-md transition-all active:scale-95 text-xs cursor-pointer disabled:cursor-not-allowed"
+                          >
+                            {creatingBulkLeave ? <Loader2 size={13} className="animate-spin" /> : <Users size={13} />}
+                            {creatingBulkLeave ? "Đang tạo đơn..." : `Đăng ký cho ${bulkLeaveTargets.length} người`}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
 

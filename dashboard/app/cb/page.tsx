@@ -6226,6 +6226,39 @@ export default function CBPage() {
                         )}
                       </div>
 
+                      {/* Lọc theo ngày — chỉ có nghĩa ở tab Lịch sử nghỉ phép.
+                          Dùng chung state leaveFilterFrom/To với bộ lọc ngày ở đầu trang. */}
+                      {leaveTabMode === "history" && (
+                        <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-xl border border-slate-200/70 shrink-0">
+                          <Calendar size={13} className="text-slate-400 shrink-0" />
+                          <input
+                            type="date"
+                            value={leaveFilterFrom}
+                            onChange={(e) => setLeaveFilterFrom(e.target.value)}
+                            title="Từ ngày"
+                            className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-semibold focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none"
+                          />
+                          <span className="text-slate-400 text-[11px] font-bold">-</span>
+                          <input
+                            type="date"
+                            value={leaveFilterTo}
+                            onChange={(e) => setLeaveFilterTo(e.target.value)}
+                            title="Đến ngày"
+                            className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-semibold focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none"
+                          />
+                          {(leaveFilterFrom || leaveFilterTo) && (
+                            <button
+                              type="button"
+                              onClick={() => { setLeaveFilterFrom(""); setLeaveFilterTo(""); }}
+                              title="Xoá lọc ngày"
+                              className="text-slate-400 hover:text-slate-600 cursor-pointer px-0.5"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </div>
+                      )}
+
                       {canBulkLeave && (
                         <button
                           type="button"

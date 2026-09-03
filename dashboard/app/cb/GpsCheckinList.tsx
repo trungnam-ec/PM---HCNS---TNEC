@@ -106,6 +106,7 @@ export default function GpsCheckinList({
 
   const [emailOverride, setEmailOverride] = useState<Record<string, string>>({});
   const [sendStatus, setSendStatus] = useState<Record<string, "sending" | "success" | "error">>({});
+  const [sendMsg, setSendMsg] = useState<Record<string, string>>({});
   const [sendingAll, setSendingAll] = useState(false);
   const [detailEmp, setDetailEmp] = useState<EmpSummary | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -252,12 +253,12 @@ export default function GpsCheckinList({
     else notify("Không mở được ảnh (có thể đã bị xoá).", "error");
   }
 
-  // ─── Gửi email 1 người ───
-  async function sendOne(s: EmpSummary): Promise<boolean> {
-    if (!smtpConfig.user || !smtpConfig.pass) { onNeedSmtp(); return false; }
+  // ─── Gửi email 1 người. Trả về null nếu OK, chuỗi lỗi nếu thất bại. ───
+  async function sendOne(s: EmpSummary): Promise<string | null> {
+    if (!smtpConfig.user || !smtpConfig.pass) { onNeedSmtp(); return "Chưa cấu hình SMTP."; }
     const recipientEmail = (emailOverride[s.email] ?? s.email)
       .split(",").map((x) => x.trim()).filter(Boolean).join(", ");
-    if (!recipientEmail) { notify("Chưa có email nhận báo cáo.", "warn"); return false; }
+    if (!recipientEmail) { return "Chưa có email nhận báo cáo."; }
     setSendStatus((m) => ({ ...m, [s.email]: "sending" }));
     try {
       const res = await apiFetch("/api/send-attendance-email", {
@@ -274,13 +275,28 @@ export default function GpsCheckinList({
           month: monthLabel,
         }),
       });
-      const ok = res.ok;
-      setSendStatus((m) => ({ ...m, [s.email]: ok ? "success" : "error" }));
-      return ok;
-    } catch {
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const msg = data?.error || `Máy chủ trả lỗi (HTTP ${res.status}).`;
+        setSendStatus((m) => ({ ...m, [s.email]: "error" }));
+        setSendMsg((m) => ({ ...m, [s.email]: msg }));
+        return msg;
+      }
+      setSendStatus((m) => ({ ...m, [s.email]: "success" }));
+      setSendMsg((m) => ({ ...m, [s.email]: "" }));
+      return null;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Lỗi kết nối khi gửi email.";
       setSendStatus((m) => ({ ...m, [s.email]: "error" }));
-      return false;
+      setSendMsg((m) => ({ ...m, [s.email]: msg }));
+      return msg;
     }
+  }
+
+  // Gửi 1 người từ nút ✈ — hiện popup lỗi cụ thể nếu thất bại.
+  async function sendOneManual(s: EmpSummary) {
+    const err = await sendOne(s);
+    if (err) notify(`Gửi cho ${s.name} thất bại: ${err}`, "error");
   }
 
   async function sendAll() {
@@ -288,15 +304,18 @@ export default function GpsCheckinList({
     if (busyRef.current) return;
     busyRef.current = true;
     setSendingAll(true);
-    let ok = 0, fail = 0;
+    let ok = 0, fail = 0, lastErr = "";
     for (const s of summaries) {
       if (sendStatus[s.email] === "success") continue;
-      const r = await sendOne(s);
-      if (r) ok++; else fail++;
+      const err = await sendOne(s);
+      if (err) { fail++; lastErr = err; } else ok++;
     }
     setSendingAll(false);
     busyRef.current = false;
-    notify(`Đã gửi ${ok} email${fail ? `, ${fail} lỗi` : ""}.`, fail ? "warn" : "success");
+    notify(
+      `Đã gửi ${ok} email${fail ? `, ${fail} lỗi. Lỗi gần nhất: ${lastErr}` : "."}`,
+      fail ? "error" : "success"
+    );
   }
 
   // ─── Xuất CSV một tháng ───
@@ -523,7 +542,7 @@ export default function GpsCheckinList({
                           </td>
                           <td className="py-2.5 px-2 text-center">
                             {st === "success" ? <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Đã gửi</span>
-                              : st === "error" ? <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">Lỗi</span>
+                              : st === "error" ? <span title={sendMsg[s.email] || "Gửi thất bại"} className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 cursor-help">Lỗi</span>
                               : st === "sending" ? <Loader2 size={13} className="animate-spin mx-auto text-slate-400" />
                               : <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Chưa</span>}
                           </td>
@@ -532,7 +551,7 @@ export default function GpsCheckinList({
                               <button onClick={() => setDetailEmp(s)} title="Xem chi tiết" className="p-1.5 text-slate-400 hover:text-[#005BAC] hover:bg-blue-50 rounded-lg transition-all">
                                 <Eye size={14} />
                               </button>
-                              <button onClick={() => sendOne(s)} disabled={st === "sending"} title="Gửi email" className="p-1.5 text-slate-400 hover:text-[#005BAC] hover:bg-blue-50 rounded-lg transition-all disabled:opacity-50">
+                              <button onClick={() => sendOneManual(s)} disabled={st === "sending"} title="Gửi email" className="p-1.5 text-slate-400 hover:text-[#005BAC] hover:bg-blue-50 rounded-lg transition-all disabled:opacity-50">
                                 <Send size={14} />
                               </button>
                             </div>

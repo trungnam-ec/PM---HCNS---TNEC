@@ -18,6 +18,7 @@ import {
 } from "@/lib/annualLeave";
 import { isResignedRow } from "@/lib/resigned";
 import { useNoticeBox } from "@/components/ConfirmDialog";
+import GpsCheckinList from "./GpsCheckinList";
 import {
   User,
   Clock,
@@ -5875,6 +5876,12 @@ export default function CBPage() {
                     </div>
                     )}
                   </div>
+
+                  {/* CARD 3: DANH SÁCH NHÂN VIÊN CHẤM CÔNG GPS */}
+                  <GpsCheckinList
+                    smtpConfig={smtpConfig}
+                    onNeedSmtp={() => setShowEmailConfigModal(true)}
+                  />
 
                 </div>
               )}

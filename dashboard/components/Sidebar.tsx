@@ -25,9 +25,11 @@ import {
   Newspaper,
   CalendarOff,
   Plane,
-  TrendingUp
+  TrendingUp,
+  Fingerprint
 } from "lucide-react";
 import { useSidebar } from "./SidebarContext";
+import { useDepartments } from "@/lib/departments";
 import ThemeToggle from "./ThemeToggle";
 import { supabase } from "@/lib/supabase";
 import { fetchApprovalPermissions, hasAnyApprovalPermission, isMarketingTeamLeader } from "@/lib/approvers";
@@ -49,7 +51,10 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
   // Ẩn menu theo GÓI HIỆU LỰC CỦA PHÒNG + cấp phép riêng (không chỉ gói toàn cục).
   // Đang tải danh tính -> hiện tạm (tránh nháy menu trống), narrow lại khi có dữ liệu.
   const currentUser = useCurrentUser();
+  const deps = useDepartments();
   const isPathAllowed = (p: string) => (currentUser.loading ? true : currentUser.canPath(p));
+  // "Chấm công GPS" chỉ hiện cho Admin hoặc nhân sự thuộc một Ban điều hành.
+  const showGpsCheckin = !currentUser.loading && (currentUser.isAdmin || deps.bdh.includes(currentUser.department));
 
   const navItems = [
     { label: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -67,6 +72,14 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
     { label: "Góp ý & Kiến nghị", href: "/suggestions", icon: MessageSquare },
     { label: "Cài đặt hệ thống", href: "/settings?tab=system", icon: Settings },
   ].filter(item => isPathAllowed(item.href.split("?")[0])); // ẩn module ngoài gói dịch vụ
+
+  // Chèn "Chấm công GPS" ngay dưới "Vị trí dự án" (chỉ Admin / nhân sự BĐH).
+  if (showGpsCheckin) {
+    const gpsItem = { label: "Chấm công GPS", href: "/cham-cong", icon: Fingerprint };
+    const idx = navItems.findIndex(i => i.href === "/vi-tri-du-an");
+    if (idx >= 0) navItems.splice(idx + 1, 0, gpsItem);
+    else navItems.push(gpsItem);
+  }
 
   if (isApprover) {
     navItems.push({ label: "Duyệt yêu cầu", href: "/settings?tab=approvals", icon: CheckSquare });

@@ -19,7 +19,7 @@ import { useCurrentUser } from "@/lib/useCurrentUser";
 import { useDepartments } from "@/lib/departments";
 import {
   MapPin, Navigation, Camera, Loader2, LogIn, LogOut, AlertTriangle,
-  CheckCircle2, X, RefreshCw, ShieldAlert,
+  CheckCircle2, X, RefreshCw, ShieldAlert, SwitchCamera,
 } from "lucide-react";
 
 type LocRow = {
@@ -68,6 +68,7 @@ export default function GpsCheckinPage() {
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [pendingKind, setPendingKind] = useState<Kind>("in");
+  const [facing, setFacing] = useState<"environment" | "user">("environment"); // mặc định cam sau
   const [gps, setGps] = useState<{ lat: number; lng: number; acc: number } | null>(null);
   const [dist, setDist] = useState<number | null>(null);
   const [err, setErr] = useState("");
@@ -146,24 +147,51 @@ export default function GpsCheckinPage() {
     streamRef.current = null;
   }
 
+  function bindStream(stream: MediaStream) {
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
+    }
+  }
+
+  async function getCamStream(f: "environment" | "user"): Promise<MediaStream> {
+    return navigator.mediaDevices.getUserMedia({ video: { facingMode: f }, audio: false });
+  }
+
   async function openCamera(kind: Kind) {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" }, audio: false,
-      });
+      const stream = await getCamStream(facing);
       streamRef.current = stream;
       setPendingKind(kind);
       setPhase("camera");
       // gán stream sau khi <video> đã render
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(() => {});
-        }
-      }, 60);
+      setTimeout(() => bindStream(stream), 60);
     } catch {
       setErr("Không mở được camera. Kiểm tra quyền camera của trình duyệt.");
       setPhase("idle");
+    }
+  }
+
+  // ─── Đổi camera trước ↔ sau ───
+  async function switchCamera() {
+    if (phase === "uploading") return;
+    const next = facing === "environment" ? "user" : "environment";
+    setFacing(next);
+    try {
+      stopCamera();
+      const stream = await getCamStream(next);
+      streamRef.current = stream;
+      bindStream(stream);
+    } catch {
+      // Máy chỉ có 1 camera / trình duyệt từ chối -> quay lại camera cũ.
+      setFacing(facing);
+      try {
+        const back = await getCamStream(facing);
+        streamRef.current = back;
+        bindStream(back);
+      } catch {
+        setErr("Không chuyển được camera trên thiết bị này.");
+      }
     }
   }
 
@@ -421,12 +449,28 @@ export default function GpsCheckinPage() {
             <span className="font-bold text-sm flex items-center gap-2">
               <Camera size={16} /> Chụp ảnh chấm {pendingKind === "in" ? "VÀO" : "RA"}
             </span>
-            <button onClick={cancelCamera} className="p-2 rounded-full hover:bg-white/10" title="Huỷ">
-              <X size={20} />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={switchCamera}
+                disabled={phase === "uploading"}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-[11px] font-bold disabled:opacity-50"
+                title="Đổi camera trước / sau"
+              >
+                <SwitchCamera size={16} /> {facing === "environment" ? "Cam sau" : "Cam trước"}
+              </button>
+              <button onClick={cancelCamera} className="p-2 rounded-full hover:bg-white/10" title="Huỷ">
+                <X size={20} />
+              </button>
+            </div>
           </div>
           <div className="flex-1 relative overflow-hidden flex items-center justify-center">
-            <video ref={videoRef} playsInline muted className="max-h-full max-w-full object-contain" />
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              className="max-h-full max-w-full object-contain"
+              style={{ transform: facing === "user" ? "scaleX(-1)" : undefined }}
+            />
             <div className="absolute bottom-3 left-3 right-3 text-white text-[11px] font-semibold bg-black/50 rounded-xl px-3 py-2 space-y-0.5">
               <p>{activeBdh}</p>
               {gps && <p>GPS: {gps.lat.toFixed(6)}, {gps.lng.toFixed(6)} · cách BĐH ~{Math.round(dist ?? 0)}m</p>}

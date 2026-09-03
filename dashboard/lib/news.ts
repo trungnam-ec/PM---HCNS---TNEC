@@ -201,21 +201,76 @@ export async function fetchAttachments(postId: string): Promise<NewsAttachment[]
 // ─── Link ký hạn giờ ───
 // GOM NHIỀU ĐƯỜNG DẪN VÀO MỘT LỜI GỌI: danh sách 20 bài mà ký từng cái sẽ là 20
 // vòng mạng. `createSignedUrls` (số nhiều) ký cả mẻ trong một request.
+//
+// CACHE THEO PHIÊN: mỗi lần ký, Supabase sinh token MỚI nên URL đổi liên tục —
+// trình duyệt coi đó là ảnh khác và tải lại từ đầu mỗi lần vào trang, dù ảnh y
+// hệt. Link sống 7 ngày, nên ta giữ lại URL đã ký và DÙNG LẠI trong suốt phiên:
+// URL ổn định -> trình duyệt cache đúng ảnh -> lần xem sau (mở bài, quay lại,
+// chuyển tab danh mục) hiện tức thì, đồng thời bớt luôn vòng mạng đi ký.
+type SignedEntry = { url: string; exp: number };
+const signedCache = new Map<string, SignedEntry>();
+const SIGN_CACHE_KEY = "news_signed_urls_v1";
+// Chỉ dùng lại link còn hạn ít nhất 1 giờ, tránh link vừa lấy đã sắp hết.
+const SIGN_SAFETY_MS = 60 * 60 * 1000;
+let signCacheLoaded = false;
+
+function loadSignCache() {
+  if (signCacheLoaded || typeof sessionStorage === "undefined") return;
+  signCacheLoaded = true;
+  try {
+    const raw = sessionStorage.getItem(SIGN_CACHE_KEY);
+    if (!raw) return;
+    const obj = JSON.parse(raw) as Record<string, SignedEntry>;
+    const now = Date.now();
+    Object.entries(obj).forEach(([k, v]) => {
+      if (v && v.exp > now) signedCache.set(k, v);
+    });
+  } catch {
+    // sessionStorage hỏng/bị chặn -> chạy như không có cache
+  }
+}
+
+function persistSignCache() {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    const obj: Record<string, SignedEntry> = {};
+    signedCache.forEach((v, k) => (obj[k] = v));
+    sessionStorage.setItem(SIGN_CACHE_KEY, JSON.stringify(obj));
+  } catch {
+    // vượt hạn mức lưu trữ -> bỏ qua, không ảnh hưởng hiển thị
+  }
+}
+
 export async function signNewsPaths(paths: (string | null | undefined)[]): Promise<Record<string, string>> {
   const unique = Array.from(new Set(paths.filter((p): p is string => !!p && p.trim().length > 0)));
   if (unique.length === 0) return {};
 
-  try {
-    const { data, error } = await supabase.storage.from(NEWS_BUCKET).createSignedUrls(unique, SIGNED_URL_TTL);
-    if (error || !data) return {};
+  loadSignCache();
+  const now = Date.now();
+  const map: Record<string, string> = {};
+  const misses: string[] = [];
+  for (const p of unique) {
+    const hit = signedCache.get(p);
+    if (hit && hit.exp - now > SIGN_SAFETY_MS) map[p] = hit.url;
+    else misses.push(p);
+  }
+  if (misses.length === 0) return map; // tất cả đã có sẵn -> khỏi gọi mạng
 
-    const map: Record<string, string> = {};
+  try {
+    const { data, error } = await supabase.storage.from(NEWS_BUCKET).createSignedUrls(misses, SIGNED_URL_TTL);
+    if (error || !data) return map; // vẫn trả phần đã cache được
+
+    const exp = now + SIGNED_URL_TTL * 1000;
     data.forEach((item) => {
-      if (item.signedUrl && item.path) map[item.path] = item.signedUrl;
+      if (item.signedUrl && item.path) {
+        map[item.path] = item.signedUrl;
+        signedCache.set(item.path, { url: item.signedUrl, exp });
+      }
     });
+    persistSignCache();
     return map;
   } catch {
-    return {};
+    return map;
   }
 }
 
@@ -262,19 +317,70 @@ export type UploadedFile = {
   kind: "image" | "file";
 };
 
-export async function uploadNewsFile(file: File, folder = "posts"): Promise<UploadedFile> {
-  if (file.size > NEWS_MAX_FILE_BYTES) {
-    throw new Error(`"${file.name}" vượt quá 10MB — vui lòng nén lại hoặc chọn tệp khác.`);
+/**
+ * Nén ảnh ngay trong trình duyệt trước khi tải lên.
+ *
+ * Ảnh bìa/ảnh trong bài thường là PNG 1-2MB cho ô chỉ rộng vài trăm px, mà kho
+ * riêng tư không có CDN nên mỗi lần xem là tải trọn ảnh gốc -> lần xem đầu chậm.
+ * Thu về tối đa 1600px cạnh dài + mã hoá webp giảm được 70-90% dung lượng, mắt
+ * thường không phân biệt ở khổ hiển thị này.
+ *
+ * Giữ NGUYÊN: PDF (không phải ảnh) và GIF (có thể là ảnh động — vẽ lên canvas sẽ
+ * mất chuyển động). Trình duyệt cũ / ảnh lỗi -> trả về tệp gốc, không chặn upload.
+ */
+const NEWS_IMAGE_MAX_DIM = 1600;
+
+async function compressNewsImage(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+  if (typeof document === "undefined" || typeof createImageBitmap === "undefined") return file;
+
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const scale = Math.min(1, NEWS_IMAGE_MAX_DIM / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close?.();
+      return file;
+    }
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/webp", 0.82),
+    );
+    // Không nhỏ hơn gốc (ảnh vốn đã nhẹ/đã nén) -> giữ nguyên, khỏi đổi định dạng.
+    if (!blob || blob.size >= file.size) return file;
+
+    const base = file.name.replace(/\.[^.]+$/, "") || "anh";
+    return new File([blob], `${base}.webp`, { type: "image/webp" });
+  } catch {
+    return file;
   }
+}
+
+export async function uploadNewsFile(file: File, folder = "posts"): Promise<UploadedFile> {
+  // Chặn định dạng lạ trên TỆP GỐC trước khi đụng tới canvas.
   if (!NEWS_ALLOWED_MIMES.includes(file.type)) {
     throw new Error(`"${file.name}" không thuộc định dạng cho phép (JPG, PNG, WEBP, GIF, PDF).`);
   }
 
-  const path = `${folder}/${safeFileName(file.name)}`;
-  const { error } = await supabase.storage.from(NEWS_BUCKET).upload(path, file, {
+  // Nén ảnh trước, rồi mới kiểm tra hạn dung lượng trên bản ĐÃ nén.
+  const prepared = await compressNewsImage(file);
+  if (prepared.size > NEWS_MAX_FILE_BYTES) {
+    throw new Error(`"${file.name}" vượt quá 10MB — vui lòng nén lại hoặc chọn tệp khác.`);
+  }
+
+  const path = `${folder}/${safeFileName(prepared.name)}`;
+  const { error } = await supabase.storage.from(NEWS_BUCKET).upload(path, prepared, {
     cacheControl: "3600",
     upsert: false,
-    contentType: file.type,
+    contentType: prepared.type,
   });
   if (error) {
     // "Bucket not found" = chưa chạy phần 8 của migration 023. Nói rõ việc cần
@@ -287,10 +393,10 @@ export async function uploadNewsFile(file: File, folder = "posts"): Promise<Uplo
 
   return {
     path,
-    name: file.name,
-    mime: file.type,
-    size: file.size,
-    kind: file.type.startsWith("image/") ? "image" : "file",
+    name: file.name, // giữ tên gốc cho phần hiển thị (đính kèm)
+    mime: prepared.type,
+    size: prepared.size,
+    kind: prepared.type.startsWith("image/") ? "image" : "file",
   };
 }
 

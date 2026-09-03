@@ -577,13 +577,63 @@ export default function Header({ title, subtitle }: Props) {
         console.warn("Could not fetch task comments for header:", err);
       }
 
+      // 8. LỊCH XE / PHÒNG HỌP MÌNH ĐƯỢC MỜI THAM DỰ — báo cho đúng người có tên
+      // trong danh sách "Nhân viên tham dự" để họ biết lịch, kể cả khi họ KHÔNG
+      // phải người đăng ký và không có quyền duyệt gì. Giống ghi chú/ý kiến ở mục
+      // 6-7: phải tính TRƯỚC hàng rào hasApprovalPrivileges và đi kèm ở CẢ HAI
+      // nhánh, nếu không nhân viên thường sẽ bị `return` sớm và không bao giờ thấy.
+      // Chỉ lấy lịch CHƯA kết thúc (end_time >= giờ hiện tại) để tự tắt khi qua giờ.
+      let mappedAttendeeBookings: any[] = [];
+      try {
+        const myNameKey = normalizeName(userObj.name || "");
+        if (myNameKey) {
+          const nowIso = new Date().toISOString();
+          const { data, error } = await supabase
+            .from("resource_bookings")
+            .select("id, booking_type, resource_name, host_name, requester_name, start_time, end_time, attendees, status")
+            .neq("status", "rejected")
+            .gte("end_time", nowIso);
+          if (!error && data) {
+            mappedAttendeeBookings = data
+              .filter((b: any) => {
+                // Người đăng ký đã biết lịch của mình rồi, khỏi tự báo lại.
+                if (normalizeName(b.requester_name || "") === myNameKey) return false;
+                // attendees là mảng TÊN chọn từ danh bạ -> so khớp tên đã chuẩn hoá.
+                return Array.isArray(b.attendees) &&
+                  b.attendees.some((n: string) => normalizeName(n) === myNameKey);
+              })
+              .map((b: any) => {
+                const isVehicleBooking = b.booking_type === "xe";
+                const timeStr = b.start_time
+                  ? new Date(b.start_time).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
+                  : "";
+                return {
+                  // Tiền tố "attendee-" để không đụng id của thông báo duyệt (mục
+                  // "booking") khi cùng một đăng ký rơi vào cả hai danh sách.
+                  id: `attendee-${b.id}`,
+                  bookingId: b.id,
+                  type: "attendee_booking",
+                  bookingType: isVehicleBooking ? "xe" : "phong_hop",
+                  typeText: isVehicleBooking ? "Lịch đi xe" : "Lịch họp",
+                  message: `Bạn có tên tham dự — ${b.host_name} chủ trì ${isVehicleBooking ? "chuyến xe" : "cuộc họp"} ${b.resource_name} lúc ${timeStr}`,
+                  // Sắp theo giờ diễn ra: lịch sớm nhất nổi lên trên.
+                  time: timeStr,
+                  timestamp: b.start_time ? new Date(b.start_time).getTime() : 0,
+                };
+              });
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch attendee bookings for header:", err);
+      }
+
       const hasApprovalPrivileges = isUserAdmin || isUserManager || isUserHR || hasAnyApprovalPermission(perms) || perms.canApproveBenefit || perms.canManageVpp || hasSigningRole || isMarketingTeamLeader(userObj.name);
       if (!hasApprovalPrivileges) {
         // Không có quyền duyệt gì cả thì chuông vẫn phải kêu cho ghi chú của
-        // chính họ và ý kiến trao đổi trong việc của họ — đó là toàn bộ nội dung
-        // chuông của một nhân viên thường.
+        // chính họ, ý kiến trao đổi trong việc của họ, và lịch họ được mời tham
+        // dự — đó là toàn bộ nội dung chuông của một nhân viên thường.
         setNotifications(
-          [...mappedNotes, ...mappedComments].sort((a, b) => b.timestamp - a.timestamp)
+          [...mappedNotes, ...mappedComments, ...mappedAttendeeBookings].sort((a, b) => b.timestamp - a.timestamp)
         );
         return;
       }
@@ -833,7 +883,7 @@ export default function Header({ title, subtitle }: Props) {
         }));
 
       // Combine and sort by timestamp descending
-      const allNotifications = [...mappedTasks, ...mappedJustifications, ...mappedBookings, ...mappedBenefitClaims, ...mappedVppRequests, ...mappedSigning, ...mappedNotes, ...mappedComments].sort((a, b) => b.timestamp - a.timestamp);
+      const allNotifications = [...mappedTasks, ...mappedJustifications, ...mappedBookings, ...mappedBenefitClaims, ...mappedVppRequests, ...mappedSigning, ...mappedNotes, ...mappedComments, ...mappedAttendeeBookings].sort((a, b) => b.timestamp - a.timestamp);
       setNotifications(allNotifications);
     } catch (err) {
       console.error("Error fetching notifications for header:", err);
@@ -1028,6 +1078,9 @@ export default function Header({ title, subtitle }: Props) {
                           : notif.type === "booking"
                           // Mở thẳng lịch đăng ký xe/phòng họp + bật popup chi tiết của đúng đăng ký này
                           ? `/dang-ky?tab=${notif.bookingType || "phong_hop"}&bookingId=${notif.id}`
+                          : notif.type === "attendee_booking"
+                          // Lịch mình được mời tham dự: mở đúng popup chi tiết để xem lịch
+                          ? `/dang-ky?tab=${notif.bookingType || "phong_hop"}&bookingId=${notif.bookingId}`
                           : notif.type === "benefit"
                           // Mở thẳng tab Phúc lợi > Hiếu hỷ & Trợ cấp bên trang C&B
                           ? "/cb?subtab=funeral_wedding"
@@ -1054,6 +1107,9 @@ export default function Header({ title, subtitle }: Props) {
                             ? "bg-indigo-50 text-indigo-700"
                             : notif.type === "booking"
                             ? "bg-sky-50 text-sky-700"
+                            : notif.type === "attendee_booking"
+                            // Xanh ngọc — phân biệt với thông báo cần duyệt (sky)
+                            ? "bg-teal-50 text-teal-700"
                             : notif.type === "benefit"
                             ? "bg-rose-50 text-rose-700"
                             : notif.type === "vpp"

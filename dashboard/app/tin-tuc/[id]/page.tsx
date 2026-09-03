@@ -81,39 +81,54 @@ export default function NewsDetailPage() {
   const load = useCallback(async () => {
     if (!postId) return;
     setLoading(true);
+
+    let row: NewsPost | null;
     try {
-      const row = await fetchPost(postId);
-      if (!row) {
-        setNotFound(true);
-        return;
-      }
-      setPost(row);
-
-      const atts = await fetchAttachments(postId);
-      setAttachments(atts);
-
-      // Ảnh bìa + ảnh nhúng trong nội dung + mọi tệp đính kèm — ký một lượt
-      setUrls(
-        await signNewsPaths([
-          row.cover_path,
-          ...extractImagePaths(row.content_md),
-          ...atts.map((a) => a.path),
-        ])
-      );
-
-      if (user.email) {
-        const set = await fetchMyReactions(user.email, [postId]);
-        setLiked(set.has(postId));
-      }
-
-      if (!viewCounted.current && row.status === "published") {
-        viewCounted.current = true;
-        incrementView(postId);
-      }
+      row = await fetchPost(postId);
     } catch {
       setNotFound(true);
-    } finally {
       setLoading(false);
+      return;
+    }
+    if (!row) {
+      setNotFound(true);
+      setLoading(false);
+      return;
+    }
+
+    // Hiện thân bài NGAY. Trước đây spinner chặn cho tới khi xong cả chuỗi nối
+    // tiếp (đọc bài → đọc đính kèm → ký link Storage → lượt thích), dù nội dung
+    // đã sẵn sàng ngay sau bước đầu. Giờ chữ hiện trước; ảnh/đính kèm/lượt thích
+    // nạp SONG SONG ở nền và điền dần. (Lỗi ký link không còn bị hiểu nhầm
+    // thành "không tìm thấy bài" như luồng cũ.)
+    setPost(row);
+    setLoading(false);
+
+    if (!viewCounted.current && row.status === "published") {
+      viewCounted.current = true;
+      incrementView(postId);
+    }
+
+    // Ảnh bìa + ảnh nhúng trong thân bài — ký ngay để hero và nội dung hiện sớm.
+    signNewsPaths([row.cover_path, ...extractImagePaths(row.content_md)])
+      .then((map) => setUrls((prev) => ({ ...prev, ...map })))
+      .catch(() => {});
+
+    // Tệp đính kèm — đọc rồi ký, không chặn thân bài.
+    fetchAttachments(postId)
+      .then((atts) => {
+        setAttachments(atts);
+        if (atts.length === 0) return;
+        return signNewsPaths(atts.map((a) => a.path)).then((map) =>
+          setUrls((prev) => ({ ...prev, ...map })),
+        );
+      })
+      .catch(() => {});
+
+    if (user.email) {
+      fetchMyReactions(user.email, [postId])
+        .then((set) => setLiked(set.has(postId)))
+        .catch(() => {});
     }
   }, [postId, user.email]);
 
@@ -142,21 +157,21 @@ export default function NewsDetailPage() {
   /**
    * Gửi bài cho đồng nghiệp.
    *
-   * Đóng hộp thoại NGAY rồi mới gửi, thay vì bắt người dùng ngồi nhìn vòng
-   * xoay: một lượt gửi mất 2-5 giây vì phải đợi trọn cuộc bắt tay SMTP với
-   * máy chủ thư, không rút ngắn được. Kết quả báo bằng thông báo nổi ở góc.
-   * Gửi lỗi thì mở lại hộp thoại, lời nhắn vẫn còn nguyên.
+   * XÁC NHẬN TRƯỚC, GỬI Ở NỀN. Một lượt gửi mất 2-5 giây vì phải đợi trọn cuộc
+   * bắt tay SMTP với máy chủ thư, không rút ngắn được. Trước đây người dùng ngồi
+   * nhìn thông báo "Đang gửi..." kèm vòng xoay suốt quãng đó. Giờ đóng hộp thoại
+   * + báo "đã chuyển" NGAY, lời gọi API chạy tiếp ở nền. Chỉ khi GỬI LỖI (hiếm)
+   * mới báo lại và mở lại hộp thoại với lời nhắn còn nguyên để thử lại.
    */
   const handleShareSend = async (targets: { name: string; email: string }[]) => {
     if (!post || targets.length === 0) return;
+    const note = shareNote.trim();
+    const label = targets.length === 1 ? targets[0].name : `${targets.length} người`;
+
     setShareOpen(false);
-    setToast({
-      state: "sending",
-      text:
-        targets.length === 1
-          ? `Đang gửi tới ${targets[0].name}...`
-          : `Đang gửi tới ${targets.length} người...`,
-    });
+    setShareNote("");
+    setToast({ state: "ok", text: `Đã chuyển bài tới ${label}` });
+    let dismiss = setTimeout(() => setToast(null), 6000);
 
     try {
       const res = await apiFetch("/api/share-news-email", {
@@ -166,7 +181,7 @@ export default function NewsDetailPage() {
           smtpConfig: readSmtpConfig(),
           recipients: targets.map((t) => ({ name: t.name, emails: t.email })),
           senderName: user.name,
-          note: shareNote.trim(),
+          note,
           post: {
             id: post.id,
             title: post.title,
@@ -180,17 +195,16 @@ export default function NewsDetailPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Không gửi được email.");
 
-      setShareNote("");
-      // Dùng câu trả về của máy chủ vì nó ghi kèm ĐỊA CHỈ THẬT đã gửi tới.
-      // Hồ sơ nhân sự hay có nhiều email (công ty + cá nhân), nhìn thấy địa chỉ
-      // cụ thể thì người gửi biết ngay thư đi đâu, khỏi phải đoán khi người
-      // nhận báo "chưa thấy thư".
-      setToast({
-        state: "ok",
-        text: json.message || `Đã gửi bài tới ${targets.length} người`,
-      });
-      setTimeout(() => setToast(null), 6000);
+      // Máy chủ trả câu có kèm ĐỊA CHỈ THẬT đã gửi tới (hồ sơ nhân sự hay có
+      // nhiều email). Nếu về kịp thì cập nhật lại cho chính xác, gia hạn toast.
+      if (json.message) {
+        clearTimeout(dismiss);
+        setToast({ state: "ok", text: json.message });
+        dismiss = setTimeout(() => setToast(null), 6000);
+      }
     } catch (err: unknown) {
+      clearTimeout(dismiss);
+      setShareNote(note); // trả lại lời nhắn để không phải gõ lại
       setToast({
         state: "error",
         text: err instanceof Error ? err.message : "Không gửi được email.",
@@ -335,7 +349,7 @@ export default function NewsDetailPage() {
                   >
                     {urls[img.path] ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={urls[img.path]} alt={img.name} className="w-full h-full object-cover" />
+                      <img src={urls[img.path]} alt={img.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <Loader2 className="animate-spin text-slate-300" size={18} />

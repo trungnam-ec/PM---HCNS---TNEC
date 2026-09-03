@@ -80,34 +80,56 @@ export default function NewsPage() {
     if (user.loading) return;
     setLoading(true);
     setError(null);
+
+    let rows: NewsPost[];
     try {
-      const rows = await fetchPosts({ includeDrafts: canManage });
-      setPosts(rows);
+      rows = await fetchPosts({ includeDrafts: canManage });
+    } catch (err: unknown) {
+      setError(errMessage(err));
+      setLoading(false);
+      return;
+    }
 
-      // Ký link ảnh bìa cả mẻ trong MỘT lời gọi (xem lib/news.signNewsPaths)
-      const map = await signNewsPaths(rows.map((r) => r.cover_path));
-      setCovers(map);
+    // Hiện danh sách NGAY khi có dữ liệu chữ. Trước đây spinner treo cho tới khi
+    // XONG cả 4 vòng mạng nối tiếp (đọc bài → ký link ảnh → lượt thích → đếm tệp),
+    // nên dù chữ đã sẵn sàng người dùng vẫn ngồi nhìn "Đang tải". Giờ chữ hiện
+    // trước, ba phần phụ nạp SONG SONG ở nền và điền dần vào card.
+    setPosts(rows);
+    setLoading(false);
 
-      if (user.email) setLiked(await fetchMyReactions(user.email, rows.map((r) => r.id)));
+    if (rows.length === 0) {
+      setCovers({});
+      setLiked(new Set());
+      setAttachCounts({});
+      return;
+    }
 
-      // Đếm số tệp đính kèm để hiện huy hiệu trên card Thông báo
-      if (rows.length > 0) {
-        const { data } = await supabase
-          .from("news_attachments")
-          .select("post_id")
-          .in("post_id", rows.map((r) => r.id));
+    const ids = rows.map((r) => r.id);
+
+    // Ký link ảnh bìa cả mẻ trong MỘT lời gọi (xem lib/news.signNewsPaths)
+    signNewsPaths(rows.map((r) => r.cover_path))
+      .then(setCovers)
+      .catch(() => {});
+
+    if (user.email) {
+      fetchMyReactions(user.email, ids)
+        .then(setLiked)
+        .catch(() => {});
+    }
+
+    // Đếm số tệp đính kèm để hiện huy hiệu trên card Thông báo
+    supabase
+      .from("news_attachments")
+      .select("post_id")
+      .in("post_id", ids)
+      .then(({ data }) => {
         const counts: Record<string, number> = {};
         (data || []).forEach((r) => {
           const id = r.post_id as string;
           counts[id] = (counts[id] || 0) + 1;
         });
         setAttachCounts(counts);
-      }
-    } catch (err: unknown) {
-      setError(errMessage(err));
-    } finally {
-      setLoading(false);
-    }
+      });
   }, [user.loading, user.email, canManage]);
 
   useEffect(() => {
@@ -461,7 +483,13 @@ function ArticleCard({
         <div className="relative aspect-video rounded-2xl overflow-hidden bg-slate-100">
           {coverUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={coverUrl} alt={post.title} className="w-full h-full object-cover" />
+            <img
+              src={coverUrl}
+              alt={post.title}
+              loading="lazy"
+              decoding="async"
+              className="w-full h-full object-cover"
+            />
           ) : (
             <div className={`w-full h-full bg-gradient-to-br ${meta.gradient} flex items-center justify-center`}>
               <Icon size={30} className="text-white/70" />

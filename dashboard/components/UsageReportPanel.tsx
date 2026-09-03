@@ -16,7 +16,7 @@
 // dòng gọi, không phải chèn thêm mấy trăm dòng vào giữa file đang chạy tốt.
 // ============================================================
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import {
@@ -47,31 +47,20 @@ type Row = {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-/** 12 tháng gần nhất + tuỳ chọn xem toàn bộ thời gian. */
-function buildMonthOptions() {
-  const out: { value: string; label: string }[] = [{ value: "all", label: "Toàn bộ thời gian" }];
-  const now = new Date();
-  for (let i = 0; i < 12; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    out.push({ value: `${d.getFullYear()}-${pad(d.getMonth() + 1)}`, label: `Tháng ${d.getMonth() + 1}/${d.getFullYear()}` });
-  }
-  return out;
-}
-
-/** Đổi lựa chọn tháng thành khoảng ngày [từ, đến] để truyền cho RPC. */
-function rangeOf(month: string): { from: string; to: string } {
-  if (month === "all") return { from: "2020-01-01", to: ymd(new Date()) };
-  const [y, m] = month.split("-").map(Number);
-  const first = new Date(y, m - 1, 1);
-  const last = new Date(y, m, 0); // ngày 0 của tháng sau = ngày cuối tháng này
-  return { from: ymd(first), to: ymd(last) };
-}
+// "YYYY-MM-DD" -> "DD/MM/YYYY" để hiển thị nhãn kỳ.
+const dmy = (s: string) => {
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+};
 
 export default function UsageReportPanel() {
   const user = useCurrentUser();
-  const monthOptions = useMemo(buildMonthOptions, []);
-  const [month, setMonth] = useState<string>(monthOptions[1]?.value || "all");
+  // Mặc định: từ đầu tháng hiện tại -> hôm nay.
+  const [fromDate, setFromDate] = useState<string>(() => {
+    const d = new Date();
+    return ymd(new Date(d.getFullYear(), d.getMonth(), 1));
+  });
+  const [toDate, setToDate] = useState<string>(() => ymd(new Date()));
 
   const [rows, setRows] = useState<Row[]>([]);
   const [idle, setIdle] = useState<{ name: string; department: string }[]>([]);
@@ -83,7 +72,8 @@ export default function UsageReportPanel() {
     setLoading(true);
     setError(null);
     try {
-      const { from, to } = rangeOf(month);
+      const from = fromDate;
+      const to = toDate;
 
       const [sumRes, actRes, empRes] = await Promise.all([
         supabase.rpc("admin_activity_summary", { p_from: from, p_to: to }),
@@ -159,7 +149,7 @@ export default function UsageReportPanel() {
     } finally {
       setLoading(false);
     }
-  }, [month, user.isAdmin]);
+  }, [fromDate, toDate, user.isAdmin]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -172,7 +162,7 @@ export default function UsageReportPanel() {
     setExporting(true);
     try {
       const XLSX = await import("xlsx");
-      const label = monthOptions.find((o) => o.value === month)?.label || month;
+      const label = `Từ ${dmy(fromDate)} đến ${dmy(toDate)}`;
 
       const sheet1 = XLSX.utils.aoa_to_sheet([
         ["Bảng xếp hạng mức độ sử dụng phần mềm"],
@@ -204,7 +194,7 @@ export default function UsageReportPanel() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, sheet1, "Xếp hạng");
       XLSX.utils.book_append_sheet(wb, sheet2, "Không hoạt động");
-      XLSX.writeFile(wb, `do-luong-su-dung_${month}.xlsx`);
+      XLSX.writeFile(wb, `do-luong-su-dung_${fromDate}_${toDate}.xlsx`);
     } catch (err: any) {
       setError("Không xuất được Excel: " + (err?.message || String(err)));
     } finally {
@@ -259,16 +249,26 @@ export default function UsageReportPanel() {
               Xếp hạng mức độ dùng phần mềm thật sự. Không tính đăng nhập rồi treo tab.
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <select
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 outline-none focus:border-blue-400 cursor-pointer"
-            >
-              {monthOptions.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            {/* Lọc theo khoảng ngày: từ ngày -> đến ngày */}
+            <div className="flex items-center gap-1 text-xs font-bold text-slate-500">
+              <span>Từ</span>
+              <input
+                type="date"
+                value={fromDate}
+                max={toDate || undefined}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2.5 outline-none focus:border-blue-400"
+              />
+              <span>đến</span>
+              <input
+                type="date"
+                value={toDate}
+                min={fromDate || undefined}
+                onChange={(e) => setToDate(e.target.value)}
+                className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2.5 outline-none focus:border-blue-400"
+              />
+            </div>
             <button
               onClick={load}
               disabled={loading}

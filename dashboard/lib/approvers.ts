@@ -43,6 +43,9 @@ export type ApprovalPermissions = {
                            // Doanh thu). Module thuộc gói Enterprise; cờ này cấp riêng cho
                            // một người mà không phải nâng gói cả phòng (migration 042).
                            // Không vượt được trần license: tenant phải ở gói Enterprise.
+  canViewAccounting: boolean; // Xem module Kế toán > Hồ sơ thanh toán (/ke-toan).
+                              // Module bắt buộc cờ: Admin luôn thấy, người khác phải
+                              // được cấp cờ này mới vào (migration 071).
   // ─── Phiếu trình ký hồ sơ/văn bản (migration 050) ───
   // Luồng 4 cấp: PGĐ QLDA -> PGĐ KHĐT -> Giám đốc -> Kế toán. Mỗi cấp một cờ để
   // đổi người phụ trách chỉ cần tick lại, không phải sửa SQL hay code.
@@ -77,6 +80,7 @@ export const NO_APPROVAL_PERMISSIONS: ApprovalPermissions = {
   canManageProjectLocations: false,
   canManageNews: false,
   canViewReports: false,
+  canViewAccounting: false,
   canCreateSigning: false,
   canApproveSigningQlda: false,
   canApproveSigningKhdt: false,
@@ -600,6 +604,7 @@ export async function fetchApprovalPermissions(email?: string | null): Promise<A
       canManageProjectLocations: !!row.can_manage_project_locations,
       canManageNews: !!row.can_manage_news,
       canViewReports: !!row.can_view_reports,
+      canViewAccounting: !!row.can_view_accounting,
       canCreateSigning: !!row.can_create_signing,
       canApproveSigningQlda: !!row.can_approve_signing_qlda,
       canApproveSigningKhdt: !!row.can_approve_signing_khdt,

@@ -26,7 +26,9 @@ import {
   CalendarOff,
   Plane,
   TrendingUp,
-  Fingerprint
+  Fingerprint,
+  Wallet,
+  ReceiptText
 } from "lucide-react";
 import { useSidebar } from "./SidebarContext";
 import { useDepartments } from "@/lib/departments";
@@ -48,6 +50,9 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
   const isCalendarBooking = pathname === "/calendar" && !!currentDk;
   const isBookingSectionActive = isBookingSection || isCalendarBooking;
   const [bookingGroupOpen, setBookingGroupOpen] = useState(isBookingSectionActive);
+  // Nhóm "Kế toán" (/ke-toan) — hiện chỉ có mục con "Hồ sơ thanh toán".
+  const isKeToanSection = pathname.startsWith("/ke-toan");
+  const [keToanGroupOpen, setKeToanGroupOpen] = useState(isKeToanSection);
   // Ẩn menu theo GÓI HIỆU LỰC CỦA PHÒNG + cấp phép riêng (không chỉ gói toàn cục).
   // Đang tải danh tính -> hiện tạm (tránh nháy menu trống), narrow lại khi có dữ liệu.
   const currentUser = useCurrentUser();
@@ -149,6 +154,56 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
     </div>
   );
 
+  // Nhóm "Kế toán" — chèn ngay dưới "Hành chính & VPP" nếu gói cho phép.
+  const keToanAllowed = isPathAllowed("/ke-toan");
+  const keToanChildren = [
+    { label: "Hồ sơ thanh toán", href: "/ke-toan/ho-so-thanh-toan", icon: ReceiptText },
+  ];
+  const keToanGroup = (
+    <div key="ketoan-group" className="space-y-1.5">
+      <button
+        type="button"
+        onClick={() => setKeToanGroupOpen((o) => !o)}
+        className={`w-full flex items-center gap-3 px-5 py-2.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-[0.97] border cursor-pointer ${
+          isKeToanSection
+            ? "bg-gradient-to-r from-[#005BAC] to-[#00AEEF] border-transparent text-white shadow-md shadow-blue-500/15"
+            : "bg-slate-50/50 border-slate-100 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+        }`}
+      >
+        <Wallet size={15} className={isKeToanSection ? "text-white" : "text-slate-500"} />
+        <span className="flex-1 text-left">Kế toán</span>
+        <ChevronDown
+          size={13}
+          className={`transition-transform duration-200 ${keToanGroupOpen || isKeToanSection ? "rotate-180" : ""} ${isKeToanSection ? "text-white" : "text-slate-400"}`}
+        />
+      </button>
+
+      {(keToanGroupOpen || isKeToanSection) && (
+        <div className="pl-5 space-y-1.5 animate-in fade-in duration-150">
+          {keToanChildren.map((child) => {
+            const ChildIcon = child.icon;
+            const isChildActive = pathname === child.href || pathname.startsWith(child.href);
+            return (
+              <Link
+                key={child.href}
+                href={child.href}
+                onClick={() => setSidebarOpen(false)}
+                className={`flex items-center gap-2.5 px-4 py-2 rounded-full text-[11px] font-bold transition-all duration-200 active:scale-[0.97] hover:translate-x-1 border ${
+                  isChildActive
+                    ? "bg-blue-50 border-blue-200 text-[#005BAC]"
+                    : "bg-white border-slate-100 text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                }`}
+              >
+                <ChildIcon size={13} className={isChildActive ? "text-[#005BAC]" : "text-slate-400"} />
+                <span>{child.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <>
       {navItems.map((item) => {
@@ -187,6 +242,16 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
             <div key={item.href} className="space-y-2.5">
               {linkEl}
               {bookingAllowed && bookingGroup}
+            </div>
+          );
+        }
+
+        // Chèn nhóm "Kế toán" ngay sau mục "Hành chính & VPP" (nếu gói cho phép)
+        if (item.href === "/administration") {
+          return (
+            <div key={item.href} className="space-y-2.5">
+              {linkEl}
+              {keToanAllowed && keToanGroup}
             </div>
           );
         }

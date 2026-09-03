@@ -60,6 +60,7 @@ export type ModuleKey =
   | "calendar"
   | "booking"
   | "administration"
+  | "accounting"
   | "meeting"
   | "employees"
   | "cb"
@@ -89,6 +90,10 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleDef> = {
   calendar:       { minPlan: "basic", route: "/calendar" },
   booking:        { minPlan: "basic", route: "/dang-ky", grantFlag: "canApproveBooking" },
   administration: { minPlan: "basic", route: "/administration", grantFlag: "canViewInvoices" },
+  // Kế toán > Hồ sơ thanh toán — sổ đề nghị thanh toán nội bộ (trích xuất AI).
+  // Bắt buộc cờ: Admin luôn thấy, người khác phải được cấp cờ can_view_accounting
+  // (requireFlag = điều kiện VÀ, giống module Báo cáo).
+  accounting:     { minPlan: "basic", route: "/ke-toan", grantFlag: "canViewAccounting", requireFlag: true },
   meeting:        { minPlan: "basic", route: "/meeting-team" },
   project_locations: { minPlan: "basic", route: "/vi-tri-du-an" },
   // Tin tức: ai đăng nhập cũng ĐỌC được (kênh truyền thông nội bộ). grantFlag ở

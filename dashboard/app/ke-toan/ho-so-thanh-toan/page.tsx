@@ -213,12 +213,36 @@ export default function PaymentDossierPage() {
     for (let i = 0; i < list.length; i++) {
       const file = list[i];
       setProcessingText(`Đang phân tích ${i + 1}/${list.length}: ${file.name}...`);
+      let uploadedPath: string | null = null;
       try {
-        const formData = new FormData();
-        formData.append("document_file", file);
-        const headers: Record<string, string> = { Authorization: `Bearer ${key}`, "x-openai-model": mdl };
-        const res = await apiFetch("/api/analyze-payment-dossier", { method: "POST", headers, body: formData });
-        const data = await res.json();
+        // 1) Tải file THẲNG lên Supabase Storage (né giới hạn 4.5MB của Vercel).
+        const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+        uploadedPath = `tmp/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const up = await supabase.storage
+          .from("payment-dossiers")
+          .upload(uploadedPath, file, { upsert: false, contentType: file.type || undefined });
+        if (up.error) throw new Error("Tải tệp lên kho tạm thất bại: " + up.error.message);
+
+        // 2) Gọi route CHỈ với đường dẫn (JSON nhỏ) — server tự tải file về gửi OpenAI.
+        const headers: Record<string, string> = {
+          Authorization: `Bearer ${key}`,
+          "x-openai-model": mdl,
+          "Content-Type": "application/json",
+        };
+        const res = await apiFetch("/api/analyze-payment-dossier", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ storage_path: uploadedPath, filename: file.name }),
+        });
+        // Đọc text trước rồi mới parse: khi server trả lỗi hạ tầng (text thô) thì
+        // báo đúng nội dung thay vì "Unexpected token ... is not valid JSON".
+        const rawBody = await res.text();
+        let data: any;
+        try {
+          data = JSON.parse(rawBody);
+        } catch {
+          throw new Error(res.ok ? "Máy chủ trả về dữ liệu không hợp lệ." : (rawBody.slice(0, 180) || `Lỗi HTTP ${res.status}`));
+        }
         if (!res.ok || data.error) throw new Error(data.error || `Lỗi HTTP ${res.status}`);
         const ai = (data.data || {}) as PaymentDossierAi;
         const draft = draftFromAi(ai, file.name, data.validationScores || {});
@@ -232,6 +256,8 @@ export default function PaymentDossierPage() {
         console.error("Analyze error", file.name, err);
         fail++;
         setNotice({ type: "error", text: `Lỗi phân tích "${file.name}": ${err.message || String(err)}` });
+        // Route chỉ xoá file tạm khi thành công -> lỗi thì client tự dọn.
+        if (uploadedPath) supabase.storage.from("payment-dossiers").remove([uploadedPath]).catch(() => {});
       }
     }
 

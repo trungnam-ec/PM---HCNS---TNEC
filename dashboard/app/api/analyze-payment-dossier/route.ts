@@ -1,4 +1,4 @@
-import { requireApiAuth } from "@/lib/apiAuth";
+import { requireApiAuth, supabaseForCaller } from "@/lib/apiAuth";
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
@@ -173,15 +173,44 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const form = await req.formData();
-    const file = form.get("document_file") as File | null;
-    if (!file) {
-      return NextResponse.json({ error: "Thiếu file hồ sơ cần phân tích." }, { status: 400 });
+    // Hai đường vào:
+    //  1) JSON { storage_path, filename }: file đã tải thẳng lên Supabase Storage
+    //     (né giới hạn 4.5MB của Vercel) -> route tự tải về. Đường mặc định.
+    //  2) FormData document_file: gửi trực tiếp (chỉ hợp file nhỏ < 4.5MB).
+    const contentType = req.headers.get("content-type") || "";
+    let fileBuffer: Buffer;
+    let fileName: string;
+    let storagePath: string | null = null;
+    const caller = supabaseForCaller(auth.caller);
+
+    if (contentType.includes("application/json")) {
+      const body = await req.json().catch(() => ({}));
+      storagePath = (body?.storage_path || "").toString();
+      fileName = (body?.filename || "").toString() || "hoso.pdf";
+      if (!storagePath) {
+        return NextResponse.json({ error: "Thiếu đường dẫn tệp trong kho tạm." }, { status: 400 });
+      }
+      const dl = await caller.storage.from("payment-dossiers").download(storagePath);
+      if (dl.error || !dl.data) {
+        return NextResponse.json(
+          { error: "Không tải được tệp từ kho tạm: " + (dl.error?.message || "không rõ") },
+          { status: 400 }
+        );
+      }
+      fileBuffer = Buffer.from(await dl.data.arrayBuffer());
+    } else {
+      const form = await req.formData();
+      const file = form.get("document_file") as File | null;
+      if (!file) {
+        return NextResponse.json({ error: "Thiếu file hồ sơ cần phân tích." }, { status: 400 });
+      }
+      fileName = file.name;
+      fileBuffer = Buffer.from(await file.arrayBuffer());
     }
 
     const openai = new OpenAI({ apiKey });
-    const fileBuffer = Buffer.from(await file.arrayBuffer());
-    const fileType = file.name.toLowerCase();
+    const file = { name: fileName };
+    const fileType = fileName.toLowerCase();
     const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o";
 
     let extracted: Record<string, unknown>;
@@ -241,6 +270,11 @@ export async function POST(req: NextRequest) {
     const hasWrapper = extracted && typeof extracted === "object" && "data" in extracted;
     const data = hasWrapper ? (extracted as any).data : extracted;
     const validationScores = hasWrapper ? (extracted as any).validationScores || {} : {};
+
+    // Xử lý xong -> xoá file tạm trong kho (best-effort, không chặn phản hồi).
+    if (storagePath) {
+      try { await caller.storage.from("payment-dossiers").remove([storagePath]); } catch {}
+    }
 
     return NextResponse.json({ data: data || {}, validationScores });
   } catch (err: any) {

@@ -592,6 +592,7 @@ export function docxPayloadFromRow(s: SigningSubmission): Record<string, unknown
   if (s.loai === "hop_dong") {
     return {
       loai: "hop_dong",
+      donVi: s.don_vi,
       duAn: s.du_an,
       goiThau: s.goi_thau,
       hangMuc: s.hang_muc,
@@ -633,6 +634,7 @@ export function docxPayloadFromRow(s: SigningSubmission): Record<string, unknown
     ykienQLDA: s.ykien_qlda || "",
     ykienKHDT: s.ykien_khdt || "",
     ykienGiamDoc: s.ykien_giam_doc || "",
+    nguoiTrinh: s.created_by_name || "",
   };
 }
 
@@ -644,6 +646,94 @@ export function docxFileName(s: {
   // Phiếu hợp đồng không có "đợt" — gắn đuôi _Dot_x vào là sai nghiệp vụ.
   if (s.loai === "hop_dong") return `Phieu_Trinh_Ky_Hop_Dong_${safe}.docx`;
   return `Phieu_Trinh_Ky_${safe}_Dot_${s.dot_so ?? "x"}.docx`;
+}
+
+// ─── Đẩy sang Bảng kê hồ sơ thanh toán (module Kế toán, migration 068 + 073) ───
+// Gọi NGAY SAU khi Giám đốc duyệt phiếu HỒ SƠ/VĂN BẢN (phiếu vào bước Kế toán).
+// Tạo sẵn một dòng trong `payment_dossiers` để kế toán khỏi nhập lại:
+//   - Người nhận tiền / nội dung / số tiền / dự án / tệp: lấy thẳng từ phiếu.
+//   - Số tài khoản + ngân hàng: tra Danh mục đối tác (finance_partners →
+//     finance_partner_accounts, tài khoản MẶC ĐỊNH) theo tên đơn vị. Đối tác gõ
+//     tay ngoài danh mục thì để trống, kế toán tự điền.
+//   - Người đề nghị TT + phòng ban: theo NGƯỜI LẬP phiếu (email → danh bạ).
+//
+// IDEMPOTENT: cột signing_submission_id là UNIQUE (072). Phiếu bị trả lại rồi
+// duyệt lại KHÔNG tạo dòng thứ hai — bắt lỗi trùng khoá 23505 và bỏ qua.
+//
+// KHÔNG ném lỗi làm hỏng thao tác duyệt ở nơi gọi: phiếu đã chuyển bước rồi, đây
+// chỉ là tiện ích điền hộ. Nơi gọi fire-and-forget và chỉ hiện cảnh báo mềm.
+export async function pushToPaymentDossier(
+  row: SigningSubmission,
+  actorEmail: string
+): Promise<void> {
+  // Chỉ phiếu hồ sơ/văn bản mới có bước Kế toán; phiếu hợp đồng dừng ở Giám đốc.
+  if (row.loai === "hop_dong") return;
+
+  const ddmmyyyy = (d: Date) =>
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Ho_Chi_Minh",
+      day: "2-digit", month: "2-digit", year: "numeric",
+    }).format(d);
+
+  // Tài khoản nhận tiền — tra theo tên đơn vị (finance_partners.name là unique).
+  let soTaiKhoan = "";
+  let taiNganHang = "";
+  const ten = (row.chu_dau_tu || "").trim();
+  if (ten) {
+    const { data: p } = await supabase
+      .from("finance_partners")
+      .select("id")
+      .ilike("name", ten)
+      .limit(1);
+    const partnerId = p?.[0]?.id as string | undefined;
+    if (partnerId) {
+      const { data: acc } = await supabase
+        .from("finance_partner_accounts")
+        .select("bank_account, bank_name, bank_branch")
+        .eq("partner_id", partnerId)
+        .order("is_default", { ascending: false })
+        .limit(1);
+      const a = acc?.[0] as { bank_account?: string; bank_name?: string; bank_branch?: string } | undefined;
+      if (a) {
+        soTaiKhoan = a.bank_account || "";
+        taiNganHang = [a.bank_name, a.bank_branch].filter(Boolean).join(" - ");
+      }
+    }
+  }
+
+  // Phòng ban người lập — email lưu trong danh bạ CHỨA email đăng nhập.
+  let phongBan = "";
+  if (row.created_by) {
+    const { data: emp } = await supabase
+      .from("employees_directory")
+      .select("department")
+      .ilike("email", `%${row.created_by}%`)
+      .limit(1);
+    phongBan = (emp?.[0] as { department?: string } | undefined)?.department || "";
+  }
+
+  const amount = row.de_nghi_thanh_toan ?? tinhDeNghi(row);
+  const hasAmount = typeof amount === "number" && Number.isFinite(amount);
+
+  const { error } = await supabase.from("payment_dossiers").insert([{
+    signing_submission_id: row.id,
+    ngay_nhap: ddmmyyyy(new Date()),
+    ngay_de_nghi: row.created_at ? ddmmyyyy(new Date(row.created_at)) : ddmmyyyy(new Date()),
+    nguoi_nhan_tien: ten || null,
+    noi_dung_tt: row.ve_viec || row.noi_dung_trinh || null,
+    so_tien_de_nghi: hasAmount ? fmtMoney(amount) : null,
+    so_tien_de_nghi_num: hasAmount ? amount : null,
+    du_an: row.du_an || null,
+    nguoi_de_nghi_tt: row.created_by_name || row.created_by || null,
+    don_vi_cong_tac: phongBan || null,
+    so_tai_khoan: soTaiKhoan || null,
+    tai_ngan_hang: taiNganHang || null,
+    ten_file_pdf: row.files.length ? row.files.map((f) => f.name).join("; ") : null,
+    created_by: actorEmail || null,
+  }]);
+
+  // Trùng khoá = đã tạo ở lần duyệt trước -> bỏ qua, không phải lỗi.
+  if (error && (error as { code?: string }).code !== "23505") throw error;
 }
 
 export async function resolveDossierUrl(path: string): Promise<string | null> {

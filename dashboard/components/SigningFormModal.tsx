@@ -21,6 +21,11 @@ import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/apiClient";
 import { useProjectCatalog } from "@/lib/projectCatalog";
+import { useDepartments } from "@/lib/departments";
+import {
+  useFinancePartners, PARTY_TYPE_LABELS, foldVi,
+  type FinancePartnerContract,
+} from "@/lib/financePartners";
 import {
   tinhDeNghi, tinhLuyKe, fmtMoney, uploadDossierFile, resolveDossierUrl, errText,
   downloadSigningForm, docxFileName,
@@ -30,7 +35,7 @@ import {
 } from "@/lib/signingSubmissions";
 import {
   X, Upload, Sparkles, Loader2, Save, Send, Trash2, FileText, Plus,
-  AlertTriangle, Download, Calculator, ExternalLink, Settings,
+  AlertTriangle, Download, Calculator, ExternalLink, Settings, Search,
 } from "lucide-react";
 
 const inputCls =
@@ -63,8 +68,10 @@ const toRate = (s: string): number | null => {
 const showNum = (v: number | null | undefined): string =>
   typeof v === "number" && Number.isFinite(v) ? new Intl.NumberFormat("vi-VN").format(v) : "";
 
-function toDraft(s: SigningSubmission | null): Draft {
-  if (!s) return { don_vi: "P. Kế hoạch Đấu thầu" };
+function toDraft(s: SigningSubmission | null, defaultDept = ""): Draft {
+  // Phiếu mới: mặc định Phòng ban = phòng của người lập (tra danh bạ). "Chưa xếp
+  // phòng" thì để trống cho họ tự chọn thay vì ghi một giá trị vô nghĩa.
+  if (!s) return { don_vi: /^chưa xếp/i.test(defaultDept) ? "" : defaultDept };
   const d: Draft = {};
   for (const k of ["don_vi", "ve_viec", "noi_dung_trinh", "chu_dau_tu", "du_an",
     "hop_dong_so", "ngay_ky_hop_dong", "goi_thau", "project_code",
@@ -80,24 +87,31 @@ function toDraft(s: SigningSubmission | null): Draft {
 }
 
 export default function SigningFormModal({
-  existing, loai: loaiMoi, currentEmail, currentName, onClose, onSaved,
+  existing, loai: loaiMoi, currentEmail, currentName, currentDepartment, onClose, onSaved,
 }: {
   existing: SigningSubmission | null;
   /** Loại phiếu khi LẬP MỚI. Sửa phiếu cũ thì lấy theo phiếu, không đổi được. */
   loai?: SigningLoai;
   currentEmail: string;
   currentName: string;
+  /** Phòng ban của người lập (useCurrentUser().department) — mặc định ô Phòng ban. */
+  currentDepartment?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { projects } = useProjectCatalog();
+  // Danh sách phòng ban + BĐH (bảng departments) — nguồn cho ô "Phòng ban".
+  const departments = useDepartments();
+  // Danh mục đối tác (migration 048/059) — để ô "Đơn vị / Đối tác" chọn từ danh
+  // sách có sẵn thay vì gõ tay, và điền hộ dữ liệu cơ bản đã lưu (dự án, số HĐ).
+  const { partners, contracts, accounts } = useFinancePartners();
   // Loại phiếu KHÔNG cho đổi sau khi đã tạo: đổi giữa chừng thì nửa số trường
   // đang có dữ liệu bỗng thành trường của loại kia, và luồng duyệt đã đi được
   // vài bước lại nhảy sang luồng khác.
   const loai: SigningLoai = existing ? existing.loai : (loaiMoi || "ho_so");
   const laHopDong = loai === "hop_dong";
   const meta = LOAI_META[loai];
-  const [d, setD] = useState<Draft>(() => toDraft(existing));
+  const [d, setD] = useState<Draft>(() => toDraft(existing, currentDepartment));
   // Bảng so sánh A-B ↔ B-B′ — mảng riêng, không nhét vào Draft (Draft toàn chuỗi).
   const [soSanh, setSoSanh] = useState<SoSanhRow[]>(
     () => (existing?.so_sanh?.length ? existing.so_sanh : SO_SANH_MAU).map((r) => ({ ...r }))
@@ -148,6 +162,80 @@ export default function SigningFormModal({
   };
 
   const set = (k: string, v: string) => setD((p) => ({ ...p, [k]: v }));
+
+  // ─── Ô "Đơn vị / Đối tác" — chọn từ danh mục (chỉ phiếu hồ sơ/văn bản) ───
+  // Bê nguyên khuôn ô "Khách hàng" bên Kế hoạch TC: gõ để tìm, danh sách xổ
+  // xuống, chọn xong thành thẻ có nút gỡ. VẪN cho gõ tên NGOÀI danh mục — có đơn
+  // vị chưa kịp đưa vào danh mục thì vẫn lập phiếu được như trước.
+  const [custSearch, setCustSearch] = useState("");
+  const [showCust, setShowCust] = useState(false);
+  const [contractId, setContractId] = useState("");
+  const custRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (custRef.current && !custRef.current.contains(e.target as Node)) setShowCust(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  // Đối tác khớp ĐÚNG TÊN với ô đã chọn. Gõ tay tên chưa có trong danh mục thì
+  // không khớp ai — vẫn nhập bình thường, chỉ là không có gì để điền hộ.
+  const partner = useMemo(() => {
+    const q = (d.chu_dau_tu || "").trim().toLowerCase();
+    if (!q) return null;
+    return partners.find((p) => p.name.trim().toLowerCase() === q) || null;
+  }, [partners, d.chu_dau_tu]);
+
+  const partnerContracts = useMemo(
+    () => (partner ? contracts.filter((c) => c.partner_id === partner.id) : []),
+    [contracts, partner]
+  );
+
+  const custResults = useMemo(() => {
+    const q = foldVi(custSearch);
+    return partners
+      .filter((p) => !q || foldVi(p.name).includes(q) || foldVi(p.short_name || "").includes(q))
+      .slice(0, 30);
+  }, [partners, custSearch]);
+
+  // Tài khoản mặc định của đối tác — hiện ở dòng phụ để người lập thấy "số tài
+  // khoản chính thức nhận tiền" đã lưu, xác nhận đúng đơn vị trước khi trình.
+  const partnerAccount = useMemo(() => {
+    if (!partner) return null;
+    const mine = accounts.filter((a) => a.partner_id === partner.id);
+    return mine.find((a) => a.is_default) || mine[0] || null;
+  }, [partner, accounts]);
+
+  // Điền hộ từ một dòng hợp đồng đã lưu. `overwrite=false` (hệ thống tự điền khi
+  // đối tác chỉ có 1 hợp đồng): chỉ đổ vào ô CÒN TRỐNG, không đè lên số liệu AI
+  // đã bóc hay người lập đã gõ. Bấm chọn trong ô "Lấy theo hợp đồng" thì
+  // overwrite=true — thao tác cố ý, đè lên là đúng ý.
+  const applyContract = (c: FinancePartnerContract, overwrite: boolean) => {
+    const proj = projects.find((x) => x.code === c.project_code);
+    setD((prev) => ({
+      ...prev,
+      du_an: overwrite || !prev.du_an ? (proj?.name || c.project_name || prev.du_an || "") : prev.du_an,
+      hop_dong_so: overwrite || !prev.hop_dong_so ? (c.contract_no || prev.hop_dong_so || "") : prev.hop_dong_so,
+      project_code: overwrite || !prev.project_code ? (c.project_code || prev.project_code || "") : prev.project_code,
+    }));
+    setContractId(c.id);
+  };
+
+  // Chọn đối tác xong: đối tác có đúng 1 hợp đồng (hoặc 1 hợp đồng khớp dự án đã
+  // chọn) thì tự điền; nhiều hợp đồng thì KHÔNG đoán, để ô chọn bên dưới.
+  const pickPartner = (name: string) => {
+    setD((prev) => ({ ...prev, chu_dau_tu: name }));
+    setContractId("");
+    const q = name.trim().toLowerCase();
+    const pn = partners.find((x) => x.name.trim().toLowerCase() === q);
+    if (!pn) return;
+    const list = contracts.filter((c) => c.partner_id === pn.id);
+    const byProject = d.project_code ? list.filter((c) => c.project_code === d.project_code) : [];
+    const auto = byProject.length === 1 ? byProject[0] : list.length === 1 ? list[0] : null;
+    if (auto) applyContract(auto, false);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose(); };
@@ -361,6 +449,7 @@ export default function SigningFormModal({
         await downloadSigningForm(
           {
             loai: "hop_dong",
+            donVi: d.don_vi,
             duAn: d.du_an,
             goiThau: d.goi_thau,
             hangMuc: d.hang_muc,
@@ -400,6 +489,7 @@ export default function SigningFormModal({
           ykienQLDA: existing?.ykien_qlda || "",
           ykienKHDT: existing?.ykien_khdt || "",
           ykienGiamDoc: existing?.ykien_giam_doc || "",
+          nguoiTrinh: existing?.created_by_name || currentName || "",
         },
         docxFileName({ hop_dong_so: d.hop_dong_so, dot_so: d.dot_so ? Number(d.dot_so) : null })
       );
@@ -608,9 +698,22 @@ export default function SigningFormModal({
             <h5 className={labelCls}>2. Đầu phiếu (tự gõ)</h5>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
               <label className="flex flex-col gap-1.5">
-                <span className={labelCls}>Đơn vị</span>
-                <input value={d.don_vi || ""} onChange={(e) => set("don_vi", e.target.value)}
-                  className={inputCls} />
+                <span className={labelCls}>Phòng ban</span>
+                {/* Lấy danh sách phòng ban/BĐH từ danh bạ (bảng departments), mặc
+                    định theo phòng của người lập; nhân viên BĐH thì mặc định đúng
+                    BĐH đó. Vẫn cho chọn phòng ban khác trong danh sách. */}
+                <select value={d.don_vi || ""} onChange={(e) => set("don_vi", e.target.value)}
+                  className={`${inputCls} cursor-pointer`}>
+                  <option value="">— Chọn phòng ban —</option>
+                  {departments.all.map((dep) => (
+                    <option key={dep} value={dep}>{dep}</option>
+                  ))}
+                  {/* Giá trị cũ không có trong danh sách (phiếu cũ / phòng đổi tên)
+                      vẫn hiển thị được, không bị xoá mất khi mở ra sửa. */}
+                  {d.don_vi && !departments.all.includes(d.don_vi) && (
+                    <option value={d.don_vi}>{d.don_vi}</option>
+                  )}
+                </select>
               </label>
               <label className="flex flex-col gap-1.5 md:col-span-2">
                 <span className={labelCls}>Về việc</span>
@@ -634,9 +737,109 @@ export default function SigningFormModal({
                   vai bằng ô "Bên A / Bên B" bên dưới, vì tuỳ loại hợp đồng mà
                   chủ đầu tư đứng vai A hay Trung Nam đứng vai A. */}
               {!laHopDong && (
+                <div className="flex flex-col gap-1.5 md:col-span-2">
+                  <span className={labelCls}>Đơn vị / Đối tác</span>
+                  <div className="relative" ref={custRef}>
+                    {d.chu_dau_tu ? (
+                      // Đã chọn: hiện thành thẻ, bấm X để chọn lại.
+                      <div className="w-full min-h-[38px] px-3 py-2 border border-slate-200 rounded-xl flex items-center gap-2 bg-white">
+                        <span className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 text-white text-[9px] font-bold flex items-center justify-center shrink-0">
+                          {(d.chu_dau_tu || "").split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-xs font-bold text-slate-800 truncate">{d.chu_dau_tu}</span>
+                          <span className="block text-[10px] font-semibold text-slate-400 truncate">
+                            {partner
+                              ? [
+                                  PARTY_TYPE_LABELS[partner.party_type],
+                                  partner.short_name || null,
+                                  partnerAccount ? `TK ${partnerAccount.bank_account}${partnerAccount.bank_name ? ` · ${partnerAccount.bank_name}` : ""}` : null,
+                                ].filter(Boolean).join(" • ")
+                              : "Tên gõ tay — chưa có trong danh mục đối tác"}
+                          </span>
+                        </span>
+                        <button type="button"
+                          onClick={() => { pickPartner(""); setContractId(""); setCustSearch(""); setShowCust(true); }}
+                          title="Chọn đơn vị / đối tác khác"
+                          className="p-1 text-slate-300 hover:text-rose-500 rounded-lg transition-colors cursor-pointer shrink-0">
+                          <X size={13} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-full min-h-[38px] px-3 py-2 border border-slate-200 rounded-xl flex items-center gap-1.5 bg-white focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-400">
+                        <Search size={12} className="text-slate-400 shrink-0" />
+                        <input
+                          type="text"
+                          value={custSearch}
+                          onChange={(e) => { setCustSearch(e.target.value); setShowCust(true); }}
+                          onFocus={() => setShowCust(true)}
+                          placeholder="Tìm đối tác trong danh mục hoặc gõ tên đơn vị…"
+                          className="flex-1 min-w-0 py-0.5 outline-none text-xs font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-400 bg-transparent"
+                        />
+                      </div>
+                    )}
+
+                    {showCust && !d.chu_dau_tu && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-premium z-20 max-h-56 overflow-y-auto">
+                        {custResults.map((p) => (
+                          <button key={p.id} type="button"
+                            onClick={() => { pickPartner(p.name); setCustSearch(""); setShowCust(false); }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2 hover:bg-slate-50 transition-colors text-left cursor-pointer">
+                            <span className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 text-white text-[9px] font-bold flex items-center justify-center shrink-0">
+                              {p.name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-xs font-bold text-slate-700 truncate">{p.name}</span>
+                              <span className="block text-[10px] text-slate-400 font-semibold truncate">
+                                {PARTY_TYPE_LABELS[p.party_type]}{p.short_name ? ` • ${p.short_name}` : ""}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+
+                        {/* Vẫn nhận tên NGOÀI danh mục: có đơn vị chưa kịp đưa vào. */}
+                        {custSearch.trim() && !custResults.some((p) => foldVi(p.name) === foldVi(custSearch)) && (
+                          <button type="button"
+                            onClick={() => { pickPartner(custSearch.trim()); setCustSearch(""); setShowCust(false); }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2 hover:bg-blue-50 border-t border-slate-100 transition-colors text-left cursor-pointer">
+                            <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
+                              <Plus size={13} />
+                            </span>
+                            <span className="text-xs font-semibold text-slate-600 truncate">
+                              Dùng tên gõ tay: “{custSearch.trim()}”
+                            </span>
+                          </button>
+                        )}
+
+                        {custResults.length === 0 && !custSearch.trim() && (
+                          <p className="px-4 py-3 text-[11px] font-semibold text-slate-400">
+                            Danh mục đối tác đang rỗng — thêm ở tab “Danh mục đối tác”.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Nhiều hợp đồng: KHÔNG đoán bừa — cho người lập chọn để điền hộ
+                  dự án + số hợp đồng đã lưu (đè lên vì là thao tác cố ý). */}
+              {!laHopDong && partnerContracts.length > 1 && (
                 <label className="flex flex-col gap-1.5 md:col-span-2">
-                  <span className={labelCls}>Chủ đầu tư</span>
-                  <input value={d.chu_dau_tu || ""} onChange={(e) => set("chu_dau_tu", e.target.value)} className={inputCls} />
+                  <span className={labelCls}>Lấy theo hợp đồng đã lưu</span>
+                  <select value={contractId}
+                    onChange={(e) => {
+                      const c = partnerContracts.find((x) => x.id === e.target.value);
+                      if (c) applyContract(c, true); else setContractId("");
+                    }}
+                    className={`${inputCls} cursor-pointer`}>
+                    <option value="">— Chọn 1 trong {partnerContracts.length} hợp đồng —</option>
+                    {partnerContracts.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {[c.contract_no, c.project_name].filter(Boolean).join(" · ") || "(hợp đồng chưa có số)"}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               )}
               <label className="flex flex-col gap-1.5 md:col-span-2">

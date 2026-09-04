@@ -110,6 +110,7 @@ export async function POST(request: NextRequest) {
         : `${money(giaTriHD)}${vat === null || vat === undefined || vat === "" ? "" : ` (bao gồm thuế VAT ${vat}%)`}`;
 
       doc.render({
+        donVi: donVi || "",
         duAn: duAn || "",
         goiThau: goiThau || "",
         hangMuc: body.hangMuc || "",
@@ -181,6 +182,8 @@ export async function POST(request: NextRequest) {
       ykienQLDA: ykienQLDA || "",
       ykienKHDT: ykienKHDT || "",
       ykienGiamDoc: ykienGiamDoc || "",
+      // Ô "Người trình" cuối phiếu — tên người lập, như tờ hợp đồng.
+      nguoiTrinh: body.nguoiTrinh || "",
     });
 
     const buf = doc.getZip().generate({ type: "nodebuffer" });

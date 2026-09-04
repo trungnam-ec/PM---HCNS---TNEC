@@ -25,6 +25,7 @@ import {
   fmtMoney, fmtDateTime, resolveDossierUrl, fetchStageApproverEmails, errText,
   normalizeStatus, pgdOpinionField, downloadSigningForm, docxPayloadFromRow, docxFileName,
   deleteSubmission, duplicateSubmission, appendDossierFiles, removeDossierFile,
+  pushToPaymentDossier,
   STATUS_META, ACTION_LABEL, EVENT_LABEL, FLOW, flowOf, LOAI_META,
   type SigningSubmission, type SigningStatus, type SigningLoai,
 } from "@/lib/signingSubmissions";
@@ -302,7 +303,7 @@ export default function SigningPanel() {
           <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
             <p className="text-[11px] font-bold text-amber-800">
-              Phiếu ĐÃ chuyển bước, nhưng email thông báo không gửi được.
+              Phiếu ĐÃ chuyển bước, nhưng có một việc phụ chưa hoàn tất:
             </p>
             <p className="text-[11px] font-medium text-amber-700 mt-0.5 break-words">{mailWarn}</p>
           </div>
@@ -606,6 +607,7 @@ export default function SigningPanel() {
           loai={creating || undefined}
           currentEmail={user.email}
           currentName={user.name}
+          currentDepartment={user.department}
           onClose={() => { setCreating(null); setEditing(null); }}
           onSaved={load}
         />
@@ -989,6 +991,18 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
       // nó nổi ở PANEL CHA (onMailWarn) nên modal đóng rồi vẫn đọc được.
       onDone();
       void notify("duyet", row.status, nxt, { ykien });
+
+      // Giám đốc duyệt xong phiếu HỒ SƠ/VĂN BẢN -> tự tạo dòng trong Bảng kê hồ
+      // sơ thanh toán bên Kế toán. Fire-and-forget như email: phiếu đã sang bước
+      // Kế toán rồi, việc này hỏng cũng không làm sai dữ liệu — chỉ cảnh báo mềm
+      // ở panel cha để kế toán biết mà tự thêm.
+      if (nxt === "cho_ke_toan") {
+        pushToPaymentDossier(row, user.email).catch((e) =>
+          setMailWarn(
+            `Phiếu đã duyệt và chuyển sang Kế toán, nhưng chưa tạo được dòng trong Bảng kê hồ sơ thanh toán: ${errText(e)}. Kế toán có thể tự thêm.`
+          )
+        );
+      }
     } catch (e) {
       setErr(errText(e));
       dangChay.current = false;
@@ -1054,7 +1068,7 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
         ],
       ]
     : [
-        ["Chủ đầu tư", row.chu_dau_tu || "—"],
+        ["Đơn vị / Đối tác", row.chu_dau_tu || "—"],
         ["Dự án", row.du_an || "—"],
         ["Hợp đồng số", [row.hop_dong_so, row.ngay_ky_hop_dong ? `ký ngày ${row.ngay_ky_hop_dong}` : ""].filter(Boolean).join(" ") || "—"],
         ["Gói thầu", row.goi_thau || "—"],

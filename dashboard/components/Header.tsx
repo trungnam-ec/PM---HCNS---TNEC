@@ -670,11 +670,14 @@ export default function Header({ title, subtitle }: Props) {
       });
 
       // Giải trình công — cùng luật với settings/page.tsx qua isJustificationCap1Approver.
-      // Quyền bao quát (Admin / cờ / HCNS) kiểm trước; phần còn lại đi khung chung
-      // của 4 luồng đăng ký: cấm tự duyệt -> tổ trưởng tổ mình -> người được chỉ
-      // định trong biểu mẫu -> Trưởng/Phó phòng cùng đơn vị.
+      // Quyền THẤY TOÀN CÔNG TY chỉ đến từ Admin hoặc cờ can_approve_justification
+      // (người xác nhận cuối bên HCNS PHẢI được cấp cờ) — KHÔNG suy từ chức danh
+      // nữa (bỏ isUserHR 05/09/2026): tổ trưởng nhân sự / nhân viên nhân sự không có
+      // cờ được coi như nhân viên thường, chỉ thấy phạm vi cấp 1 của mình. Phần còn
+      // lại đi khung chung của 4 luồng đăng ký: cấm tự duyệt -> tổ trưởng tổ mình ->
+      // người được chỉ định trong biểu mẫu -> Trưởng/Phó phòng cùng đơn vị.
       const filteredJustifications = justificationsData.filter(e => {
-        if (isUserAdmin || isUserHR || perms.canApproveJustification) return true;
+        if (isUserAdmin || perms.canApproveJustification) return true;
         return isJustificationCap1Approver({
           currentUserName: userObj.name,
           currentUserRole: userObj.role,

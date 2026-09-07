@@ -647,6 +647,9 @@ export default function CBPage() {
   const [bulkLeaveFrom, setBulkLeaveFrom] = useState(() => new Date().toISOString().split("T")[0]);
   const [bulkLeaveTo, setBulkLeaveTo] = useState(() => new Date().toISOString().split("T")[0]);
   const [bulkLeaveReason, setBulkLeaveReason] = useState("");
+  // Nghỉ NỬA NGÀY: 1 ngày lịch nhưng chỉ tính 0.5 công. Title ghi "(0.5 ngày)"
+  // để parseLeaveTask đọc ra days=0.5 -> quota trừ 0.5, bảng công hiện "P/2".
+  const [bulkHalfDay, setBulkHalfDay] = useState(false);
   const [bulkDeptFilter, setBulkDeptFilter] = useState("all");
   const [bulkSetAllType, setBulkSetAllType] = useState("Phép năm");
   // Trạng thái theo từng nhân viên (key = employee id).
@@ -2245,6 +2248,13 @@ export default function CBPage() {
     return Math.round(diff / (1000 * 60 * 60 * 24)) + 1;
   }, [bulkLeaveFrom, bulkLeaveTo]);
 
+  // Nghỉ nửa ngày = đúng 1 ngày lịch (đến ngày ép bằng từ ngày), số công tính 0.5.
+  // Các chỗ dưới dùng bulkEffTo / bulkEffectiveDays thay cho bulkLeaveTo / duration.
+  const bulkEffTo = bulkHalfDay ? bulkLeaveFrom : bulkLeaveTo;
+  const bulkEffectiveDays = bulkHalfDay
+    ? (bulkLeaveFrom && !isNaN(new Date(bulkLeaveFrom).getTime()) ? 0.5 : 0)
+    : bulkLeaveDuration;
+
   // Khoá loại nghỉ (nội bộ) -> chuỗi label ghi vào title/notes. parseLeaveTask và
   // computeLeaveQuota đọc lại chuỗi này, còn bảng công dò để ra ký hiệu ngày.
   // LƯU Ý: label KHÔNG được chứa dấu ngoặc "()" — regex đọc số ngày sẽ vỡ.
@@ -2285,15 +2295,15 @@ export default function CBPage() {
 
   // Tên nhân sự đã có đơn nghỉ (đã duyệt / đang chờ) trùng khoảng ngày -> chặn tạo trùng.
   const bulkOverlapNames = useMemo(() => {
-    if (bulkLeaveDuration <= 0) return new Set<string>();
+    if (bulkEffectiveDays <= 0) return new Set<string>();
     const s = new Set<string>();
     leaves.forEach((l) => {
-      if (l.status !== "Từ chối" && String(l.from) <= bulkLeaveTo && String(l.to) >= bulkLeaveFrom) {
+      if (l.status !== "Từ chối" && String(l.from) <= bulkEffTo && String(l.to) >= bulkLeaveFrom) {
         s.add(l.name);
       }
     });
     return s;
-  }, [leaves, bulkLeaveFrom, bulkLeaveTo, bulkLeaveDuration]);
+  }, [leaves, bulkLeaveFrom, bulkEffTo, bulkEffectiveDays]);
 
   // Nhân sự hiện trong bảng: đang làm việc + đúng bộ lọc phòng ban.
   const bulkVisibleEmployees = useMemo(() => {
@@ -2321,6 +2331,7 @@ export default function CBPage() {
     setBulkLeaveFrom(today);
     setBulkLeaveTo(today);
     setBulkLeaveReason("");
+    setBulkHalfDay(false);
     setBulkDeptFilter("all");
     setBulkSetAllType("Phép năm");
     const sel: Record<string, boolean> = {};
@@ -2360,8 +2371,8 @@ export default function CBPage() {
 
   const handleCreateBulkLeave = async () => {
     if (creatingBulkLeaveRef.current) return;
-    if (bulkLeaveDuration <= 0) {
-      alert("Từ ngày không thể lớn hơn Đến ngày!");
+    if (bulkEffectiveDays <= 0) {
+      alert(bulkHalfDay ? "Chưa chọn ngày nghỉ hợp lệ!" : "Từ ngày không thể lớn hơn Đến ngày!");
       return;
     }
     // Người thực sự tạo đơn: CHỈ trong phạm vi bộ lọc phòng ban đang hiện
@@ -2379,7 +2390,7 @@ export default function CBPage() {
     const scopeLabel = bulkDeptFilter === "all" ? "toàn công ty" : bulkDeptFilter;
     const annualCount = targets.filter((e) => (bulkTypeById[e.id] || "Phép năm") === "Phép năm").length;
     const ok = await askConfirm(
-      `Tạo đơn nghỉ ${bulkLeaveDuration} ngày (${bulkLeaveFrom} → ${bulkLeaveTo}) cho ${targets.length} nhân sự — phạm vi: ${scopeLabel}.` +
+      `Tạo đơn nghỉ ${bulkEffectiveDays} ngày${bulkHalfDay ? " (NỬA NGÀY)" : ""} (${bulkLeaveFrom}${bulkHalfDay ? "" : ` → ${bulkEffTo}`}) cho ${targets.length} nhân sự — phạm vi: ${scopeLabel}.` +
         (annualCount > 0 ? `\n\n${annualCount} người dùng loại "Phép năm" — sẽ trừ vào phép năm của họ.` : "") +
         `\n\nĐơn tạo ở trạng thái ĐÃ DUYỆT, không gửi email.`
     );
@@ -2389,10 +2400,10 @@ export default function CBPage() {
     const rows = targets.map((emp) => {
       const label = bulkTypeLabel(bulkTypeById[emp.id] || "Phép năm");
       return {
-        title: `Nghỉ phép (${label}): ${emp.name} (${bulkLeaveDuration} ngày)`,
+        title: `Nghỉ phép (${label}): ${emp.name} (${bulkEffectiveDays} ngày)`,
         assignee: emp.name,
         start_date: bulkLeaveFrom,
-        due_date: bulkLeaveTo,
+        due_date: bulkEffTo,
         priority: "Thấp",
         progress: 100,
         status: "completed",
@@ -6601,9 +6612,11 @@ export default function CBPage() {
                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Đến ngày</label>
                               <input
                                 type="date"
-                                value={bulkLeaveTo}
+                                value={bulkEffTo}
                                 onChange={(e) => setBulkLeaveTo(e.target.value)}
-                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-all"
+                                disabled={bulkHalfDay}
+                                title={bulkHalfDay ? "Nghỉ nửa ngày chỉ trong 1 ngày — bằng Từ ngày" : undefined}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-all disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                               />
                             </div>
                             <div className="space-y-1">
@@ -6628,6 +6641,20 @@ export default function CBPage() {
                               placeholder="Lý do gắn vào mọi đơn (VD: Công ty cho nghỉ lễ 31/10)"
                               className="flex-1 min-w-[180px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-all"
                             />
+                            <label
+                              title="Tạo đơn nghỉ 0.5 ngày (chỉ trong 1 ngày) — trừ nửa công, bảng công hiện P/2"
+                              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border cursor-pointer select-none whitespace-nowrap transition-all ${
+                                bulkHalfDay ? "bg-amber-50 border-amber-300 text-amber-700" : "bg-slate-50 border-slate-200 text-slate-600 hover:border-amber-300"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={bulkHalfDay}
+                                onChange={(e) => setBulkHalfDay(e.target.checked)}
+                                className="accent-amber-500 cursor-pointer"
+                              />
+                              Nghỉ nửa ngày (0.5)
+                            </label>
                             <div className="flex items-center gap-1.5">
                               <select
                                 value={bulkSetAllType}
@@ -6656,7 +6683,7 @@ export default function CBPage() {
                           <div className="flex items-center gap-3 text-[11px]">
                             <button type="button" onClick={() => setAllVisibleSelected(true)} className="text-amber-700 hover:underline font-bold cursor-pointer">Chọn tất cả</button>
                             <button type="button" onClick={() => setAllVisibleSelected(false)} className="text-slate-500 hover:underline font-bold cursor-pointer">Bỏ chọn tất cả</button>
-                            <span className="ml-auto text-slate-500">Đang chọn: <b className="text-amber-700">{bulkChosenCount}</b> người <span className="text-slate-400">({bulkDeptFilter === "all" ? "toàn công ty" : bulkDeptFilter})</span> · {bulkLeaveDuration > 0 ? <b>{bulkLeaveDuration} ngày</b> : <span className="text-rose-600">ngày chưa hợp lệ</span>}</span>
+                            <span className="ml-auto text-slate-500">Đang chọn: <b className="text-amber-700">{bulkChosenCount}</b> người <span className="text-slate-400">({bulkDeptFilter === "all" ? "toàn công ty" : bulkDeptFilter})</span> · {bulkEffectiveDays > 0 ? <b>{bulkEffectiveDays} ngày{bulkHalfDay ? " (nửa ngày)" : ""}</b> : <span className="text-rose-600">ngày chưa hợp lệ</span>}</span>
                           </div>
                         </div>
 
@@ -6738,7 +6765,7 @@ export default function CBPage() {
                           <button
                             type="button"
                             onClick={handleCreateBulkLeave}
-                            disabled={creatingBulkLeave || bulkLeaveDuration <= 0 || bulkChosenCount === 0}
+                            disabled={creatingBulkLeave || bulkEffectiveDays <= 0 || bulkChosenCount === 0}
                             className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-bold rounded-xl shadow-md transition-all active:scale-95 text-xs cursor-pointer disabled:cursor-not-allowed"
                           >
                             {creatingBulkLeave ? <Loader2 size={13} className="animate-spin" /> : <Users size={13} />}

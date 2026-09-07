@@ -823,10 +823,13 @@ export default function CBPage() {
   const [machineFilterTo, setMachineFilterTo] = useState("");
   const [explanationFilterFrom, setExplanationFilterFrom] = useState("");
   const [explanationFilterTo, setExplanationFilterTo] = useState("");
+  // Lọc theo phòng ban/BĐH cho Thông tin giải trình & Công tác (dò phòng theo tên NV).
+  const [explanationDeptFilter, setExplanationDeptFilter] = useState("all");
+  const [travelDeptFilter, setTravelDeptFilter] = useState("all");
   const [leaveFilterFrom, setLeaveFilterFrom] = useState("");
   const [leaveFilterTo, setLeaveFilterTo] = useState("");
   // Lọc lịch sử nghỉ phép theo phòng ban/BĐH. Đơn nghỉ (task) không lưu phòng ban,
-  // nên dò ngược từ tên nhân sự -> phòng ban qua bảng employees (leaveDeptByName).
+  // nên dò ngược từ tên nhân sự -> phòng ban qua bảng employees (empDeptByName).
   const [leaveDeptFilter, setLeaveDeptFilter] = useState("all");
   const [regimeFilterFrom, setRegimeFilterFrom] = useState("");
   const [regimeFilterTo, setRegimeFilterTo] = useState("");
@@ -4170,24 +4173,26 @@ export default function CBPage() {
     }
   };
 
-  const filteredExplanations = useMemo(() => {
-    return explanations
-      .filter(e => hasFullAccess || e.name === currentUser?.name || e.approver === currentUser?.name)
-      .filter(e => !explanationFilterFrom || new Date(e.date) >= new Date(explanationFilterFrom))
-      .filter(e => !explanationFilterTo || new Date(e.date) <= new Date(explanationFilterTo));
-  }, [explanations, hasFullAccess, currentUser, explanationFilterFrom, explanationFilterTo]);
-
-  // Tên nhân sự (đã chuẩn hoá) -> phòng ban, để lọc lịch sử nghỉ theo phòng/BĐH.
-  const leaveDeptByName = useMemo(() => {
+  // Tên nhân sự (đã chuẩn hoá) -> phòng ban. Dùng chung cho lọc phòng ở lịch sử
+  // nghỉ phép, thông tin giải trình và công tác (các bản ghi này không lưu phòng).
+  const empDeptByName = useMemo(() => {
     const m = new Map<string, string>();
     employees.forEach(e => { if (e.name) m.set(normalizeText(e.name), e.department || ""); });
     return m;
   }, [employees]);
 
+  const filteredExplanations = useMemo(() => {
+    return explanations
+      .filter(e => hasFullAccess || e.name === currentUser?.name || e.approver === currentUser?.name)
+      .filter(e => explanationDeptFilter === "all" || empDeptByName.get(normalizeText(e.name)) === explanationDeptFilter)
+      .filter(e => !explanationFilterFrom || new Date(e.date) >= new Date(explanationFilterFrom))
+      .filter(e => !explanationFilterTo || new Date(e.date) <= new Date(explanationFilterTo));
+  }, [explanations, hasFullAccess, currentUser, explanationFilterFrom, explanationFilterTo, explanationDeptFilter, empDeptByName]);
+
   const filteredLeaves = useMemo(() => {
     return leaves
       .filter(l => hasFullAccess || l.name === currentUser?.name)
-      .filter(l => leaveDeptFilter === "all" || leaveDeptByName.get(normalizeText(l.name)) === leaveDeptFilter)
+      .filter(l => leaveDeptFilter === "all" || empDeptByName.get(normalizeText(l.name)) === leaveDeptFilter)
       .filter(l => !leaveFilterFrom || new Date(l.from) >= new Date(leaveFilterFrom))
       .filter(l => !leaveFilterTo || new Date(l.to) <= new Date(leaveFilterTo))
       // Sắp theo ngày nghỉ GIẢM DẦN: ngày muộn nhất (cuối tháng) lên trên cùng.
@@ -4196,7 +4201,7 @@ export default function CBPage() {
         const d = String(b.from).localeCompare(String(a.from));
         return d !== 0 ? d : String(b.to).localeCompare(String(a.to));
       });
-  }, [leaves, hasFullAccess, currentUser, leaveFilterFrom, leaveFilterTo, leaveDeptFilter, leaveDeptByName]);
+  }, [leaves, hasFullAccess, currentUser, leaveFilterFrom, leaveFilterTo, leaveDeptFilter, empDeptByName]);
 
   const isConcurrentOrSupport = (emp: any): boolean => {
     if (!emp) return false;
@@ -4346,9 +4351,10 @@ export default function CBPage() {
   const filteredTravels = useMemo(() => {
     return travels
       .filter(t => hasFullAccess || t.name === currentUser?.name)
+      .filter(t => travelDeptFilter === "all" || empDeptByName.get(normalizeText(t.name)) === travelDeptFilter)
       .filter(t => !travelFilterFrom || new Date(t.from) >= new Date(travelFilterFrom))
       .filter(t => !travelFilterTo || new Date(t.to) <= new Date(travelFilterTo));
-  }, [travels, hasFullAccess, currentUser, travelFilterFrom, travelFilterTo]);
+  }, [travels, hasFullAccess, currentUser, travelFilterFrom, travelFilterTo, travelDeptFilter, empDeptByName]);
 
   const filteredRegimes = useMemo(() => {
     return leaves
@@ -4772,7 +4778,27 @@ export default function CBPage() {
               const entry = dateFilterMap[activeSubTab];
               if (!entry) return null;
               const [fromVal, setFromVal, toVal, setToVal] = entry;
+              // Bộ lọc phòng ban — chỉ tab Thông tin giải trình & Công tác.
+              const deptFilterMap: Record<string, [string, (v: string) => void]> = {
+                explanation: [explanationDeptFilter, setExplanationDeptFilter],
+                travel: [travelDeptFilter, setTravelDeptFilter],
+              };
+              const deptEntry = deptFilterMap[activeSubTab];
               return (
+                <div className="flex flex-wrap items-center gap-2">
+                {deptEntry && (
+                  <select
+                    value={deptEntry[0]}
+                    onChange={(e) => deptEntry[1](e.target.value)}
+                    title="Lọc theo phòng ban / Ban điều hành"
+                    className="px-3 py-1.5 bg-white border border-slate-200/60 shadow-sm rounded-xl text-[11px] font-semibold focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none cursor-pointer shrink-0 w-52"
+                  >
+                    <option value="all">Tất cả phòng ban</option>
+                    {bulkDeptOptions.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                )}
                 <div className="flex flex-wrap items-center gap-1.5 bg-white p-1.5 rounded-xl shrink-0 border border-slate-200/60 shadow-sm">
                   <Calendar size={13} className="text-slate-400 ml-1" />
                   <input
@@ -4800,6 +4826,7 @@ export default function CBPage() {
                       <X size={12} />
                     </button>
                   )}
+                </div>
                 </div>
               );
             })()}

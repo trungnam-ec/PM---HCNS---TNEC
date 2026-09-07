@@ -822,6 +822,9 @@ export default function CBPage() {
   const [explanationFilterTo, setExplanationFilterTo] = useState("");
   const [leaveFilterFrom, setLeaveFilterFrom] = useState("");
   const [leaveFilterTo, setLeaveFilterTo] = useState("");
+  // Lọc lịch sử nghỉ phép theo phòng ban/BĐH. Đơn nghỉ (task) không lưu phòng ban,
+  // nên dò ngược từ tên nhân sự -> phòng ban qua bảng employees (leaveDeptByName).
+  const [leaveDeptFilter, setLeaveDeptFilter] = useState("all");
   const [regimeFilterFrom, setRegimeFilterFrom] = useState("");
   const [regimeFilterTo, setRegimeFilterTo] = useState("");
 
@@ -2300,12 +2303,15 @@ export default function CBPage() {
   }, [employees, bulkDeptFilter]);
 
   // Số người đang được chọn thực sự (bỏ người trùng ngày).
+  // QUAN TRỌNG: chỉ đếm trong PHẠM VI BỘ LỌC PHÒNG BAN đang hiện (bulkVisibleEmployees),
+  // để khi HCNS lọc riêng 1 phòng/BĐH thì con số + nút "Tạo đơn" đúng bằng phòng đó,
+  // không phải toàn công ty. bulkVisibleEmployees đã loại người nghỉ việc sẵn.
   const bulkChosenCount = useMemo(
     () =>
-      employees.filter(
-        (e) => !isResignedRow(e) && bulkSelected[e.id] && !bulkOverlapNames.has(e.name)
+      bulkVisibleEmployees.filter(
+        (e) => bulkSelected[e.id] && !bulkOverlapNames.has(e.name)
       ).length,
-    [employees, bulkSelected, bulkOverlapNames]
+    [bulkVisibleEmployees, bulkSelected, bulkOverlapNames]
   );
 
   // Mở bảng: dựng sẵn trạng thái từng người. Ai còn 0 phép năm thì gợi ý sẵn
@@ -2358,18 +2364,22 @@ export default function CBPage() {
       alert("Từ ngày không thể lớn hơn Đến ngày!");
       return;
     }
-    // Người thực sự tạo đơn: đang làm việc, được tick, và chưa có đơn trùng ngày.
-    const targets = employees.filter(
-      (e) => !isResignedRow(e) && bulkSelected[e.id] && !bulkOverlapNames.has(e.name)
+    // Người thực sự tạo đơn: CHỈ trong phạm vi bộ lọc phòng ban đang hiện
+    // (bulkVisibleEmployees — đã loại người nghỉ việc + đúng phòng đang lọc),
+    // được tick, và chưa có đơn trùng ngày. Nhờ vậy HCNS lọc riêng 1 phòng/BĐH
+    // rồi bấm Tạo đơn thì chỉ tạo cho đúng phòng đó, không đụng phòng khác.
+    const targets = bulkVisibleEmployees.filter(
+      (e) => bulkSelected[e.id] && !bulkOverlapNames.has(e.name)
     );
     if (targets.length === 0) {
       alert("Chưa chọn nhân sự hợp lệ nào (bỏ tick hết hoặc mọi người đã có đơn trùng ngày).");
       return;
     }
 
+    const scopeLabel = bulkDeptFilter === "all" ? "toàn công ty" : bulkDeptFilter;
     const annualCount = targets.filter((e) => (bulkTypeById[e.id] || "Phép năm") === "Phép năm").length;
     const ok = await askConfirm(
-      `Tạo đơn nghỉ ${bulkLeaveDuration} ngày (${bulkLeaveFrom} → ${bulkLeaveTo}) cho ${targets.length} nhân sự?` +
+      `Tạo đơn nghỉ ${bulkLeaveDuration} ngày (${bulkLeaveFrom} → ${bulkLeaveTo}) cho ${targets.length} nhân sự — phạm vi: ${scopeLabel}.` +
         (annualCount > 0 ? `\n\n${annualCount} người dùng loại "Phép năm" — sẽ trừ vào phép năm của họ.` : "") +
         `\n\nĐơn tạo ở trạng thái ĐÃ DUYỆT, không gửi email.`
     );
@@ -4156,12 +4166,20 @@ export default function CBPage() {
       .filter(e => !explanationFilterTo || new Date(e.date) <= new Date(explanationFilterTo));
   }, [explanations, hasFullAccess, currentUser, explanationFilterFrom, explanationFilterTo]);
 
+  // Tên nhân sự (đã chuẩn hoá) -> phòng ban, để lọc lịch sử nghỉ theo phòng/BĐH.
+  const leaveDeptByName = useMemo(() => {
+    const m = new Map<string, string>();
+    employees.forEach(e => { if (e.name) m.set(normalizeText(e.name), e.department || ""); });
+    return m;
+  }, [employees]);
+
   const filteredLeaves = useMemo(() => {
     return leaves
       .filter(l => hasFullAccess || l.name === currentUser?.name)
+      .filter(l => leaveDeptFilter === "all" || leaveDeptByName.get(normalizeText(l.name)) === leaveDeptFilter)
       .filter(l => !leaveFilterFrom || new Date(l.from) >= new Date(leaveFilterFrom))
       .filter(l => !leaveFilterTo || new Date(l.to) <= new Date(leaveFilterTo));
-  }, [leaves, hasFullAccess, currentUser, leaveFilterFrom, leaveFilterTo]);
+  }, [leaves, hasFullAccess, currentUser, leaveFilterFrom, leaveFilterTo, leaveDeptFilter, leaveDeptByName]);
 
   const isConcurrentOrSupport = (emp: any): boolean => {
     if (!emp) return false;
@@ -6212,6 +6230,21 @@ export default function CBPage() {
                     </div>
 
                     <div className="flex flex-1 items-center justify-end gap-3 flex-wrap sm:flex-nowrap">
+                      {/* Lọc phòng ban — chỉ tab Lịch sử nghỉ phép. Dò phòng theo tên nhân sự. */}
+                      {leaveTabMode === "history" && (
+                        <select
+                          value={leaveDeptFilter}
+                          onChange={(e) => setLeaveDeptFilter(e.target.value)}
+                          title="Lọc theo phòng ban / Ban điều hành"
+                          className="w-full sm:w-52 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none text-xs font-semibold transition-all cursor-pointer shrink-0"
+                        >
+                          <option value="all">Tất cả phòng ban</option>
+                          {bulkDeptOptions.map((d) => (
+                            <option key={d} value={d}>{d}</option>
+                          ))}
+                        </select>
+                      )}
+
                       {/* Bộ tìm kiếm nhân viên */}
                       <div className="relative w-full sm:w-64">
                         <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
@@ -6617,7 +6650,7 @@ export default function CBPage() {
                           <div className="flex items-center gap-3 text-[11px]">
                             <button type="button" onClick={() => setAllVisibleSelected(true)} className="text-amber-700 hover:underline font-bold cursor-pointer">Chọn tất cả</button>
                             <button type="button" onClick={() => setAllVisibleSelected(false)} className="text-slate-500 hover:underline font-bold cursor-pointer">Bỏ chọn tất cả</button>
-                            <span className="ml-auto text-slate-500">Đang chọn: <b className="text-amber-700">{bulkChosenCount}</b> người · {bulkLeaveDuration > 0 ? <b>{bulkLeaveDuration} ngày</b> : <span className="text-rose-600">ngày chưa hợp lệ</span>}</span>
+                            <span className="ml-auto text-slate-500">Đang chọn: <b className="text-amber-700">{bulkChosenCount}</b> người <span className="text-slate-400">({bulkDeptFilter === "all" ? "toàn công ty" : bulkDeptFilter})</span> · {bulkLeaveDuration > 0 ? <b>{bulkLeaveDuration} ngày</b> : <span className="text-rose-600">ngày chưa hợp lệ</span>}</span>
                           </div>
                         </div>
 
@@ -6703,7 +6736,7 @@ export default function CBPage() {
                             className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-bold rounded-xl shadow-md transition-all active:scale-95 text-xs cursor-pointer disabled:cursor-not-allowed"
                           >
                             {creatingBulkLeave ? <Loader2 size={13} className="animate-spin" /> : <Users size={13} />}
-                            {creatingBulkLeave ? "Đang tạo đơn..." : `Tạo đơn cho ${bulkChosenCount} người`}
+                            {creatingBulkLeave ? "Đang tạo đơn..." : `Tạo đơn cho ${bulkChosenCount} người${bulkDeptFilter === "all" ? "" : ` · ${bulkDeptFilter}`}`}
                           </button>
                         </div>
                       </div>

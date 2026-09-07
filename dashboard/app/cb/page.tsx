@@ -4178,7 +4178,13 @@ export default function CBPage() {
       .filter(l => hasFullAccess || l.name === currentUser?.name)
       .filter(l => leaveDeptFilter === "all" || leaveDeptByName.get(normalizeText(l.name)) === leaveDeptFilter)
       .filter(l => !leaveFilterFrom || new Date(l.from) >= new Date(leaveFilterFrom))
-      .filter(l => !leaveFilterTo || new Date(l.to) <= new Date(leaveFilterTo));
+      .filter(l => !leaveFilterTo || new Date(l.to) <= new Date(leaveFilterTo))
+      // Sắp theo ngày nghỉ GIẢM DẦN: ngày muộn nhất (cuối tháng) lên trên cùng.
+      // .filter đã trả mảng mới nên .sort không đụng vào state `leaves`.
+      .sort((a, b) => {
+        const d = String(b.from).localeCompare(String(a.from));
+        return d !== 0 ? d : String(b.to).localeCompare(String(a.to));
+      });
   }, [leaves, hasFullAccess, currentUser, leaveFilterFrom, leaveFilterTo, leaveDeptFilter, leaveDeptByName]);
 
   const isConcurrentOrSupport = (emp: any): boolean => {

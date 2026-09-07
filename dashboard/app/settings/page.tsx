@@ -4,7 +4,7 @@ import { apiFetch } from "@/lib/apiClient";
 import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
-import { Settings, Database, Info, Key, CheckCircle, ShieldAlert, ShieldCheck, Check, X, Calendar, Briefcase, User, CarFront, DoorOpen, Mail, Package, Users, CalendarClock, ChevronRight, AlertCircle, BarChart3, FolderKanban } from "lucide-react";
+import { Settings, Database, Info, Key, CheckCircle, ShieldAlert, ShieldCheck, Check, X, Calendar, Briefcase, User, CarFront, DoorOpen, Mail, Package, Users, CalendarClock, ChevronRight, AlertCircle, BarChart3, FolderKanban, Building2 } from "lucide-react";
 import UserPermissionsModal, { type UserPermissionsTab } from "@/components/UserPermissionsModal";
 import UsageReportPanel from "@/components/UsageReportPanel";
 import ProjectCatalogPanel from "@/components/ProjectCatalogPanel";
@@ -20,6 +20,7 @@ import {
   isBookingCap1Approver,
   getRequestStage,
   isJustificationCap1Approver,
+  resolveJustificationApproverName,
   isLeaveTripCap1Approver,
   isLeaveTripCap2Approver,
   normalizeName,
@@ -166,6 +167,10 @@ function SettingsContent() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeApprovalTab, setActiveApprovalTab] = useState<"trip" | "leave" | "explanation" | "booking">("trip");
+  // Bộ lọc đơn vị cho 4 tab duyệt — 1 giá trị dùng chung (phòng ban VÀ ban điều hành
+  // đều là cột `department`, nên chọn ở dropdown này thì dropdown kia tự bỏ chọn).
+  // Rỗng = xem tất cả đơn vị.
+  const [approvalDeptFilter, setApprovalDeptFilter] = useState("");
   // Nhóm "Danh sách đã duyệt" — bảng 3 tab dời từ cột phải trang Lịch công việc sang
   const [activeDoneTab, setActiveDoneTab] = useState<"nodate" | "leave" | "trip">("nodate");
   // Lọc theo tháng. Mặc định tháng hiện tại; chuỗi rỗng = xem tất cả các tháng.
@@ -702,6 +707,22 @@ function SettingsContent() {
     [employeeDirectory]
   );
 
+  // Cấp duyệt của MỘT giải trình — giống badge "stage" của nghỉ phép/công tác, nhưng
+  // giải trình duyệt 1 bước (status -> "Đã duyệt") nên cấp là thuộc tính của ĐƠN, suy
+  // từ việc đơn vị người giải trình CÓ tổ trưởng/trưởng phòng để xử lý cấp 1 hay không:
+  //   - Có người duyệt cấp 1 (resolveJustificationApproverName ra tên) -> "Cấp 1: Trưởng phòng".
+  //   - Không (chính họ là trưởng phòng, hoặc đơn vị không có quản lý) -> rơi thẳng "Cấp 2: HCNS".
+  // Dùng chung resolveJustificationApproverName với biểu mẫu C&B nên không lệch luật.
+  const justificationIsManagerStage = useCallback(
+    (exp: any) =>
+      resolveJustificationApproverName({
+        requesterName: exp.name,
+        requesterDepartment: exp.department,
+        people: employeeDirectory,
+      }) !== "",
+    [employeeDirectory]
+  );
+
   // Business trip approvals list (Trưởng phòng & Admin only)
   // Đơn công tác chờ duyệt — 2 cấp: Trưởng phòng/Tổ trưởng xác nhận (manager) -> HCNS duyệt cuối (hcns).
   // Mỗi task được gắn thêm `stage` để UI hiển thị đúng badge + nút thao tác tương ứng.
@@ -905,6 +926,35 @@ function SettingsContent() {
       return false;
     });
   }, [resourceBookings, currentUser, isApprover, approvalPerms]);
+
+  // ─── Bộ lọc đơn vị (phòng ban / ban điều hành) áp cho cả 4 tab duyệt ───
+  // Cùng một cột `department`: đơn công tác/nghỉ phép tra ngược từ danh bạ theo tên
+  // người làm đơn, còn giải trình & đăng ký đã có sẵn trường department. So khớp
+  // chuẩn hoá (bỏ dấu/nối khoảng) để "Phòng Tài Chính Kế Toán" khớp bất kể hoa/thường.
+  const matchesApprovalDept = useCallback(
+    (dept?: string | null) => {
+      if (!approvalDeptFilter) return true;
+      return normalizeName(dept || "") === normalizeName(approvalDeptFilter);
+    },
+    [approvalDeptFilter]
+  );
+
+  const filteredTrips = useMemo(
+    () => pendingTrips.filter(t => matchesApprovalDept(departmentOfPerson(t.assignee))),
+    [pendingTrips, matchesApprovalDept, departmentOfPerson]
+  );
+  const filteredLeaves = useMemo(
+    () => pendingLeaves.filter(t => matchesApprovalDept(departmentOfPerson(t.assignee))),
+    [pendingLeaves, matchesApprovalDept, departmentOfPerson]
+  );
+  const filteredExplanations = useMemo(
+    () => pendingExplanations.filter(e => matchesApprovalDept(e.department)),
+    [pendingExplanations, matchesApprovalDept]
+  );
+  const filteredBookings = useMemo(
+    () => pendingBookings.filter(b => matchesApprovalDept(b.department)),
+    [pendingBookings, matchesApprovalDept]
+  );
 
   // Lưu SMTP vào cùng bộ khoá với trang C&B — cấu hình một nơi, cả hệ thống dùng chung
   const handleSaveSmtpConfig = (user: string, pass: string, provider: string, host: string, port: number, secure: boolean) => {
@@ -1347,7 +1397,48 @@ function SettingsContent() {
                 <h2 className="font-heading font-bold text-slate-800 text-sm flex items-center gap-2">
                   <CheckCircle size={18} className="text-emerald-600" /> Nhóm Duyệt Yêu Cầu
                 </h2>
-                
+
+                {/* Bộ lọc đơn vị — Phòng ban & Ban điều hành. Cùng lọc cột `department`,
+                    chọn dropdown này thì dropdown kia tự bỏ chọn. Áp cho cả 4 tab duyệt. */}
+                <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold">
+                  <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5">
+                    <Users size={12} className="text-slate-400" />
+                    <select
+                      value={deptLists.phongBan.includes(approvalDeptFilter) ? approvalDeptFilter : ""}
+                      onChange={(e) => setApprovalDeptFilter(e.target.value)}
+                      className="bg-transparent border-none outline-none font-bold text-slate-700 text-[10px] cursor-pointer max-w-[160px]"
+                    >
+                      <option value="">Tất cả phòng ban</option>
+                      {deptLists.phongBan.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5">
+                    <Building2 size={12} className="text-slate-400" />
+                    <select
+                      value={deptLists.bdh.includes(approvalDeptFilter) ? approvalDeptFilter : ""}
+                      onChange={(e) => setApprovalDeptFilter(e.target.value)}
+                      className="bg-transparent border-none outline-none font-bold text-slate-700 text-[10px] cursor-pointer max-w-[160px]"
+                    >
+                      <option value="">Tất cả ban điều hành</option>
+                      {deptLists.bdh.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {approvalDeptFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setApprovalDeptFilter("")}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 transition-all active:scale-95"
+                      title="Bỏ lọc đơn vị"
+                    >
+                      <X size={12} /> Bỏ lọc
+                    </button>
+                  )}
+                </div>
+
                 {/* Modern Capsule Segmented Style */}
                 <div className="bg-slate-100 p-0.5 rounded-xl flex gap-1 border border-slate-200 text-[10px] font-bold">
                   <button
@@ -1359,7 +1450,7 @@ function SettingsContent() {
                         : "text-slate-500 hover:text-slate-800"
                     }`}
                   >
-                    1. Duyệt công tác ({pendingTrips.length})
+                    1. Duyệt công tác ({filteredTrips.length})
                   </button>
                   <button
                     type="button"
@@ -1370,7 +1461,7 @@ function SettingsContent() {
                         : "text-slate-500 hover:text-slate-800"
                     }`}
                   >
-                    2. Duyệt Nghỉ Phép ({pendingLeaves.length})
+                    2. Duyệt Nghỉ Phép ({filteredLeaves.length})
                   </button>
                   <button
                     type="button"
@@ -1381,7 +1472,7 @@ function SettingsContent() {
                         : "text-slate-500 hover:text-slate-800"
                     }`}
                   >
-                    3. Duyệt Giải Trình ({pendingExplanations.length})
+                    3. Duyệt Giải Trình ({filteredExplanations.length})
                   </button>
                   <button
                     type="button"
@@ -1392,7 +1483,7 @@ function SettingsContent() {
                         : "text-slate-500 hover:text-slate-800"
                     }`}
                   >
-                    4. Duyệt Đăng ký ({pendingBookings.length})
+                    4. Duyệt Đăng ký ({filteredBookings.length})
                   </button>
                 </div>
               </div>
@@ -1404,8 +1495,10 @@ function SettingsContent() {
                 </div>
               ) : activeApprovalTab === "trip" ? (
                 <div className="space-y-4">
-                  {pendingTrips.length === 0 ? (
-                    <p className="text-center text-slate-400 text-xs italic py-8">Không có yêu cầu đi công tác nào chờ bạn phê duyệt.</p>
+                  {filteredTrips.length === 0 ? (
+                    <p className="text-center text-slate-400 text-xs italic py-8">
+                      {approvalDeptFilter ? "Không có yêu cầu đi công tác nào của đơn vị đã chọn." : "Không có yêu cầu đi công tác nào chờ bạn phê duyệt."}
+                    </p>
                   ) : (
                     <div className="overflow-x-auto rounded-xl border border-slate-200/60 bg-white">
                       <table className="w-full text-xs text-left border-collapse">
@@ -1420,7 +1513,7 @@ function SettingsContent() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
-                          {pendingTrips.map((req) => {
+                          {filteredTrips.map((req) => {
                             // Extract destination or mission from notes
                             let cleanDest = "Chưa xác định";
                             let cleanMission = "Đi công tác";
@@ -1502,8 +1595,10 @@ function SettingsContent() {
                 </div>
               ) : activeApprovalTab === "leave" ? (
                 <div className="space-y-4">
-                  {pendingLeaves.length === 0 ? (
-                    <p className="text-center text-slate-400 text-xs italic py-8">Không có yêu cầu nghỉ phép nào chờ bạn phê duyệt.</p>
+                  {filteredLeaves.length === 0 ? (
+                    <p className="text-center text-slate-400 text-xs italic py-8">
+                      {approvalDeptFilter ? "Không có yêu cầu nghỉ phép nào của đơn vị đã chọn." : "Không có yêu cầu nghỉ phép nào chờ bạn phê duyệt."}
+                    </p>
                   ) : (
                     <div className="overflow-x-auto rounded-xl border border-slate-200/60 bg-white">
                       <table className="w-full text-xs text-left border-collapse">
@@ -1517,7 +1612,7 @@ function SettingsContent() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
-                          {pendingLeaves.map((req) => {
+                          {filteredLeaves.map((req) => {
                             let cleanReason = "Xin nghỉ phép";
                             if (req.notes) {
                               const reasonMatch = req.notes.match(/Lý do:\s*(.*)/i);
@@ -1598,8 +1693,10 @@ function SettingsContent() {
                       <span className="w-4 h-4 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
                       Đang tải danh sách giải trình chờ duyệt...
                     </div>
-                  ) : pendingExplanations.length === 0 ? (
-                    <p className="text-center text-slate-400 text-xs italic py-8">Không có yêu cầu giải trình công nào chờ bạn phê duyệt.</p>
+                  ) : filteredExplanations.length === 0 ? (
+                    <p className="text-center text-slate-400 text-xs italic py-8">
+                      {approvalDeptFilter ? "Không có yêu cầu giải trình nào của đơn vị đã chọn." : "Không có yêu cầu giải trình công nào chờ bạn phê duyệt."}
+                    </p>
                   ) : (
                     <div className="overflow-x-auto rounded-xl border border-slate-200/60 bg-white">
                       <table className="w-full text-xs text-left border-collapse">
@@ -1610,11 +1707,14 @@ function SettingsContent() {
                             <th className="py-3 px-4">Ngày giải trình</th>
                             <th className="py-3 px-4">Lý do</th>
                             <th className="py-3 px-4">Khung giờ đề xuất</th>
+                            <th className="py-3 px-4">Cấp duyệt</th>
                             <th className="py-3 px-4 text-center">Thao tác</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
-                          {pendingExplanations.map((exp) => (
+                          {filteredExplanations.map((exp) => {
+                            const isManagerStage = justificationIsManagerStage(exp);
+                            return (
                             <tr key={exp.id} className="hover:bg-slate-50/50 transition-all duration-150">
                               <td className="py-3.5 px-4 font-bold text-slate-800 flex items-center gap-2">
                                 <div className="w-6 h-6 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center">
@@ -1627,11 +1727,20 @@ function SettingsContent() {
                               <td className="py-3.5 px-4 text-slate-450 font-normal max-w-[200px] truncate" title={exp.reason}>{exp.reason}</td>
                               <td className="py-3.5 px-4 font-mono text-[#005BAC]">{exp.propose}</td>
                               <td className="py-3.5 px-4">
+                                <span className={`inline-block px-2.5 py-1 rounded-full border text-[9px] font-extrabold uppercase ${
+                                  isManagerStage ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                }`}>
+                                  {isManagerStage ? "Cấp 1: Trưởng phòng" : "Cấp 2: HCNS"}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4">
                                 <div className="flex items-center justify-center gap-2">
                                   <button
                                     type="button"
                                     onClick={() => handleApproveJustification(exp.id)}
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
+                                    className={`text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer ${
+                                      isManagerStage ? "bg-[#005BAC] hover:bg-blue-700" : "bg-emerald-600 hover:bg-emerald-700"
+                                    }`}
                                   >
                                     Duyệt
                                   </button>
@@ -1645,7 +1754,8 @@ function SettingsContent() {
                                 </div>
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -1658,11 +1768,13 @@ function SettingsContent() {
                       <span className="w-4 h-4 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
                       Đang tải danh sách đăng ký xe / phòng họp chờ duyệt...
                     </div>
-                  ) : pendingBookings.length === 0 ? (
-                    <p className="text-center text-slate-400 text-xs italic py-8">Không có đăng ký xe / phòng họp nào chờ bạn xử lý.</p>
+                  ) : filteredBookings.length === 0 ? (
+                    <p className="text-center text-slate-400 text-xs italic py-8">
+                      {approvalDeptFilter ? "Không có đăng ký xe / phòng họp nào của đơn vị đã chọn." : "Không có đăng ký xe / phòng họp nào chờ bạn xử lý."}
+                    </p>
                   ) : (
                     <div className="space-y-4">
-                      {pendingBookings.map((b) => {
+                      {filteredBookings.map((b) => {
                         const isVehicleBooking = b.booking_type === "xe";
                         const isManagerStep = b.status === "pending_manager";
                         const attendeeList: string[] = Array.isArray(b.attendees) ? b.attendees : [];

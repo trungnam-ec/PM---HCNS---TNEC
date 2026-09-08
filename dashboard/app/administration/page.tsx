@@ -273,6 +273,7 @@ const INITIAL_SUPPLIERS: Supplier[] = [];
 
 interface AdminMonthlyReport {
   id: string;
+  year: number;
   stt: string;
   content: string;
   category_type: "office" | "project";
@@ -469,6 +470,17 @@ export default function AdministrationPage() {
 
   // States for interactive monthly cost report
   const [reportRows, setReportRows] = useState<AdminMonthlyReport[]>([]);
+  // Bộ lọc tháng cho bảng chi phí quản lý (0 = hiển thị cả 12 tháng, 1..12 = chỉ tháng đó)
+  const [reportMonthFilter, setReportMonthFilter] = useState(0);
+  // Năm của bảng chi phí quản lý — không khóa cứng 2026, dữ liệu tách theo năm trong DB
+  const [reportYear, setReportYear] = useState(2026);
+  // Danh sách năm cho bộ lọc: từ 2026 tới năm hiện tại + 2 (luôn có sẵn các năm sau)
+  const reportYearOptions = useMemo(() => {
+    const maxYear = Math.max(2026, new Date().getFullYear()) + 2;
+    const years: number[] = [];
+    for (let y = 2026; y <= maxYear; y++) years.push(y);
+    return years;
+  }, []);
   const [reportLoading, setReportLoading] = useState(false);
   const [autoFillLoading, setAutoFillLoading] = useState(false);
   const [editingCell, setEditingCell] = useState<{ rowId: string; field: string } | null>(null);
@@ -2614,6 +2626,7 @@ export default function AdministrationPage() {
       const { data, error } = await supabase
         .from("admin_monthly_reports")
         .select("*")
+        .eq("year", reportYear)
         .order("created_at", { ascending: true });
       if (error) throw error;
 
@@ -2625,7 +2638,12 @@ export default function AdministrationPage() {
     } finally {
       setReportLoading(false);
     }
-  }, []);
+  }, [reportYear]);
+
+  // Đổi năm ở bộ lọc → nạp lại đúng dữ liệu của năm đó (mỗi năm một bảng riêng)
+  useEffect(() => {
+    fetchReportRows();
+  }, [reportYear, fetchReportRows]);
 
   const handleUpdateReportCell = async (rowId: string, field: string, value: any) => {
     // Update local state immediately
@@ -2653,6 +2671,7 @@ export default function AdministrationPage() {
     const tempId = `temp-${Date.now()}`;
     const newRow: AdminMonthlyReport = {
       id: tempId,
+      year: reportYear,
       stt: String(nextNum),
       content: type === "office" ? `Hạng mục VP mới ${nextNum}` : `Hạng mục DA mới ${nextNum}`,
       category_type: type,
@@ -2882,8 +2901,8 @@ export default function AdministrationPage() {
 
       unpackedItems.forEach(item => {
         if (!item.date) return;
-        // Check 2026
-        if (!item.date.includes("2026")) return;
+        // Chỉ lấy hoá đơn/khoản chi thuộc đúng năm đang chọn
+        if (!item.date.includes(String(reportYear))) return;
         
         let monthNum = 0;
         if (item.date.includes("-")) {
@@ -2957,10 +2976,11 @@ export default function AdministrationPage() {
       let finalRows: AdminMonthlyReport[] = [];
       const usedIds = new Set<string>();
 
-      // Load latest report rows from DB first to get fresh state
+      // Load latest report rows from DB first to get fresh state (chỉ của năm đang chọn)
       const { data: dbRows, error: fetchErr } = await supabase
         .from("admin_monthly_reports")
-        .select("*");
+        .select("*")
+        .eq("year", reportYear);
       if (fetchErr) throw fetchErr;
       const currentDbRows = (dbRows || []) as AdminMonthlyReport[];
 
@@ -2982,6 +3002,7 @@ export default function AdministrationPage() {
           // Create new row in DB payload later
           finalRows.push({
             id: `new-${Date.now()}-${Math.random()}`,
+            year: reportYear,
             stt: "", // will compute sequentially
             content: g.content,
             category_type: g.category_type,
@@ -3111,7 +3132,7 @@ export default function AdministrationPage() {
         try {
           const now = new Date();
           const payload = {
-            year: 2026,
+            year: reportYear,
             day: String(now.getDate()).padStart(2, "0"),
             month: String(now.getMonth() + 1).padStart(2, "0"),
             officeRows: computedStats.officeRows,
@@ -3140,7 +3161,7 @@ export default function AdministrationPage() {
           const url = window.URL.createObjectURL(blob);
           const a = document.createElement("a");
           a.href = url;
-          a.download = `Bang_tinh_chi_phi_hanh_chinh_nam_2026.docx`;
+          a.download = `Bang_tinh_chi_phi_hanh_chinh_nam_${reportYear}.docx`;
           document.body.appendChild(a);
           a.click();
           a.remove();
@@ -8278,6 +8299,11 @@ export default function AdministrationPage() {
                   );
                 };
 
+                // Danh sách chỉ số tháng (0..11) đang được hiển thị theo bộ lọc tháng
+                const visibleMonths = Array.from({ length: 12 }, (_, i) => i).filter(
+                  (i) => reportMonthFilter === 0 || i + 1 === reportMonthFilter
+                );
+
                 const renderRow = (row: AdminMonthlyReport) => {
                   const rowTotal = Array.from({ length: 12 }, (_, idx) => Number(row[`m${idx + 1}` as keyof typeof row]) || 0).reduce((a, b) => a + b, 0);
                   const isChild = row.stt.includes(".");
@@ -8306,7 +8332,7 @@ export default function AdministrationPage() {
                       <td className="py-2 px-3 text-right bg-slate-50/40 border-r border-slate-200 font-mono text-slate-800 font-extrabold text-[11px]">
                         {rowTotal > 0 ? rowTotal.toLocaleString("vi-VN") : "-"}
                       </td>
-                      {Array.from({ length: 12 }, (_, i) => {
+                      {visibleMonths.map((i) => {
                         const field = `m${i + 1}`;
                         const val = row[field as keyof typeof row] as number;
                         return (
@@ -8339,11 +8365,37 @@ export default function AdministrationPage() {
                     <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium">
                       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
                         <div>
-                          <h3 className="font-heading font-extrabold text-[#005BAC] text-sm">CHI PHÍ QUẢN LÝ HÀNH CHÍNH NĂM 2026 - TRUNGNAM E&C</h3>
-                          <p className="text-slate-400 text-[10px] font-semibold mt-1">Bảng tính tự động & chỉnh sửa trực tiếp. Click vào ô số tiền/ghi chú để sửa. Blur để tự động lưu lên Supabase.</p>
+                          <h3 className="font-heading font-extrabold text-[#005BAC] text-sm">CHI PHÍ QUẢN LÝ HÀNH CHÍNH NĂM {reportYear} - TRUNGNAM E&C</h3>
                         </div>
-                        
+
                         <div className="flex flex-wrap items-center gap-2">
+                          {/* Bộ lọc năm + tháng: chọn năm để xem bảng của năm đó, chọn 1 tháng để chỉ xem cột tháng đó */}
+                          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 rounded-xl pl-3 pr-2 py-1.5">
+                            <Calendar size={13} className="text-[#005BAC]" />
+                            <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">Năm</span>
+                            <select
+                              value={reportYear}
+                              onChange={(e) => setReportYear(Number(e.target.value))}
+                              className="bg-transparent text-[11px] font-bold text-slate-700 focus:outline-none cursor-pointer"
+                            >
+                              {reportYearOptions.map((y) => (
+                                <option key={y} value={y}>{y}</option>
+                              ))}
+                            </select>
+                            <span className="text-slate-300 mx-0.5">|</span>
+                            <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">Tháng</span>
+                            <select
+                              value={reportMonthFilter}
+                              onChange={(e) => setReportMonthFilter(Number(e.target.value))}
+                              className="bg-transparent text-[11px] font-bold text-slate-700 focus:outline-none cursor-pointer"
+                            >
+                              <option value={0}>Tất cả 12 tháng</option>
+                              {Array.from({ length: 12 }, (_, i) => (
+                                <option key={i} value={i + 1}>Tháng {i + 1}/{reportYear}</option>
+                              ))}
+                            </select>
+                          </div>
+
                           <button
                             onClick={() => handleAutoFillReport()}
                             disabled={autoFillLoading}
@@ -8402,8 +8454,7 @@ export default function AdministrationPage() {
                     <div className="glass bg-white rounded-2xl border border-slate-200/50 shadow-premium overflow-hidden">
                       <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/40 flex justify-between items-center">
                         <div>
-                          <h4 className="font-heading font-bold text-slate-800 text-xs">Bảng tính chi phí quản lý hành chính năm 2026</h4>
-                          <p className="text-slate-400 text-[10px] font-semibold mt-0.5">Tự động cộng dồn Subtotals khối Văn phòng/Dự án và tính Tổng cộng thời gian thực</p>
+                          <h4 className="font-heading font-bold text-slate-800 text-xs">Bảng tính chi phí quản lý hành chính năm {reportYear}</h4>
                         </div>
                         {reportLoading && (
                           <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold">
@@ -8413,13 +8464,13 @@ export default function AdministrationPage() {
                       </div>
 
                       <div className="overflow-x-auto custom-scrollbar">
-                        <table className="w-full text-left border-collapse min-w-[1700px]">
+                        <table className={`w-full text-left border-collapse ${reportMonthFilter === 0 ? "min-w-[1700px]" : "min-w-[900px]"}`}>
                           <thead>
                             <tr className="bg-slate-50/70 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                               <th className="py-3 px-3 text-center sticky left-0 bg-slate-50 z-20 w-[60px] border-r border-slate-200">STT</th>
                               <th className="py-3 px-3 sticky left-[60px] bg-slate-50 z-20 w-[280px] border-r border-slate-200">Nội dung</th>
-                              <th className="py-3 px-3 text-right bg-slate-100/55 w-[140px] border-r border-slate-200 font-extrabold text-slate-600">Tổng CP 2026</th>
-                              {Array.from({ length: 12 }, (_, i) => (
+                              <th className="py-3 px-3 text-right bg-slate-100/55 w-[140px] border-r border-slate-200 font-extrabold text-slate-600">Tổng CP {reportYear}</th>
+                              {visibleMonths.map((i) => (
                                 <th key={i} className="py-3 px-3 text-right w-[105px] border-r border-slate-200">Tháng {i + 1}</th>
                               ))}
                               <th className="py-3 px-3 w-[220px] border-r border-slate-200">Ghi chú</th>
@@ -8435,7 +8486,7 @@ export default function AdministrationPage() {
                               <td className="py-2.5 px-3 text-right bg-slate-200/50 border-r border-slate-200 font-mono font-black text-slate-800">
                                 {computedStats.officeAnnualSubtotal.toLocaleString("vi-VN")}
                               </td>
-                              {Array.from({ length: 12 }, (_, i) => {
+                              {visibleMonths.map((i) => {
                                 const val = computedStats.officeMonthlySubtotals[`m${i + 1}`];
                                 return (
                                   <td key={i} className="py-2.5 px-3 text-right border-r border-slate-200 font-mono font-black text-slate-700">
@@ -8456,7 +8507,7 @@ export default function AdministrationPage() {
                               <td className="py-2.5 px-3 text-right bg-slate-200/50 border-r border-slate-200 font-mono font-black text-slate-800">
                                 {computedStats.projectAnnualSubtotal.toLocaleString("vi-VN")}
                               </td>
-                              {Array.from({ length: 12 }, (_, i) => {
+                              {visibleMonths.map((i) => {
                                 const val = computedStats.projectMonthlySubtotals[`m${i + 1}`];
                                 return (
                                   <td key={i} className="py-2.5 px-3 text-right border-r border-slate-200 font-mono font-black text-slate-700">
@@ -8477,7 +8528,7 @@ export default function AdministrationPage() {
                               <td className="py-3 px-3 text-right bg-orange-700/30 border-r border-orange-400 font-mono font-black text-[12.5px]">
                                 {computedStats.grandAnnualTotal.toLocaleString("vi-VN")}
                               </td>
-                              {Array.from({ length: 12 }, (_, i) => {
+                              {visibleMonths.map((i) => {
                                 const val = computedStats.grandMonthlyTotals[`m${i + 1}`];
                                 return (
                                   <td key={i} className="py-3 px-3 text-right border-r border-orange-400 font-mono font-black text-[11.5px]">
@@ -8611,9 +8662,9 @@ export default function AdministrationPage() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div className="glass bg-gradient-to-br from-blue-50/50 to-indigo-50/20 rounded-2xl p-5 border border-blue-100/60 shadow-premium flex items-center justify-between">
                         <div className="space-y-1.5">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Tổng cộng CPQL phát sinh 2026</span>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Tổng cộng CPQL phát sinh {reportYear}</span>
                           <h3 className="text-lg font-black text-[#005BAC] tracking-tight">{computedStats.grandAnnualTotal.toLocaleString("vi-VN")} đ</h3>
-                          <p className="text-[9px] text-slate-400 font-semibold">Khớp dòng tổng cộng phát sinh cả năm 2026</p>
+                          <p className="text-[9px] text-slate-400 font-semibold">Khớp dòng tổng cộng phát sinh cả năm {reportYear}</p>
                         </div>
                         <div className="bg-blue-500/10 text-[#005BAC] p-3 rounded-2xl">
                           <Receipt size={22} />

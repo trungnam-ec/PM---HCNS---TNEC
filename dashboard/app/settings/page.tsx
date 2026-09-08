@@ -27,7 +27,7 @@ import {
 } from "@/lib/approvers";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { isDirectorRole } from "@/lib/access";
-import { useNoticeBox } from "@/components/ConfirmDialog";
+import { useNoticeBox, useConfirmBox, usePromptBox } from "@/components/ConfirmDialog";
 import { useSearchParams } from "next/navigation";
 
 /**
@@ -63,19 +63,26 @@ function SettingsContent() {
   // Ghi vào tenant_config.plan rồi tải lại trang để mọi nơi đọc gói mới.
   const handleChangePlan = async (newPlan: Plan) => {
     if (newPlan === activePlan) return;
-    if (!confirm(`Chuyển hệ thống sang gói ${PLAN_LABELS[newPlan]}?\nMenu và tính năng sẽ thay đổi theo gói ngay sau khi tải lại.`)) return;
-    try {
-      setChangingPlan(true);
-      const { error } = await supabase
-        .from("tenant_config")
-        .update({ value: newPlan })
-        .eq("key", "plan");
-      if (error) throw error;
-      window.location.reload();
-    } catch (err: any) {
-      notify("Không đổi được gói dịch vụ: " + (err.message || err) + "\n(Chỉ tài khoản Admin mới có quyền này.)", "error");
-      setChangingPlan(false);
-    }
+    ask({
+      title: `Chuyển hệ thống sang gói ${PLAN_LABELS[newPlan]}?`,
+      message: "Menu và tính năng sẽ thay đổi theo gói ngay sau khi tải lại.",
+      confirmLabel: "Đổi gói",
+      tone: "normal",
+      onConfirm: async () => {
+        try {
+          setChangingPlan(true);
+          const { error } = await supabase
+            .from("tenant_config")
+            .update({ value: newPlan })
+            .eq("key", "plan");
+          if (error) throw error;
+          window.location.reload();
+        } catch (err: any) {
+          notify("Không đổi được gói dịch vụ: " + (err.message || err) + "\n(Chỉ tài khoản Admin mới có quyền này.)", "error");
+          setChangingPlan(false);
+        }
+      },
+    });
   };
 
   // ─── PHÂN GÓI THEO PHÒNG BAN (quyền nội bộ) ───
@@ -168,6 +175,9 @@ function SettingsContent() {
   // Hộp thông báo căn GIỮA màn hình — thay window.alert() (dính mép trên, hiện tên
   // miền, không theo giao diện chung). Dùng chung mẫu với trang Lịch/Báo cáo.
   const { notify, noticeNode } = useNoticeBox();
+  // Hộp hỏi "có chắc không" + hộp nhập lý do — cùng mẫu căn giữa, thay confirm()/prompt().
+  const { ask, confirmNode } = useConfirmBox();
+  const { askText, promptNode } = usePromptBox();
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeApprovalTab, setActiveApprovalTab] = useState<"trip" | "leave" | "explanation" | "booking">("trip");
@@ -427,16 +437,21 @@ function SettingsContent() {
   };
 
   // Cấp 2 (HCNS): duyệt / từ chối -> tự động gửi email kết quả cho người đăng ký
-  const handleFinalBookingDecision = async (booking: any, approve: boolean) => {
+  const handleFinalBookingDecision = async (booking: any, approve: boolean, rejectReasonArg?: string) => {
     if (!currentUser) return;
-    let rejectReason = "";
-    if (!approve) {
-      rejectReason = window.prompt("Nhập lý do từ chối (sẽ được gửi trong email cho người đăng ký):") || "";
-      if (!rejectReason.trim()) {
-        notify("Vui lòng nhập lý do từ chối để người đăng ký nắm thông tin.", "warn");
-        return;
-      }
+    // Từ chối: mở hộp nhập lý do căn giữa (thay window.prompt). Có lý do rồi mới gọi
+    // lại chính hàm này với tham số rejectReasonArg để chạy tiếp phần ghi DB + email.
+    if (!approve && rejectReasonArg === undefined) {
+      askText({
+        title: "Từ chối đăng ký",
+        message: "Nhập lý do từ chối (sẽ được gửi trong email cho người đăng ký):",
+        placeholder: "Ví dụ: trùng lịch, không đủ điều kiện...",
+        confirmLabel: "Gửi từ chối",
+        onSubmit: (reason) => handleFinalBookingDecision(booking, false, reason),
+      });
+      return;
     }
+    const rejectReason = rejectReasonArg || "";
 
     try {
       const decision = approve ? "approved" : "rejected";
@@ -527,16 +542,21 @@ function SettingsContent() {
   };
 
   // Cấp 2 (HCNS) hoặc từ chối ở cấp 1 — duyệt cuối / từ chối + gửi email kết quả cho người gửi đơn
-  const handleFinalDecision = async (task: any, isTrip: boolean, approve: boolean) => {
+  const handleFinalDecision = async (task: any, isTrip: boolean, approve: boolean, rejectReasonArg?: string) => {
     if (!currentUser) return;
-    let rejectReason = "";
-    if (!approve) {
-      rejectReason = window.prompt("Nhập lý do từ chối (sẽ được gửi email cho người gửi đơn):") || "";
-      if (!rejectReason.trim()) {
-        notify("Vui lòng nhập lý do từ chối!", "warn");
-        return;
-      }
+    // Từ chối: mở hộp nhập lý do căn giữa (thay window.prompt), có lý do rồi gọi lại
+    // chính hàm với rejectReasonArg để chạy tiếp phần ghi DB + gửi email kết quả.
+    if (!approve && rejectReasonArg === undefined) {
+      askText({
+        title: `Từ chối yêu cầu ${isTrip ? "đi công tác" : "nghỉ phép"}`,
+        message: "Nhập lý do từ chối (sẽ được gửi email cho người gửi đơn):",
+        placeholder: "Ví dụ: chưa đủ thông tin, trùng lịch...",
+        confirmLabel: "Gửi từ chối",
+        onSubmit: (reason) => handleFinalDecision(task, isTrip, false, reason),
+      });
+      return;
     }
+    const rejectReason = rejectReasonArg || "";
 
     try {
       if (approve && isTrip) {
@@ -1337,7 +1357,12 @@ function SettingsContent() {
                 {deptPlansEnabled && (
                   <div className="flex items-center gap-2 shrink-0">
                     <button
-                      onClick={() => { if (confirm("Tắt phân gói theo phòng? Mọi người sẽ dùng chung gói hệ thống.")) saveDeptPlans(null); }}
+                      onClick={() => ask({
+                        title: "Tắt phân gói theo phòng?",
+                        message: "Mọi người sẽ dùng chung gói hệ thống.",
+                        confirmLabel: "Tắt",
+                        onConfirm: () => saveDeptPlans(null),
+                      })}
                       disabled={savingDeptPlans}
                       className="text-[11px] font-bold text-rose-500 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-50 px-3 py-2 rounded-xl transition-all cursor-pointer"
                     >
@@ -2248,6 +2273,8 @@ function SettingsContent() {
         </main>
       </div>
       {noticeNode}
+      {confirmNode}
+      {promptNode}
     </div>
   );
 }

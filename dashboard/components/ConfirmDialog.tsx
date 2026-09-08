@@ -27,7 +27,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Trash2, AlertTriangle, CheckCircle2, XCircle, Info } from "lucide-react";
+import { Trash2, AlertTriangle, CheckCircle2, XCircle, Info, MessageSquareText } from "lucide-react";
 
 export type ConfirmRequest = {
   title: string;
@@ -211,5 +211,134 @@ export function useNoticeBox() {
   return {
     notify,
     noticeNode: box ? <NoticeDialog box={box} onClose={close} /> : null,
+  };
+}
+
+// ============================================================
+// PromptDialog — hộp NHẬP MỘT ĐOẠN VĂN BẢN căn GIỮA màn hình.
+//
+// Thay cho window.prompt() (dính mép trên, hiện tên miền, không theo giao diện
+// chung). Dùng cho các luồng cần lý do: "Nhập lý do từ chối...".
+//
+// CÁCH DÙNG:
+//   const { askText, promptNode } = usePromptBox();
+//   ...
+//   askText({ title: "Từ chối yêu cầu", message: "Nhập lý do...",
+//             confirmLabel: "Gửi từ chối", onSubmit: (reason) => doReject(reason) });
+//   ...
+//   return (<>...{promptNode}</>);
+//
+// Giống ConfirmDialog: KHÔNG dừng luồng chạy. Việc cần làm đặt trong onSubmit.
+// ============================================================
+
+export type PromptRequest = {
+  title: string;
+  message?: string;
+  placeholder?: string;
+  defaultValue?: string;
+  /** Chữ trên nút gửi. Mặc định "Xác nhận". */
+  confirmLabel?: string;
+  /** Bắt buộc nhập (không cho gửi khi rỗng). Mặc định true. */
+  required?: boolean;
+  /** "danger" (mặc định) = nút đỏ (dùng cho từ chối). */
+  tone?: "danger" | "normal";
+  onSubmit: (value: string) => void;
+};
+
+export function PromptDialog({ box, onClose }: { box: PromptRequest; onClose: () => void }) {
+  const [value, setValue] = useState(box.defaultValue ?? "");
+  const required = box.required ?? true;
+  const danger = (box.tone ?? "danger") === "danger";
+  const canSubmit = !required || value.trim().length > 0;
+
+  const submit = () => {
+    if (!canSubmit) return;
+    const run = box.onSubmit;
+    onClose();
+    run(value.trim());
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[90] flex items-center justify-center p-4 animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-white rounded-2xl w-full max-w-sm p-7 shadow-2xl border border-slate-100 text-center space-y-5 animate-in fade-in-50 zoom-in-95 duration-200"
+      >
+        <div className="flex justify-center">
+          <div
+            className={`w-16 h-16 rounded-full flex items-center justify-center ring-8 ${
+              danger
+                ? "bg-rose-50 text-rose-500 ring-rose-500/10"
+                : "bg-blue-50 text-[#005BAC] ring-blue-500/10"
+            }`}
+          >
+            <MessageSquareText size={30} strokeWidth={2.2} />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="font-heading font-extrabold text-sm text-slate-800">{box.title}</h3>
+          {box.message && (
+            <p className="text-[11px] font-semibold text-slate-500 leading-relaxed whitespace-pre-line">
+              {box.message}
+            </p>
+          )}
+        </div>
+
+        <textarea
+          autoFocus
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          placeholder={box.placeholder || "Nhập nội dung..."}
+          rows={3}
+          className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-xs font-semibold text-slate-700 outline-none resize-none focus:border-[#005BAC] focus:bg-white transition-all placeholder:text-slate-400 placeholder:font-normal"
+        />
+
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 rounded-xl transition-all active:scale-95 cursor-pointer"
+          >
+            Huỷ bỏ
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!canSubmit}
+            className={`flex-1 text-white text-xs font-bold py-2.5 rounded-xl shadow-sm transition-all active:scale-95 ${
+              !canSubmit
+                ? "bg-slate-300 cursor-not-allowed"
+                : danger
+                  ? "bg-rose-600 hover:bg-rose-700 shadow-rose-500/20 cursor-pointer"
+                  : "bg-[#005BAC] hover:bg-blue-700 shadow-blue-500/20 cursor-pointer"
+            }`}
+          >
+            {box.confirmLabel || "Xác nhận"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/** Gói sẵn state cho component dùng: trả về hàm hỏi văn bản + phần tử cần render. */
+export function usePromptBox() {
+  const [box, setBox] = useState<PromptRequest | null>(null);
+  const askText = useCallback((req: PromptRequest) => setBox(req), []);
+  const close = useCallback(() => setBox(null), []);
+  return {
+    askText,
+    promptNode: box ? <PromptDialog box={box} onClose={close} /> : null,
   };
 }

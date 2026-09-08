@@ -6178,7 +6178,9 @@ export default function CBPage() {
                                 <td className="py-3.5 px-3 text-slate-650 font-medium">{e.approver || tenantCfg.hcns_head_name}</td>
                                 <td className="py-3.5 px-3 text-center">
                                   <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                                    e.status === "Đã duyệt" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                                    e.status === "Đã duyệt" ? "bg-emerald-100 text-emerald-800"
+                                      : e.status === "Từ chối" ? "bg-rose-100 text-rose-700"
+                                      : "bg-amber-100 text-amber-800"
                                   }`}>{e.status === "Chờ duyệt" ? "Chưa duyệt" : (e.status || "Chưa duyệt")}</span>
                                 </td>
                                 <td className="py-3.5 px-3 text-center">

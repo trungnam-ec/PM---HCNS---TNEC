@@ -655,12 +655,23 @@ function SettingsContent() {
 
   const handleRejectJustification = async (id: string) => {
     try {
-      const { error } = await supabase
+      // Phải là "Từ chối" — KHÔNG phải "Chưa duyệt". "Chưa duyệt" chính là trạng
+      // thái chờ duyệt (fetchExplanations lấy cả "Chưa duyệt" lẫn "Chờ duyệt"), nên
+      // set lại "Chưa duyệt" thì đơn không rời khỏi danh sách chờ — bấm Từ chối như
+      // không có tác dụng. "Từ chối" là trạng thái riêng, tách đơn khỏi danh sách chờ.
+      const { data, error } = await supabase
         .from("attendance_justifications")
-        .update({ status: "Chưa duyệt" })
-        .eq("id", id);
-      
+        .update({ status: "Từ chối" })
+        .eq("id", id)
+        .select("id");
+
       if (error) throw error;
+      // RLS chặn thì update trả 0 dòng mà KHÔNG báo lỗi — bắt trường hợp này để
+      // không hiện "đã từ chối" giả (bấm OK nhưng thực chất không đổi được gì).
+      if (!data || data.length === 0) {
+        alert("Không từ chối được — tài khoản của bạn không có quyền cập nhật đơn này.");
+        return;
+      }
       alert("Đã từ chối giải trình công!");
       fetchExplanations();
     } catch (err) {

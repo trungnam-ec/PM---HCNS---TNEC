@@ -14,6 +14,7 @@
 
 import { supabase } from "./supabase";
 import { apiFetch } from "./apiClient";
+import { emailFieldMatches } from "./emailMatch";
 import type { ApprovalPermissions } from "./approvers";
 
 export const SIGNING_BUCKET = "signing-dossiers";
@@ -701,15 +702,17 @@ export async function pushToPaymentDossier(
     }
   }
 
-  // Phòng ban người lập — email lưu trong danh bạ CHỨA email đăng nhập.
+  // Phòng ban người lập — khớp email TUYỆT ĐỐI (`%X%` chỉ là bộ lọc thô ở DB;
+  // email này có thể là chuỗi con của email người khác nên phải lọc lại).
   let phongBan = "";
   if (row.created_by) {
     const { data: emp } = await supabase
       .from("employees_directory")
-      .select("department")
-      .ilike("email", `%${row.created_by}%`)
-      .limit(1);
-    phongBan = (emp?.[0] as { department?: string } | undefined)?.department || "";
+      .select("department, email")
+      .ilike("email", `%${row.created_by}%`);
+    phongBan =
+      (emp || []).find((r) => emailFieldMatches((r as { email?: string | null }).email, row.created_by))
+        ?.department || "";
   }
 
   const amount = row.de_nghi_thanh_toan ?? tinhDeNghi(row);

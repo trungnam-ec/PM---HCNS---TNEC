@@ -10,6 +10,7 @@ import { useTenantConfig } from "@/lib/tenantConfig";
 import { normalizePlan, getMinPlanForPath, PLAN_LABELS } from "@/lib/planShared";
 import { canAccessPath, resolveEffectivePlan, accessDenialReason } from "@/lib/access";
 import { fetchApprovalPermissions, NO_APPROVAL_PERMISSIONS, type ApprovalPermissions } from "@/lib/approvers";
+import { emailFieldMatches } from "@/lib/emailMatch";
 
 export default function AuthWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -66,11 +67,14 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
       setCheckingAdmin(true);
       try {
         // 1. Check allowed_users (Admins / Special Whitelist)
-        const { data: allowedData, error: allowedError } = await supabase
+        //    `.ilike("email", "%X%")` chỉ là bộ lọc THÔ ở DB; quyết định cuối cùng
+        //    là emailFieldMatches() — khớp email TUYỆT ĐỐI, không phải chuỗi con.
+        //    Nếu không, "thanhloc92vn@gmail.com" sẽ lọt vào vì là chuỗi con của
+        //    "phamthanhloc92vn@gmail.com".
+        const { data: allowedRows, error: allowedError } = await supabase
           .from("allowed_users")
-          .select("role")
-          .ilike("email", userEmail.trim())
-          .maybeSingle();
+          .select("role, email")
+          .ilike("email", `%${userEmail.trim()}%`);
 
         if (allowedError) {
           console.warn("Error checking allowed_users:", allowedError);
@@ -78,6 +82,8 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
           setIsAdmin(false);
           return;
         }
+
+        const allowedData = (allowedRows || []).find((r) => emailFieldMatches(r.email, userEmail));
 
         if (allowedData && allowedData.role === "Admin") {
           setIsAdmin(true);
@@ -88,11 +94,12 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
         }
 
         // 2. Check employees table (If not in allowed_users or not Admin)
-        const { data: empData, error: empError } = await supabase
+        //    Bộ lọc thô + khớp TUYỆT ĐỐI như trên. Bỏ `.maybeSingle()` vì bộ lọc
+        //    `%X%` có thể trả nhiều dòng (VD email này là chuỗi con của email khác).
+        const { data: empRows, error: empError } = await supabase
           .from("employees_directory")
-          .select("role, status, department")
-          .like("email", `%${userEmail.trim()}%`)
-          .maybeSingle();
+          .select("role, status, department, email")
+          .ilike("email", `%${userEmail.trim()}%`);
 
         if (empError) {
           console.warn("Error checking employees table:", empError);
@@ -100,6 +107,8 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
           setIsAdmin(false);
           return;
         }
+
+        const empData = (empRows || []).find((r) => emailFieldMatches(r.email, userEmail));
 
         if (empData) {
           const statusLower = (empData.status || "").toLowerCase().trim();

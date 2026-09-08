@@ -16,6 +16,7 @@ import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import { emailFieldMatches } from "@/lib/emailMatch";
 import { useDepartments } from "@/lib/departments";
 import {
   MapPin, Navigation, Camera, Loader2, LogIn, LogOut, AlertTriangle,
@@ -92,10 +93,9 @@ export default function GpsCheckinPage() {
     (async () => {
       const { data } = await supabase
         .from("employees_directory")
-        .select("name, employee_code")
-        .ilike("email", `%${user.email}%`)
-        .limit(1);
-      const row = data?.[0];
+        .select("name, employee_code, email")
+        .ilike("email", `%${user.email}%`);
+      const row = (data || []).find((r) => emailFieldMatches(r.email, user.email));
       empRef.current = { code: row?.employee_code || "", name: row?.name || user.name };
     })();
   }, [user.loading, user.email, user.name]);

@@ -33,6 +33,7 @@ import {
   resolveBookingCap1Approvers,
 } from "@/lib/approvers";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import { emailFieldMatches } from "@/lib/emailMatch";
 
 type BookingType = "xe" | "phong_hop";
 
@@ -1095,12 +1096,14 @@ function BookingContent() {
     // Admin và người được cấp cờ "Duyệt đăng ký xe / phòng họp" xem FULL danh sách
     // đăng ký, không giới hạn ở đăng ký của chính mình.
     if (isHcnsApproverUser) return bookings.filter((b) => b.booking_type === bookingType);
-    const loginEmail = currentUser.email.toLowerCase();
-    // requester_email có thể là chuỗi nhiều email (hồ sơ nhân viên) nên so bằng includes
+    const loginEmail = currentUser.email;
+    // requester_email có thể là chuỗi nhiều email (hồ sơ nhân viên) nên tách token
+    // rồi so khớp TUYỆT ĐỐI — dùng includes() sẽ khiến email này lọt vào danh sách
+    // của người có email dài hơn chứa nó như chuỗi con.
     return bookings.filter(
       (b) =>
         b.booking_type === bookingType &&
-        ((b.requester_email || "").toLowerCase().includes(loginEmail) || b.requester_name === currentUser.name)
+        (emailFieldMatches(b.requester_email, loginEmail) || b.requester_name === currentUser.name)
     );
   }, [bookings, bookingType, currentUser, isHcnsApproverUser]);
 

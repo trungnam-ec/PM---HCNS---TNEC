@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import { normalizePlan, isFeatureAllowed } from "@/lib/planShared";
 import { getTenantConfigServer } from "@/lib/tenantConfigServer";
+import { emailFieldMatches } from "@/lib/emailMatch";
 
 export const maxDuration = 60; // Allow enough time for AI response
 
@@ -85,12 +86,19 @@ export async function POST(req: NextRequest) {
       }, { status: 403 });
     }
 
-    // Tra cứu vai trò/phòng ban THẬT từ DB theo email đã xác minh.
-    const [{ data: allowedData }, { data: empData }, { data: permData }] = await Promise.all([
-      dbClient.from("allowed_users").select("role").ilike("email", verifiedEmail).maybeSingle(),
-      dbClient.from("employees_directory").select("name, role, department").ilike("email", `%${verifiedEmail}%`).maybeSingle(),
-      dbClient.from("approval_permissions").select("can_view_salary").ilike("email", `%${verifiedEmail}%`).maybeSingle()
+    // Tra cứu vai trò/phòng ban THẬT từ DB theo email đã xác minh. Bộ lọc `%X%`
+    // chỉ là tập cha thô ở DB; danh tính + quyền lương CHỐT bằng khớp email TUYỆT
+    // ĐỐI (emailFieldMatches). Đây là cổng chặn lương/PII, tuyệt đối không dùng
+    // chuỗi con: email phụ là chuỗi con của email chính sẽ thừa hưởng quyền xem lương.
+    const [{ data: allowedRows }, { data: empRows }, { data: permRows }] = await Promise.all([
+      dbClient.from("allowed_users").select("role, email").ilike("email", `%${verifiedEmail}%`),
+      dbClient.from("employees_directory").select("name, role, department, email").ilike("email", `%${verifiedEmail}%`),
+      dbClient.from("approval_permissions").select("can_view_salary, email").ilike("email", `%${verifiedEmail}%`)
     ]);
+
+    const allowedData = (allowedRows || []).find((r) => emailFieldMatches(r.email, verifiedEmail));
+    const empData = (empRows || []).find((r) => emailFieldMatches(r.email, verifiedEmail));
+    const permData = (permRows || []).find((r) => emailFieldMatches(r.email, verifiedEmail));
 
     const isAdmin = allowedData?.role === "Admin";
     // Tên/chức danh xác minh từ DB — dùng cho phân quyền. Tên client gửi chỉ dùng hiển thị.

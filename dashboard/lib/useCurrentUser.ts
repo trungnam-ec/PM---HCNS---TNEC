@@ -20,6 +20,7 @@ import {
   NO_APPROVAL_PERMISSIONS,
 } from "./approvers";
 import { fetchTenantConfig } from "./tenantConfig";
+import { emailFieldMatches } from "./emailMatch";
 import { normalizePlan, type Plan } from "./planShared";
 import {
   canAccess,
@@ -87,37 +88,38 @@ export function useCurrentUser(): CurrentUser {
         // 1. allowed_users (Admin thực sự) + 2. employees_directory (phòng, vai trò)
         //    + 3. cờ cấp phép + 4. cấu hình gói tenant — chạy song song.
         const [allowedRes, empRes, perms, tenant] = await Promise.all([
-          supabase.from("allowed_users").select("role").ilike("email", email).maybeSingle(),
+          // Bộ lọc THÔ `%X%` ở DB; danh tính CHỐT bằng emailFieldMatches() —
+          // khớp email TUYỆT ĐỐI, không phải chuỗi con (nếu không, email phụ là
+          // chuỗi con của email chính sẽ nhận nhầm quyền/hồ sơ của người khác).
+          supabase.from("allowed_users").select("role, email").ilike("email", `%${email}%`),
           // `.ilike` chứ KHÔNG phải `.like`: trong PostgreSQL `LIKE` phân biệt
           // hoa/thường, nên email lưu trong Danh sách nhân viên chỉ cần MỘT chữ
           // hoa là tra không ra hồ sơ — trong khi dòng allowed_users ngay trên
           // vẫn khớp vì nó dùng ilike. Hậu quả: có quyền nhưng mất hồ sơ nhân sự.
-          //
-          // `.limit(2)` thay cho `.maybeSingle()`: maybeSingle BÁO LỖI khi khớp
-          // từ 2 dòng trở lên (hồ sơ trùng email) và trả về rỗng — người dùng
-          // rơi vào "Chưa xếp phòng" y như chưa từng có hồ sơ. Lấy 2 dòng để
-          // vừa chọn được dòng đầu, vừa biết có trùng mà cảnh báo.
           supabase
             .from("employees_directory")
             .select("name, role, department, status, email")
-            .ilike("email", `%${email}%`)
-            .limit(2),
+            .ilike("email", `%${email}%`),
           fetchApprovalPermissions(email),
           fetchTenantConfig(),
         ]);
 
-        const isAdmin = allowedRes.data?.role === "Admin";
+        const allowedMatch = (allowedRes.data || []).find((r) => emailFieldMatches(r.email, email));
+        const isAdmin = allowedMatch?.role === "Admin";
 
         // KHÔNG nuốt lỗi như trước. Tra hụt hồ sơ là người dùng rơi thẳng vào
         // "Chưa xếp phòng", kéo theo ô "Người nhận" ở trang Công việc còn 0
         // người và họ không tạo nổi task nào — mà trước đây tuyệt nhiên không
         // có dấu hiệu gì để lần ra.
-        const empRows = (empRes.data || []) as {
+        const empRowsRaw = (empRes.data || []) as {
           name: string; role: string; department: string; status: string; email: string;
         }[];
         if (empRes.error) {
           console.error("[useCurrentUser] Không tra được hồ sơ nhân sự:", empRes.error.message);
         }
+        // Lọc lại bằng khớp email TUYỆT ĐỐI — dòng do `%X%` trả về có thể chỉ CHỨA
+        // email này như chuỗi con (hồ sơ của người khác), phải loại ra.
+        const empRows = empRowsRaw.filter((r) => emailFieldMatches(r.email, email));
         if (empRows.length > 1) {
           console.warn(
             `[useCurrentUser] Có ${empRows.length} hồ sơ cùng khớp email "${email}" trong Danh sách nhân viên. ` +

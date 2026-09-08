@@ -10,6 +10,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { X, ShieldCheck, UserPlus, Trash2, Save, Info, Users, CalendarClock, Plus, Search } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { invalidateApproverCaches, normalizeName } from "@/lib/approvers";
+import { emailFieldMatches } from "@/lib/emailMatch";
 import { useNoticeBox, useConfirmBox } from "@/components/ConfirmDialog";
 
 type PermissionRow = {
@@ -297,7 +298,9 @@ export default function UserPermissionsModal({
       .filter(e => e.name && (e.email || "").trim())
       .map(e => {
         const first = (e.email || "").split(",")[0].trim();
-        const existing = rows.find(r => (r.email || "").toLowerCase().includes(first.toLowerCase()));
+        // Khớp email TUYỆT ĐỐI — includes() sẽ ghép nhầm nhân viên này với dòng
+        // quyền của người có email chứa email họ như chuỗi con, mở nhầm quyền để sửa.
+        const existing = rows.find(r => emailFieldMatches(r.email, first));
         return {
           name: e.name,
           department: e.department || "",

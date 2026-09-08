@@ -30,6 +30,7 @@
 
 import { requireApiAuth, supabaseForCaller } from "@/lib/apiAuth";
 import { getTenantConfigServer } from "@/lib/tenantConfigServer";
+import { emailFieldMatches } from "@/lib/emailMatch";
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
@@ -127,14 +128,15 @@ export async function POST(request: NextRequest) {
       const sb = supabaseForCaller(auth.caller);
       const { data } = await sb
         .from("employees_directory")
-        .select("name, role, department")
+        .select("name, role, department, email")
         // `.ilike` chứ không phải `.like`: email lưu trong danh bạ chỉ cần một
-        // chữ hoa là `LIKE` tra không ra.
-        .ilike("email", `%${auth.caller.email}%`)
-        .limit(2);
-      const emp = (data || [])[0] as
-        | { name?: string; role?: string; department?: string }
-        | undefined;
+        // chữ hoa là `LIKE` tra không ra. Bộ lọc `%X%` là tập cha thô — chốt bằng
+        // khớp email TUYỆT ĐỐI để không lấy nhầm hồ sơ khi email này là chuỗi con
+        // của email người khác.
+        .ilike("email", `%${auth.caller.email}%`);
+      const emp = (data || []).find(
+        (r: { email?: string | null }) => emailFieldMatches(r.email, auth.caller.email)
+      ) as { name?: string; role?: string; department?: string } | undefined;
       if (emp?.name) preparerName = emp.name;
       if (emp?.department) preparerDept = emp.department;
       if (emp?.role) preparerRole = emp.role;

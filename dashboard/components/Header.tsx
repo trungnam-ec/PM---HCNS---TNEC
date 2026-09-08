@@ -17,6 +17,7 @@ import {
   normalizeName,
 } from "@/lib/approvers";
 import { isHrDept } from "@/lib/access";
+import { emailFieldMatches } from "@/lib/emailMatch";
 import { useSidebar } from "./SidebarContext";
 import { useTenantConfig } from "@/lib/tenantConfig";
 import { usePlan } from "@/lib/plan";
@@ -271,11 +272,12 @@ export default function Header({ title, subtitle }: Props) {
       const email = user.email || "";
 
       // 1. Try searching in employees first (regular employee profiles)
-      const { data: empData } = await supabase
+      //    Bộ lọc `%X%` là tập cha thô; chốt danh tính bằng khớp email TUYỆT ĐỐI.
+      const { data: empRows } = await supabase
         .from("employees_directory")
-        .select("name, role, department")
-        .like("email", `%${email}%`)
-        .maybeSingle();
+        .select("name, role, department, email")
+        .ilike("email", `%${email}%`);
+      const empData = (empRows || []).find((r) => emailFieldMatches(r.email, email));
 
       // 2. Check allowed_users for Admin
       const { data: allowedData } = await supabase

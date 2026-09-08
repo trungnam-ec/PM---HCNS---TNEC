@@ -6,6 +6,7 @@ import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase";
 import { fetchApprovalPermissions, fetchApprovalGroups, resolveJustificationApproverName, normalizeName } from "@/lib/approvers";
+import { emailFieldMatches } from "@/lib/emailMatch";
 import { useDepartments } from "@/lib/departments";
 import { useTenantConfig } from "@/lib/tenantConfig";
 import { fetchAvatarMap, pickAvatar } from "@/lib/avatar";
@@ -3534,19 +3535,21 @@ export default function CBPage() {
       
       const email = session.user.email || "";
       
-      // 1. Query employees table for current employee info using ilike to support comma-separated emails
+      // 1. Query employees table for current employee info. Bộ lọc `%X%` là tập
+      //    cha thô; chốt bằng khớp email TUYỆT ĐỐI (không phải chuỗi con) để email
+      //    phụ không nhận nhầm hồ sơ + full access của người khác.
       const { data: empList } = await supabase
         .from("employees")
         .select("*")
         .ilike("email", `%${email}%`);
-      const empData = empList && empList.length > 0 ? empList[0] : null;
-        
-      // 2. Query allowed_users for role info using ilike to support comma-separated emails
+      const empData = (empList || []).find((r) => emailFieldMatches(r.email, email)) || null;
+
+      // 2. Query allowed_users for role info — cũng khớp email TUYỆT ĐỐI.
       const { data: allowedList } = await supabase
         .from("allowed_users")
-        .select("role")
+        .select("role, email")
         .ilike("email", `%${email}%`);
-      const allowedData = allowedList && allowedList.length > 0 ? allowedList[0] : null;
+      const allowedData = (allowedList || []).find((r) => emailFieldMatches(r.email, email)) || null;
 
       // Cờ quyền theo dữ liệu (approval_permissions) — NGUỒN DUY NHẤT cấp full access
       // C&B. Các check tên/chức danh cứng (5 tên, "giám đốc", "nhân sự + HCNS"...)

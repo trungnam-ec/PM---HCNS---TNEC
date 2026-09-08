@@ -7,6 +7,7 @@ import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import { emailFieldMatches } from "@/lib/emailMatch";
 import { useDepartments } from "@/lib/departments";
 import { useTenantConfig, invalidateTenantConfig } from "@/lib/tenantConfig";
 import { useNoticeBox, useConfirmBox } from "@/components/ConfirmDialog";
@@ -671,8 +672,10 @@ export default function EmployeeManagementPage() {
 
     if (canSeeAll) return true;
 
-    // Không có cờ -> chỉ thấy hồ sơ của chính mình
-    return emp.email.toLowerCase().includes(currentUser.email.toLowerCase());
+    // Không có cờ -> chỉ thấy hồ sơ của CHÍNH MÌNH. Khớp email TUYỆT ĐỐI: dùng
+    // includes() sẽ để một người thấy hồ sơ của người có email chứa email mình như
+    // chuỗi con (VD thanhloc92vn@ thấy hồ sơ của phamthanhloc92vn@).
+    return emailFieldMatches(emp.email, currentUser.email);
   }).sort((a, b) => {
     // Nhân viên đã nghỉ việc luôn nằm cuối danh sách (kể cả khi lọc phòng ban)
     return (isResignedEmployee(a) ? 1 : 0) - (isResignedEmployee(b) ? 1 : 0);

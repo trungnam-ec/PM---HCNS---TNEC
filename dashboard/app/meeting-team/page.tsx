@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase";
+import { emailFieldMatches } from "@/lib/emailMatch";
 import { fetchTenantConfig } from "@/lib/tenantConfig";
 import { isResignedRow } from "@/lib/resigned";
 import {
@@ -181,11 +182,11 @@ export default function MeetingTeamPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const email = session.user.email || "";
-        const { data: empData } = await supabase
+        const { data: empRows } = await supabase
           .from("employees_directory")
-          .select("name")
-          .like("email", `%${email}%`)
-          .maybeSingle();
+          .select("name, email")
+          .ilike("email", `%${email}%`);
+        const empData = (empRows || []).find((r) => emailFieldMatches(r.email, email));
         setCurrentUser({
           email,
           name: empData?.name || session.user.user_metadata?.full_name || "Nhân sự",

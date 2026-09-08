@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { emailFieldMatches } from "./emailMatch";
 
 export type ApprovalPermissions = {
   canApproveTrip: boolean;
@@ -567,8 +568,9 @@ export function isLeaveTripCap2Approver(params: {
 
 // Per-user approval grants live in the approval_permissions table and are
 // managed directly in the Supabase Table Editor — no code change needed to
-// grant or revoke. Email matching mirrors the employees lookup: the stored
-// email only needs to contain the login email.
+// grant or revoke. Email matching mirrors the employees lookup: the login email
+// must EXACTLY equal one of the emails stored in the row (không phải chuỗi con —
+// nếu không, email phụ là chuỗi con của email chính sẽ thừa hưởng cờ quyền).
 export async function fetchApprovalPermissions(email?: string | null): Promise<ApprovalPermissions> {
   // Nhân tiện nạp sớm cache nhóm duyệt (Header/Sidebar gọi hàm này ở mọi trang)
   void fetchApprovalGroups();
@@ -580,8 +582,7 @@ export async function fetchApprovalPermissions(email?: string | null): Promise<A
       .select("*");
     if (error || !data) return NO_APPROVAL_PERMISSIONS;
 
-    const target = email.trim().toLowerCase();
-    const row = data.find(r => (r.email || "").toLowerCase().includes(target));
+    const row = data.find(r => emailFieldMatches(r.email, email));
     if (!row) return NO_APPROVAL_PERMISSIONS;
 
     return {

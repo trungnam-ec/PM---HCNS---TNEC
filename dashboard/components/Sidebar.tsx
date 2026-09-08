@@ -35,6 +35,7 @@ import { useDepartments } from "@/lib/departments";
 import ThemeToggle from "./ThemeToggle";
 import { supabase } from "@/lib/supabase";
 import { fetchApprovalPermissions, hasAnyApprovalPermission, isMarketingTeamLeader } from "@/lib/approvers";
+import { emailFieldMatches } from "@/lib/emailMatch";
 import { useTenantConfig } from "@/lib/tenantConfig";
 import { usePlan } from "@/lib/plan";
 import { useCurrentUser } from "@/lib/useCurrentUser";
@@ -286,12 +287,12 @@ export default function Sidebar() {
         const isAdmin = allowedData?.role === "Admin";
         setIsAdminUser(isAdmin);
 
-        // Check Employees
-        const { data: empData } = await supabase
+        // Check Employees — bộ lọc `%X%` thô, chốt bằng khớp email TUYỆT ĐỐI.
+        const { data: empRows } = await supabase
           .from("employees_directory")
-          .select("name, role")
-          .like("email", `%${email}%`)
-          .maybeSingle();
+          .select("name, role, email")
+          .ilike("email", `%${email}%`);
+        const empData = (empRows || []).find((r) => emailFieldMatches(r.email, email));
 
         const perms = await fetchApprovalPermissions(email);
 

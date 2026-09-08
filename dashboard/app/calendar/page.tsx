@@ -41,7 +41,9 @@ import {
   Coins,
   Trash2,
   CalendarOff,
-  MapPin
+  MapPin,
+  Users,
+  Building2
 } from "lucide-react";
 
 interface Task {
@@ -211,6 +213,17 @@ function CalendarContent() {
   const [tripOtherExpenses, setTripOtherExpenses] = useState<OtherExpense[]>([]);
   const [hotelRate, setHotelRate] = useState<number>(350000);
 
+  // ─── Người đi công tác (chọn nhiều người) ───────────────────────────────
+  // Ô "Họ và tên người đi" liệt kê danh bạ TOÀN công ty — ai cũng book được cho
+  // bản thân, cho người phòng khác và cả Ban lãnh đạo. Mỗi người đi thành MỘT đơn
+  // công tác riêng (giống giao việc nhiều người = N thẻ), và luồng duyệt cấp 1 của
+  // mỗi đơn suy theo ĐÚNG tên + phòng ban của người đi đó, không theo người book.
+  const [tripTravelers, setTripTravelers] = useState<string[]>([]);
+  const [travelerSearch, setTravelerSearch] = useState("");
+  const [showTravelerDropdown, setShowTravelerDropdown] = useState(false);
+  const [travelerDeptFilter, setTravelerDeptFilter] = useState("all");
+  const travelerPickerRef = useRef<HTMLDivElement>(null);
+
   // Danh mục cung đường (migration 061) — dùng để tự điền ô "Độ dài (KM)".
   const [isDistanceModalOpen, setIsDistanceModalOpen] = useState(false);
   const [distancePrefill, setDistancePrefill] = useState<{ from: string; to: string }>({ from: "", to: "" });
@@ -228,6 +241,28 @@ function CalendarContent() {
   useEffect(() => {
     if (currentUser) setModalName((prev) => prev || currentUser.name);
   }, [currentUser]);
+
+  // Mở form công tác: mặc định chọn sẵn CHÍNH người đang đăng nhập (ai cũng tự
+  // book cho bản thân), người book vẫn thêm/bớt người khác thoải mái.
+  useEffect(() => {
+    if (isTripModalOpen && currentUser && tripTravelers.length === 0) {
+      setTripTravelers([currentUser.name]);
+    }
+    // Chỉ chạy khi mở/đóng form — không đưa tripTravelers vào deps để không tự
+    // thêm lại tên người book ngay sau khi họ vừa bấm X bỏ mình ra.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTripModalOpen, currentUser]);
+
+  // Bấm ra ngoài thì đóng dropdown gợi ý "Họ và tên người đi".
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (travelerPickerRef.current && !travelerPickerRef.current.contains(e.target as Node)) {
+        setShowTravelerDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
 
   const isManager = useMemo(() => {
     if (!currentUser) return false;
@@ -779,6 +814,30 @@ function CalendarContent() {
     return primary?.name || "";
   };
 
+  // Phòng ban cho ô lọc người đi công tác — gom từ danh bạ nhân sự.
+  const travelerDepartments = useMemo(() => {
+    const set = new Set<string>();
+    employeeDirectory.forEach((e) => e.department && set.add(e.department));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "vi"));
+  }, [employeeDirectory]);
+
+  // Gợi ý người đi: TOÀN công ty (không giới hạn phòng của người book), lọc theo
+  // phòng ban đã chọn + từ khoá tìm, bỏ người đã chọn.
+  const filteredTravelers = useMemo(() => {
+    const q = travelerSearch.trim().toLowerCase();
+    const dept = normalizeName(travelerDeptFilter === "all" ? "" : travelerDeptFilter);
+    const matches = employeeDirectory
+      .filter((e) => e.name && !tripTravelers.includes(e.name))
+      .filter((e) => !dept || normalizeName(e.department || "") === dept)
+      .filter((e) => !q || e.name.toLowerCase().includes(q) || (e.department || "").toLowerCase().includes(q));
+    // Chọn 1 phòng ban hoặc đang gõ tìm -> hiện HẾT (một phòng ít người, tìm đã
+    // thu hẹp). Trước đây cắt cứng 30 dòng theo tên A→Z nên với hơn 100 nhân sự,
+    // các phòng có tên sắp cuối bảng chữ (VD "Thị trường") không bao giờ hiện ra
+    // khi để "Tất cả phòng ban" — người dùng tưởng thiếu cả phòng. Nay chỉ cắt
+    // khi ĐANG để "Tất cả phòng ban" VÀ chưa gõ tìm, và nới lên 50 dòng.
+    return dept || q ? matches : matches.slice(0, 50);
+  }, [employeeDirectory, tripTravelers, travelerSearch, travelerDeptFilter]);
+
   // Business trip calculation helpers
   const tripDaysCount = useMemo(() => {
     if (!modalStart || !modalEnd) return 0;
@@ -1167,8 +1226,8 @@ function CalendarContent() {
   // Handle Request Business Trip
   const handleRequestTrip = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!modalName || !modalStart || !modalEnd || !tripDestination || !tripMission) {
-      showNotice("warning", "Chưa điền đủ thông tin", "Vui lòng nhập điểm công tác, nhiệm vụ và khoảng thời gian đi.");
+    if (tripTravelers.length === 0 || !modalStart || !modalEnd || !tripDestination || !tripMission) {
+      showNotice("warning", "Chưa điền đủ thông tin", "Vui lòng chọn người đi công tác, nhập điểm công tác, nhiệm vụ và khoảng thời gian đi.");
       return;
     }
 
@@ -1178,32 +1237,53 @@ function CalendarContent() {
       return;
     }
 
-    // Đơn công tác đi cùng luồng duyệt với đơn nghỉ phép: gửi đích danh MỘT người
-    // duyệt cấp 1 thay vì phát tán mail cho mọi quản lý trong phòng. Người này do
-    // hệ thống suy ra (không có khái niệm "nghỉ 1 ngày" nên tham số thứ 2 là false).
-    const cap1Approver = resolveCap1Approver(modalName, false);
+    const bookerName = currentUser?.name || "";
 
-    const tripMetadata = {
-      employeeName: modalName,
-      employeeRole: currentUser?.role || "Chuyên viên",
-      employeeDept: currentUser?.department || "Hành chính nhân sự",
-      destination: tripDestination,
-      modalStart,
-      modalEnd,
-      mission: tripMission,
-      transport: tripTransport,
-      days: duration,
-      nights: totalNights,
-      hotelRate: hotelRate,
-      travelEstimate: tripTravelEstimate,
-      otherExpenses: tripOtherExpenses,
-      totalAmount: totalTripAmount,
-      routes: tripRoutes,
-      dateStr: new Date().toLocaleDateString("vi-VN")
-    };
+    // Mỗi người đi là MỘT đơn công tác riêng (giống giao việc nhiều người = N thẻ):
+    // tiến độ, duyệt, phiếu công tác tách riêng cho từng người. Luồng duyệt cấp 1
+    // của mỗi đơn suy theo ĐÚNG tên + phòng ban của NGƯỜI ĐI (tra danh bạ), không
+    // theo người bấm gửi — đại diện phòng book cho nhân sự phòng mình thì đơn về
+    // đúng Trưởng phòng đó; book cho Ban lãnh đạo thì về đúng người duyệt của họ.
+    const buildTripPayload = (travelerName: string) => {
+      const dir = employeeDirectory.find(
+        (emp) => normalizeName(emp.name) === normalizeName(travelerName)
+      );
+      const travelerRole = dir?.role || "Chuyên viên";
+      const travelerDept = dir?.department || "";
+      // Đơn công tác gửi đích danh MỘT người duyệt cấp 1 (không phát tán cho cả
+      // phòng). resolveCap1Approver đọc phòng ban của người đi từ danh bạ, nên
+      // truyền tên người đi là đủ (không có "nghỉ 1 ngày" -> tham số 2 = false).
+      const cap1Approver = resolveCap1Approver(travelerName, false);
 
-    // Construct Markdown notes for the business trip details
-    let notesMarkdown = `### THÔNG TIN ĐĂNG KÝ CÔNG TÁC
+      const tripMetadata = {
+        employeeName: travelerName,
+        employeeRole: travelerRole,
+        employeeDept: travelerDept || "Hành chính nhân sự",
+        destination: tripDestination,
+        modalStart,
+        modalEnd,
+        mission: tripMission,
+        transport: tripTransport,
+        days: duration,
+        nights: totalNights,
+        hotelRate: hotelRate,
+        travelEstimate: tripTravelEstimate,
+        otherExpenses: tripOtherExpenses,
+        totalAmount: totalTripAmount,
+        routes: tripRoutes,
+        bookedBy: bookerName,
+        bookedByDept: currentUser?.department || "",
+        dateStr: new Date().toLocaleDateString("vi-VN"),
+      };
+
+      const bookedByLine =
+        bookerName && normalizeName(bookerName) !== normalizeName(travelerName)
+          ? `\nNgười đăng ký hộ: ${bookerName}`
+          : "";
+
+      // Construct Markdown notes for the business trip details
+      const notesMarkdown = `### THÔNG TIN ĐĂNG KÝ CÔNG TÁC
+- **Người đi công tác**: ${travelerName}${travelerDept ? ` (${travelerDept})` : ""}
 - **Điểm công tác chính**: ${tripDestination}
 - **Phương tiện chính**: ${tripTransport}
 - **Nhiệm vụ cụ thể**: ${tripMission}
@@ -1225,44 +1305,47 @@ ${tripRoutes.map((r, i) => `Chặng ${i + 1}:
 ---
 **TỔNG ĐỀ NGHỊ THANH TOÁN**: ${formatCurrency(totalTripAmount)}
 
-${cap1Approver ? `Người duyệt: ${cap1Approver}` : ""}
+${cap1Approver ? `Người duyệt: ${cap1Approver}` : ""}${bookedByLine}
 
 <!--METADATA:${JSON.stringify(tripMetadata)}-->`;
 
-    const tripTitle = `Công tác: ${modalName} - ${tripDestination} (${duration} ngày)`;
+      const tripTitle = `Công tác: ${travelerName} - ${tripDestination} (${duration} ngày)`;
+
+      return { travelerName, cap1Approver, notesMarkdown, tripTitle };
+    };
 
     try {
+      const payloads = tripTravelers.map(buildTripPayload);
+
       const { error } = await supabase
         .from("tasks")
-        .insert([{
-          title: tripTitle,
-          assignee: modalName,
+        .insert(payloads.map((p) => ({
+          title: p.tripTitle,
+          assignee: p.travelerName,
           start_date: modalStart,
           due_date: modalEnd,
           priority: "Trung bình",
           progress: 0,
           status: "pending_approval",
-          notes: notesMarkdown,
-          approval_stage: "pending_manager"
-        }]);
+          notes: p.notesMarkdown,
+          approval_stage: "pending_manager",
+        })));
 
       if (error) throw error;
 
-      // Báo email cho người duyệt cấp 1: tổ trưởng nhóm duyệt riêng (nếu người gửi
-      // thuộc nhóm trong bảng approval_groups, VD tổ Marketing) hoặc
-      // Trưởng/Phó phòng cùng phòng ban với người đăng ký — chạy nền, không chặn việc gửi đơn
+      // Báo email cho người duyệt cấp 1 của TỪNG người đi — tổ trưởng nhóm duyệt
+      // riêng (nếu người đi thuộc nhóm trong bảng approval_groups) hoặc Trưởng/Phó
+      // phòng cùng phòng ban với người đi. Chạy nền, lỗi không chặn việc gửi đơn.
       try {
-        // resolveCap1Approver đã xử lý sẵn trường hợp thuộc tổ có nhóm duyệt riêng
-        // (trả về tổ trưởng), nên ở đây chỉ việc tra mail của một cái tên duy nhất.
-        const approverEmails = cap1Approver
-          ? employeeDirectory
-              .filter(e => e.name.trim().toLowerCase() === cap1Approver.trim().toLowerCase())
-              .map(e => e.email)
-              .filter(Boolean)
-              .join(", ")
-          : "";
-
-        if (approverEmails) {
+        payloads.forEach((p) => {
+          const approverEmails = p.cap1Approver
+            ? employeeDirectory
+                .filter((emp) => emp.name.trim().toLowerCase() === p.cap1Approver.trim().toLowerCase())
+                .map((emp) => emp.email)
+                .filter(Boolean)
+                .join(", ")
+            : "";
+          if (!approverEmails) return;
           apiFetch("/api/send-request-email", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1271,17 +1354,20 @@ ${cap1Approver ? `Người duyệt: ${cap1Approver}` : ""}
               stage: "manager",
               requestType: "trip",
               smtpConfig: readSmtpConfig(),
-              task: { title: tripTitle, assignee: modalName, start_date: modalStart, due_date: modalEnd, notes: notesMarkdown },
+              task: { title: p.tripTitle, assignee: p.travelerName, start_date: modalStart, due_date: modalEnd, notes: p.notesMarkdown },
               approverEmails,
               siteUrl: window.location.origin,
             }),
-          }).catch(e => console.warn("Không gửi được email báo người duyệt cấp 1 (công tác):", e));
-        }
+          }).catch((err) => console.warn("Không gửi được email báo người duyệt cấp 1 (công tác):", err));
+        });
       } catch (notifyErr) {
         console.warn("Bỏ qua lỗi gửi email báo duyệt cấp 1 (công tác):", notifyErr);
       }
 
       // Reset states
+      setTripTravelers([]);
+      setTravelerSearch("");
+      setTravelerDeptFilter("all");
       setTripDestination("");
       setTripTransport("🚗 Xe công ty");
       setTripMission("");
@@ -1295,7 +1381,11 @@ ${cap1Approver ? `Người duyệt: ${cap1Approver}` : ""}
       setModalNotes("");
       setIsTripModalOpen(false);
       fetchData();
-      showNotice("success", "Đã gửi đơn công tác", "Đang chờ Trưởng phòng / Tổ trưởng xác nhận.");
+      showNotice(
+        "success",
+        payloads.length > 1 ? `Đã gửi ${payloads.length} đơn công tác` : "Đã gửi đơn công tác",
+        "Đang chờ Trưởng phòng / Tổ trưởng của từng người xác nhận."
+      );
     } catch (err: any) {
       console.error(err);
       showNotice("error", "Không gửi được đơn công tác", err.message || String(err));
@@ -2317,6 +2407,108 @@ ${cap1Approver ? `Người duyệt: ${cap1Approver}` : ""}
 
             <form onSubmit={handleRequestTrip} className="flex flex-col min-h-0 text-xs font-semibold text-slate-700">
               <div className="overflow-y-auto scrollbar-thin px-5 sm:px-6 py-4 space-y-4">
+
+              {/* Row 0 — Người đi công tác (chọn nhiều người) + bộ lọc phòng ban.
+                  Danh sách TOÀN công ty: ai cũng book được cho bản thân, cho người
+                  phòng khác và cả Ban lãnh đạo. Mỗi người thành một đơn riêng, duyệt
+                  theo đúng phòng ban của họ. Người book cố định theo tài khoản. */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between flex-wrap gap-1">
+                  <label className="text-slate-500 text-[11px] font-bold flex items-center gap-1.5">
+                    <Users size={13} className="text-blue-600" />
+                    Họ và tên người đi <span className="text-rose-500">*</span>
+                    <span className="ml-0.5 text-[10px] font-semibold text-slate-400">(chọn nhiều người — kể cả Ban lãnh đạo)</span>
+                  </label>
+                  {currentUser && (
+                    <span className="text-[10px] font-semibold text-slate-400">
+                      Người đăng ký: <span className="text-slate-600 font-bold">{currentUser.name}</span>
+                      {currentUser.department ? ` • ${currentUser.department}` : ""}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  {/* Bộ lọc phòng ban — thu hẹp danh sách gợi ý, giống bộ lọc ở giao việc. */}
+                  <div className="relative sm:w-56 shrink-0">
+                    <Building2 size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <select
+                      value={travelerDeptFilter}
+                      onChange={(e) => setTravelerDeptFilter(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl pl-8 pr-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500/20 bg-white font-semibold text-slate-800 text-xs cursor-pointer"
+                    >
+                      <option value="all">Tất cả phòng ban</option>
+                      {travelerDepartments.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Picker chọn nhiều người — dựng theo đúng ô "Người nhận" ở trang
+                      giao việc: chọn xong hiện thẻ tên, bấm X để bỏ, dropdown không
+                      tự đóng để chọn liền tay nhiều người. */}
+                  <div className="relative flex-1" ref={travelerPickerRef}>
+                    <div className="w-full min-h-[42px] px-3 py-2 border border-slate-200 rounded-xl flex flex-wrap items-center gap-1.5 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/40 bg-white">
+                      {tripTravelers.map((name) => (
+                        <span key={name} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2.5 py-1 text-[10px] font-bold">
+                          {name}
+                          <button
+                            type="button"
+                            onClick={() => setTripTravelers((prev) => prev.filter((n) => n !== name))}
+                            className="hover:text-rose-500 transition-colors cursor-pointer"
+                          >
+                            <X size={10} />
+                          </button>
+                        </span>
+                      ))}
+                      <div className="flex items-center gap-1.5 flex-1 min-w-[160px]">
+                        <Search size={12} className="text-slate-400 shrink-0" />
+                        <input
+                          type="text"
+                          value={travelerSearch}
+                          onChange={(e) => { setTravelerSearch(e.target.value); setShowTravelerDropdown(true); }}
+                          onFocus={() => setShowTravelerDropdown(true)}
+                          placeholder={tripTravelers.length > 0 ? "Thêm người nữa..." : "Tìm tên nhân viên hoặc bấm để chọn..."}
+                          className="flex-1 min-w-0 py-1 outline-none text-xs font-semibold placeholder:font-normal bg-transparent"
+                        />
+                      </div>
+                    </div>
+
+                    {tripTravelers.length > 1 && (
+                      <p className="mt-1 text-[11px] font-semibold text-blue-600">
+                        Sẽ tạo {tripTravelers.length} đơn công tác — mỗi người một đơn riêng, duyệt theo phòng ban của từng người.
+                      </p>
+                    )}
+
+                    {showTravelerDropdown && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto animate-in fade-in duration-150">
+                        {filteredTravelers.length === 0 ? (
+                          <p className="text-center text-slate-400 text-[11px] italic py-4">Không tìm thấy nhân viên phù hợp.</p>
+                        ) : (
+                          filteredTravelers.map((emp) => (
+                            <button
+                              key={`${emp.name}-${emp.department}`}
+                              type="button"
+                              onClick={() => {
+                                setTripTravelers((prev) => prev.includes(emp.name) ? prev : [...prev, emp.name]);
+                                setTravelerSearch("");
+                              }}
+                              className="w-full flex items-center gap-2.5 px-4 py-2 hover:bg-slate-50 transition-colors text-left cursor-pointer"
+                            >
+                              <span className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 text-white text-[9px] font-bold flex items-center justify-center shrink-0">
+                                {emp.name.split(" ").filter(Boolean).map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                              </span>
+                              <span className="flex-1 min-w-0">
+                                <span className="block text-xs font-bold text-slate-700 truncate">{emp.name}</span>
+                                <span className="block text-[10px] text-slate-400 font-semibold truncate">{emp.department || "Chưa xếp phòng"}{emp.role ? ` • ${emp.role}` : ""}</span>
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
 
               {/* Row 1 */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -27,6 +27,7 @@ import {
 } from "@/lib/approvers";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { isDirectorRole } from "@/lib/access";
+import { useNoticeBox } from "@/components/ConfirmDialog";
 import { useSearchParams } from "next/navigation";
 
 /**
@@ -72,7 +73,7 @@ function SettingsContent() {
       if (error) throw error;
       window.location.reload();
     } catch (err: any) {
-      alert("Không đổi được gói dịch vụ: " + (err.message || err) + "\n(Chỉ tài khoản Admin mới có quyền này.)");
+      notify("Không đổi được gói dịch vụ: " + (err.message || err) + "\n(Chỉ tài khoản Admin mới có quyền này.)", "error");
       setChangingPlan(false);
     }
   };
@@ -110,7 +111,7 @@ function SettingsContent() {
       if (error) throw error;
       window.location.reload();
     } catch (err: any) {
-      alert("Không lưu được phân gói theo phòng: " + (err.message || err) + "\n(Chỉ Admin mới có quyền này.)");
+      notify("Không lưu được phân gói theo phòng: " + (err.message || err) + "\n(Chỉ Admin mới có quyền này.)", "error");
       setSavingDeptPlans(false);
     }
   };
@@ -164,6 +165,9 @@ function SettingsContent() {
   const user = useCurrentUser();
   const currentUser = user.authenticated ? user : null;
   const approvalPerms = user.perms;
+  // Hộp thông báo căn GIỮA màn hình — thay window.alert() (dính mép trên, hiện tên
+  // miền, không theo giao diện chung). Dùng chung mẫu với trang Lịch/Báo cáo.
+  const { notify, noticeNode } = useNoticeBox();
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeApprovalTab, setActiveApprovalTab] = useState<"trip" | "leave" | "explanation" | "booking">("trip");
@@ -344,10 +348,10 @@ function SettingsContent() {
         if (res.ok) {
           onSent?.();
         } else {
-          alert(`⚠️ ${failPrefix}: ${result.error}`);
+          notify(`${failPrefix}: ${result.error}`, "error");
         }
       } catch (mailErr: any) {
-        alert(`⚠️ ${failPrefix}: ${mailErr.message || "lỗi kết nối"}`);
+        notify(`${failPrefix}: ${mailErr.message || "lỗi kết nối"}`, "error");
       }
     })();
   };
@@ -365,10 +369,10 @@ function SettingsContent() {
         if (res.ok) {
           onSent?.();
         } else {
-          alert(`⚠️ ${failPrefix}: ${result.error}`);
+          notify(`${failPrefix}: ${result.error}`, "error");
         }
       } catch (mailErr: any) {
-        alert(`⚠️ ${failPrefix}: ${mailErr.message || "lỗi kết nối"}`);
+        notify(`${failPrefix}: ${mailErr.message || "lỗi kết nối"}`, "error");
       }
     })();
   };
@@ -387,7 +391,7 @@ function SettingsContent() {
 
       if (error) throw error;
 
-      alert("Đã phê duyệt! Yêu cầu được chuyển sang phòng HCNS (điều phối xe & phòng họp) để xác nhận.\n📧 Email báo người xác nhận đang được gửi.");
+      notify("Đã phê duyệt! Yêu cầu được chuyển sang phòng HCNS (điều phối xe & phòng họp) để xác nhận.\n📧 Email báo người xác nhận đang được gửi.", "success");
       fetchResourceBookings();
 
       // Tra cứu người duyệt cuối (HCNS - can_approve_booking) + gửi mail: chạy nền
@@ -413,12 +417,12 @@ function SettingsContent() {
             "Chưa gửi được email báo người xác nhận (phòng HCNS)"
           );
         } catch (mailErr: any) {
-          alert(`⚠️ Chưa gửi được email báo người xác nhận (phòng HCNS): ${mailErr.message || "lỗi kết nối"}`);
+          notify(`Chưa gửi được email báo người xác nhận (phòng HCNS): ${mailErr.message || "lỗi kết nối"}`, "error");
         }
       })();
     } catch (err) {
       console.error("Error confirming booking (manager step):", err);
-      alert("Lỗi khi xác nhận đăng ký!");
+      notify("Lỗi khi xác nhận đăng ký!", "error");
     }
   };
 
@@ -429,7 +433,7 @@ function SettingsContent() {
     if (!approve) {
       rejectReason = window.prompt("Nhập lý do từ chối (sẽ được gửi trong email cho người đăng ký):") || "";
       if (!rejectReason.trim()) {
-        alert("Vui lòng nhập lý do từ chối để người đăng ký nắm thông tin.");
+        notify("Vui lòng nhập lý do từ chối để người đăng ký nắm thông tin.", "warn");
         return;
       }
     }
@@ -448,7 +452,7 @@ function SettingsContent() {
 
       if (error) throw error;
 
-      alert(`${approve ? "Đã DUYỆT" : "Đã TỪ CHỐI"} đăng ký ${booking.booking_type === "xe" ? "xe" : "phòng họp"} của ${booking.requester_name}.\n📧 Email kết quả đang được gửi cho người đăng ký.`);
+      notify(`${approve ? "Đã DUYỆT" : "Đã TỪ CHỐI"} đăng ký ${booking.booking_type === "xe" ? "xe" : "phòng họp"} của ${booking.requester_name}.\n📧 Email kết quả đang được gửi cho người đăng ký.`, approve ? "success" : "info");
       fetchResourceBookings();
 
       // Gửi email kết quả chạy nền — SMTP dùng chung cấu hình đã lưu ở trang C&B
@@ -467,7 +471,7 @@ function SettingsContent() {
       );
     } catch (err) {
       console.error("Error making final booking decision:", err);
-      alert("Lỗi khi xử lý duyệt đăng ký!");
+      notify("Lỗi khi xử lý duyệt đăng ký!", "error");
     }
   };
 
@@ -486,7 +490,7 @@ function SettingsContent() {
 
       if (error) throw error;
 
-      alert("Đã phê duyệt! Yêu cầu được chuyển sang phòng HCNS để xác nhận.\n📧 Email báo HCNS đang được gửi.");
+      notify("Đã phê duyệt! Yêu cầu được chuyển sang phòng HCNS để xác nhận.\n📧 Email báo HCNS đang được gửi.", "success");
       fetchTasks();
 
       // Tra cứu người duyệt cấp 2 + gửi mail: chạy nền
@@ -513,12 +517,12 @@ function SettingsContent() {
             "Chưa gửi được email báo HCNS"
           );
         } catch (mailErr: any) {
-          alert(`⚠️ Chưa gửi được email báo HCNS: ${mailErr.message || "lỗi kết nối"}`);
+          notify(`Chưa gửi được email báo HCNS: ${mailErr.message || "lỗi kết nối"}`, "error");
         }
       })();
     } catch (err) {
       console.error("Error confirming request (manager step):", err);
-      alert("Lỗi khi xác nhận yêu cầu!");
+      notify("Lỗi khi xác nhận yêu cầu!", "error");
     }
   };
 
@@ -529,7 +533,7 @@ function SettingsContent() {
     if (!approve) {
       rejectReason = window.prompt("Nhập lý do từ chối (sẽ được gửi email cho người gửi đơn):") || "";
       if (!rejectReason.trim()) {
-        alert("Vui lòng nhập lý do từ chối!");
+        notify("Vui lòng nhập lý do từ chối!", "warn");
         return;
       }
     }
@@ -611,9 +615,10 @@ function SettingsContent() {
 
       const requesterEmail = employeeDirectory.find(e => e.name === task.assignee)?.email || "";
 
-      alert(
+      notify(
         `${approve ? "Đã phê duyệt" : "Đã từ chối"} yêu cầu ${isTrip ? "đi công tác" : "nghỉ phép"}.` +
-        (requesterEmail ? "\n📧 Email kết quả đang được gửi cho người làm đơn." : "")
+        (requesterEmail ? "\n📧 Email kết quả đang được gửi cho người làm đơn." : ""),
+        approve ? "success" : "info"
       );
       fetchTasks();
 
@@ -633,7 +638,7 @@ function SettingsContent() {
       }
     } catch (err) {
       console.error("Error finalizing request decision:", err);
-      alert("Lỗi khi xử lý yêu cầu!");
+      notify("Lỗi khi xử lý yêu cầu!", "error");
     }
   };
 
@@ -645,11 +650,11 @@ function SettingsContent() {
         .eq("id", id);
       
       if (error) throw error;
-      alert("Đã phê duyệt giải trình công thành công!");
+      notify("Đã phê duyệt giải trình công thành công!", "success");
       fetchExplanations();
     } catch (err) {
       console.error("Error approving justification:", err);
-      alert("Lỗi khi phê duyệt giải trình công!");
+      notify("Lỗi khi phê duyệt giải trình công!", "error");
     }
   };
 
@@ -669,14 +674,14 @@ function SettingsContent() {
       // RLS chặn thì update trả 0 dòng mà KHÔNG báo lỗi — bắt trường hợp này để
       // không hiện "đã từ chối" giả (bấm OK nhưng thực chất không đổi được gì).
       if (!data || data.length === 0) {
-        alert("Không từ chối được — tài khoản của bạn không có quyền cập nhật đơn này.");
+        notify("Không từ chối được — tài khoản của bạn không có quyền cập nhật đơn này.", "error");
         return;
       }
-      alert("Đã từ chối giải trình công!");
+      notify("Đã từ chối giải trình công!", "success");
       fetchExplanations();
     } catch (err) {
       console.error("Error rejecting justification:", err);
-      alert("Lỗi khi từ chối giải trình!");
+      notify("Lỗi khi từ chối giải trình!", "error");
     }
   };
 
@@ -979,7 +984,7 @@ function SettingsContent() {
       localStorage.setItem("tnec_cb_smtp_secure", String(secure));
     }
     setShowEmailConfigModal(false);
-    alert("Đã lưu cấu hình gửi email SMTP! Các nút Xác nhận & gửi mail sẽ dùng tài khoản này.");
+    notify("Đã lưu cấu hình gửi email SMTP! Các nút Xác nhận & gửi mail sẽ dùng tài khoản này.", "success");
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -2095,7 +2100,7 @@ function SettingsContent() {
                     }
 
                     if (!user || !pass) {
-                      alert("Vui lòng điền đầy đủ email và mật khẩu!");
+                      notify("Vui lòng điền đầy đủ email và mật khẩu!", "warn");
                       return;
                     }
                     handleSaveSmtpConfig(user, pass, provider, host, port, secure);
@@ -2242,6 +2247,7 @@ function SettingsContent() {
           )}
         </main>
       </div>
+      {noticeNode}
     </div>
   );
 }

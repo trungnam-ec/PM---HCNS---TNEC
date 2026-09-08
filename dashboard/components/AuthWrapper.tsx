@@ -126,7 +126,7 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
           setAuthError(null);
           lastCheckedEmail.current = userEmail;
         } else {
-          setAuthError("Email này chưa được đăng ký trong danh sách nhân sự (Bảng employees) hoặc Whitelist.");
+          setAuthError("Tài khoản chưa được cấp phép. Vui lòng liên hệ phòng HCNS.");
           setIsAdmin(false);
         }
       } catch (err: any) {

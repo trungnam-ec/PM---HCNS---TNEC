@@ -922,18 +922,27 @@ function SettingsContent() {
 
     const isUserAdmin = currentUser.isAdmin || (currentUser.role || "").toLowerCase() === "admin";
 
-    return explanations.filter(e => {
-      if (isUserAdmin || approvalPerms.canApproveJustification) return true;
-      return isJustificationCap1Approver({
-        currentUserName: currentUser.name,
-        currentUserRole: currentUser.role,
-        currentUserIsAdmin: isUserAdmin,
-        currentUserDepartment: currentUser.department,
-        requesterName: e.name,
-        requesterDepartment: e.department,
-        designatedApprover: e.approver,
+    return explanations
+      .filter(e => {
+        if (isUserAdmin || approvalPerms.canApproveJustification) return true;
+        return isJustificationCap1Approver({
+          currentUserName: currentUser.name,
+          currentUserRole: currentUser.role,
+          currentUserIsAdmin: isUserAdmin,
+          currentUserDepartment: currentUser.department,
+          requesterName: e.name,
+          requesterDepartment: e.department,
+          designatedApprover: e.approver,
+        });
+      })
+      // Ngày giải trình MỚI NHẤT lên đầu. Sắp lại ở client cho chắc (không phụ thuộc
+      // thứ tự DB trả về); cùng ngày thì đơn tạo sau đứng trên (created_at giảm dần).
+      .sort((a, b) => {
+        const da = new Date(a.date).getTime();
+        const db = new Date(b.date).getTime();
+        if (db !== da) return db - da;
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
       });
-    });
   }, [explanations, currentUser, isApprover, approvalPerms]);
 
   // Đăng ký xe / phòng họp chờ duyệt:

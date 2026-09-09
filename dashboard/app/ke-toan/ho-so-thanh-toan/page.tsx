@@ -72,8 +72,6 @@ const COLUMNS: { key: keyof PaymentDossierRow; label: string; money?: boolean; w
   { key: "so_tien_chuyen", label: "Chuyển tiền đợt 1", money: true },
   { key: "so_tien_chuyen_2", label: "Chuyển tiền đợt 2", money: true },
   { key: "so_tien_chuyen_3", label: "Chuyển tiền đợt 3", money: true },
-  { key: "han_thanh_toan", label: "Hạn thanh toán" },
-  { key: "ngay_chuyen", label: "Ngày chuyển" },
   { key: "con_lai", label: "Còn lại", money: true },
   { key: "ten_file_pdf", label: "Tên File PDF", wide: true },
   { key: "danh_muc_hs", label: "Danh mục hs kèm theo", wide: true },

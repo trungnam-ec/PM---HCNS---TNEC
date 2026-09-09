@@ -4331,14 +4331,14 @@ export default function CBPage() {
     );
   }, [annualLeaveData, leaveSearchQuery]);
 
+  // CHỈ dò cột Nhân viên — đúng như nhãn "Tìm tên nhân viên..." của ô này.
+  // Trước đây dò thêm `reason`, mà lý do của đơn tạo hàng loạt luôn kèm chuỗi
+  // "(HCNS đăng ký hàng loạt: <tên người đăng ký>)" — gõ tên một người HCNS là
+  // ra toàn bộ đơn họ đăng ký hộ cả công ty, không phải đơn của chính họ.
   const searchedLeaves = useMemo(() => {
     if (!leaveSearchQuery) return filteredLeaves;
     const q = normalizeText(leaveSearchQuery);
-    return filteredLeaves.filter(l => 
-      normalizeText(l.name).includes(q) || 
-      normalizeText(l.type || "").includes(q) || 
-      normalizeText(l.reason || "").includes(q)
-    );
+    return filteredLeaves.filter(l => normalizeText(l.name).includes(q));
   }, [filteredLeaves, leaveSearchQuery]);
 
   const filteredTravels = useMemo(() => {

@@ -826,6 +826,10 @@ export default function CBPage() {
   const [explanationFilterTo, setExplanationFilterTo] = useState("");
   // Lọc theo phòng ban/BĐH cho Thông tin giải trình & Công tác (dò phòng theo tên NV).
   const [explanationDeptFilter, setExplanationDeptFilter] = useState("all");
+  // Tìm theo TÊN NHÂN VIÊN ở tab Thông tin giải trình. Cố ý chỉ dò cột Nhân viên,
+  // không dò Lý do / Người phê duyệt — dò thêm là gõ tên một người duyệt ra
+  // toàn bộ đơn họ phụ trách, giống lỗi đã sửa ở tab Lịch sử nghỉ phép.
+  const [explanationSearchQuery, setExplanationSearchQuery] = useState("");
   const [travelDeptFilter, setTravelDeptFilter] = useState("all");
   const [leaveFilterFrom, setLeaveFilterFrom] = useState("");
   const [leaveFilterTo, setLeaveFilterTo] = useState("");
@@ -4236,9 +4240,10 @@ export default function CBPage() {
     return explanations
       .filter(e => hasFullAccess || e.name === currentUser?.name || e.approver === currentUser?.name)
       .filter(e => explanationDeptFilter === "all" || empDeptByName.get(normalizeText(e.name)) === explanationDeptFilter)
+      .filter(e => !explanationSearchQuery || normalizeText(e.name || "").includes(normalizeText(explanationSearchQuery)))
       .filter(e => !explanationFilterFrom || new Date(e.date) >= new Date(explanationFilterFrom))
       .filter(e => !explanationFilterTo || new Date(e.date) <= new Date(explanationFilterTo));
-  }, [explanations, hasFullAccess, currentUser, explanationFilterFrom, explanationFilterTo, explanationDeptFilter, empDeptByName]);
+  }, [explanations, hasFullAccess, currentUser, explanationFilterFrom, explanationFilterTo, explanationDeptFilter, explanationSearchQuery, empDeptByName]);
 
   const filteredLeaves = useMemo(() => {
     return leaves
@@ -4837,6 +4842,29 @@ export default function CBPage() {
               const deptEntry = deptFilterMap[activeSubTab];
               return (
                 <div className="flex flex-wrap items-center gap-2">
+                {/* Tìm theo tên nhân viên — riêng tab Thông tin giải trình, đứng trước ô phòng ban */}
+                {activeSubTab === "explanation" && (
+                  <div className="relative w-full sm:w-56 shrink-0">
+                    <Search size={13} className="absolute left-3 top-2.5 text-slate-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="Tìm tên nhân viên..."
+                      value={explanationSearchQuery}
+                      onChange={(e) => setExplanationSearchQuery(e.target.value)}
+                      className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-200/60 shadow-sm rounded-xl text-[11px] font-semibold focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none"
+                    />
+                    {explanationSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setExplanationSearchQuery("")}
+                        title="Xóa tìm kiếm"
+                        className="absolute right-2 top-2 text-slate-400 hover:text-rose-600 cursor-pointer"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                )}
                 {deptEntry && (
                   <select
                     value={deptEntry[0]}

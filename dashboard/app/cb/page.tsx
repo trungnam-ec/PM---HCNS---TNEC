@@ -1484,7 +1484,7 @@ export default function CBPage() {
     employeeCode: string;
     name: string;
     department: string;
-    days: string[]; // tag mỗi ngày: "x" | "CT" | "GT" | "P" | "P/2" | "Ro" | "OM" | "TS" | ""
+    days: string[]; // tag mỗi ngày: "x" | "x/2" | "CT" | "GT" | "P" | "P/2" | "Ro" | "Ro/2" | "OM" | "TS" | ""
     vanPhong: number;
     phepCoLuong: number;
     congTac: number;
@@ -1525,6 +1525,37 @@ export default function CBPage() {
 
         const detail = emp.details.find(dd => toDateOnlyKey(dd.date) === dayKey);
 
+        // Có quét thẻ hôm đó hay không — đọc TRỰC TIẾP giờ vào/ra, KHÔNG qua cột "Công"
+        // của máy. Máy chấm công ghi Công = 0 cho ngày nghỉ nửa buổi (thiếu quét đầu ca)
+        // nên nếu chỉ nhìn cột đó thì người đi làm đủ buổi chiều vẫn bị coi như vắng.
+        const swipeIn = String(detail?.checkin || "").trim();
+        const swipeOut = String(detail?.checkout || "").trim();
+        const hasSwipeOfDay = !!detail
+          && swipeIn !== "" && swipeIn !== "-"
+          && swipeOut !== "" && swipeOut !== "-";
+
+        // Đơn nghỉ ĐÃ DUYỆT của ngày này — tra một lần, dùng ở CẢ hai nhánh: nhánh
+        // có chấm công máy (nửa buổi làm + nửa buổi phép) lẫn nhánh khuyết chấm công.
+        const approvedLeaveOfDay = leaves.find(l => {
+          if (l.status !== "Đã duyệt") return false;
+          if (normalizeText(l.name || "") !== normalizeText(emp.name)) return false;
+          const fromKey = toDateOnlyKey(l.from);
+          const toKey = toDateOnlyKey(l.to);
+          if (!fromKey || !toKey) return false;
+          return dayKey >= fromKey && dayKey <= toKey;
+        });
+
+        // Phép NỬA NGÀY có hưởng lương (phép năm, tang, kết hôn, nghỉ bù…) — đúng
+        // những loại rơi vào ký hiệu "P/2" ở nhánh không có chấm công bên dưới.
+        const halfPaidLeaveType = normalizeText(approvedLeaveOfDay?.type || "");
+        const isHalfPaidLeave = !!approvedLeaveOfDay
+          && approvedLeaveOfDay.days === 0.5
+          && !halfPaidLeaveType.includes("online")
+          && !halfPaidLeaveType.includes("thai san")
+          && !halfPaidLeaveType.includes("bhxh")
+          && !halfPaidLeaveType.includes("om che do")
+          && !halfPaidLeaveType.includes("khong luong");
+
         let tag = "";
         if (detail && (detail.workday || 0) > 0) {
           const wd = detail.workday || 0;
@@ -1536,6 +1567,13 @@ export default function CBPage() {
             // đã được ép tròn 1.0 ngay ở khâu đọc Excel nên không rơi vào nhánh này.
             tag = "x/2";
             vanPhong += 0.5;
+            // Xin phép nửa buổi VÀ có chấm công nửa buổi còn lại => đủ 1 công
+            // (0.5 đi làm + 0.5 phép hưởng lương). Trước đây nhánh chấm công máy chốt luôn
+            // tại đây nên đơn phép không bao giờ được xét, ngày đó chỉ được 0.5 công.
+            if (isHalfPaidLeave) {
+              tag = "P/2";
+              phepCoLuong += 0.5;
+            }
           } else {
             tag = "x";
             vanPhong += 1;
@@ -1557,18 +1595,25 @@ export default function CBPage() {
             tag = "CT";
             congTac += 1;
           } else if (approvedExplanation) {
-            tag = "GT";
-            vanPhong += 1;
+            // Giải trình bù cho phần CÒN THIẾU của ngày, không phải luôn là cả ngày.
+            // Hôm đó đã có đơn nghỉ KHÔNG hưởng lương nửa ngày thì chỉ nửa buổi còn lại
+            // được bù => 0.5 công, và giữ ký hiệu Ro/2 để thấy có nửa buổi nghỉ không lương.
+            // Cộng nguyên 1 công ở đây là trả công cho cả buổi đã xin nghỉ không lương.
+            const unpaidType = normalizeText(approvedLeaveOfDay?.type || "");
+            const isHalfUnpaidLeave = !!approvedLeaveOfDay
+              && approvedLeaveOfDay.days === 0.5
+              && unpaidType.includes("khong luong");
+            if (isHalfUnpaidLeave) {
+              tag = "Ro/2";
+              nghiKhongLuong += 0.5;
+              vanPhong += 0.5;
+            } else {
+              tag = "GT";
+              vanPhong += 1;
+            }
           } else {
-            // Khuyết chấm công máy: đối chiếu nghỉ phép đã duyệt
-            const approvedLeave = leaves.find(l => {
-              if (l.status !== "Đã duyệt") return false;
-              if (normalizeText(l.name || "") !== normalizeText(emp.name)) return false;
-              const fromKey = toDateOnlyKey(l.from);
-              const toKey = toDateOnlyKey(l.to);
-              if (!fromKey || !toKey) return false;
-              return dayKey >= fromKey && dayKey <= toKey;
-            });
+            // Khuyết chấm công máy: đối chiếu nghỉ phép đã duyệt (tra sẵn ở trên)
+            const approvedLeave = approvedLeaveOfDay;
             if (approvedLeave) {
               const t = normalizeText(approvedLeave.type || "");
               // "Làm online" KHÔNG phải nghỉ mà là ĐI LÀM từ xa -> tính đủ công như
@@ -1583,11 +1628,23 @@ export default function CBPage() {
               } else if (t.includes("bhxh") || t.includes("om che do")) {
                 tag = "OM";
               } else if (t.includes("khong luong")) {
-                tag = "Ro";
-                nghiKhongLuong += 1;
+                // Đơn không hưởng lương NỬA ngày chỉ được đếm 0.5 — trước đây nhánh này
+                // đứng trên nhánh kiểm `days === 0.5` nên luôn cộng tròn 1, làm cột Ro sai.
+                if (approvedLeave.days === 0.5) {
+                  tag = "Ro/2";
+                  nghiKhongLuong += 0.5;
+                } else {
+                  tag = "Ro";
+                  nghiKhongLuong += 1;
+                }
               } else if (approvedLeave.days === 0.5) {
                 tag = "P/2";
                 phepCoLuong += 0.5;
+                // Xin phép nửa buổi mà vẫn quét thẻ buổi còn lại => đủ 1 công.
+                // Ngày đó có dòng trong file nhưng cột "Công" bằng 0 nên nhánh chấm
+                // công máy ở trên không bắt được — lấy chính dấu vết quét thẻ làm bằng
+                // chứng đi làm. Không quét thẻ thì giữ 0.5, phải giải trình mới đủ ngày.
+                if (hasSwipeOfDay) vanPhong += 0.5;
               } else {
                 // Phép năm, phép tang, kết hôn, nghỉ bù... đều cty trả lương -> tính công.
                 tag = "P";
@@ -1773,7 +1830,7 @@ export default function CBPage() {
             cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFDBA74" } };
           } else if (tag === "P" || tag === "P/2") {
             cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFBBF7D0" } };
-          } else if (tag === "Ro") {
+          } else if (tag === "Ro" || tag === "Ro/2") {
             cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF08A" } };
           } else if (tag === "OM" || tag === "TS") {
             cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDDD6FE" } };
@@ -1819,6 +1876,7 @@ export default function CBPage() {
       ["OM", "Nghỉ ốm chế độ BHXH (BHXH trả, cty không tính công)", "FFDDD6FE"],
       ["TS", "Nghỉ thai sản (BHXH trả, cty không tính công)", "FFDDD6FE"],
       ["Ro", "Nghỉ không hưởng lương", "FFFEF08A"],
+      ["Ro/2", "Nghỉ không hưởng lương nửa ngày (nửa buổi còn lại vẫn tính công nếu có chấm công hoặc giải trình)", "FFFEF08A"],
       ["(ô xám)", "Chủ nhật / không có dữ liệu chấm công", "FFD1D5DB"]
     ];
     legendItems.forEach(([code, label, color], i) => {
@@ -9452,7 +9510,7 @@ export default function CBPage() {
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-[#005BAC] text-white shrink-0">
                   <div>
                     <h3 className="font-heading font-black text-sm">Bảng tổng hợp ngày công trong tháng {timesheetMonth}</h3>
-                    <p className="text-white/80 text-[10px] font-bold mt-0.5">x = Đi làm · x/2 = Làm nửa ngày · OL = Làm online thứ 7 · CT = Công tác · GT = Giải trình chấm công (đã duyệt) · P = Phép hưởng lương (phép năm, tang, kết hôn, nghỉ bù) · P/2 = Phép nửa ngày · OM = Ốm chế độ BHXH · TS = Thai sản · Ro = Nghỉ không lương</p>
+                    <p className="text-white/80 text-[10px] font-bold mt-0.5">x = Đi làm · x/2 = Làm nửa ngày · OL = Làm online thứ 7 · CT = Công tác · GT = Giải trình chấm công (đã duyệt) · P = Phép hưởng lương (phép năm, tang, kết hôn, nghỉ bù) · P/2 = Phép nửa ngày · OM = Ốm chế độ BHXH · TS = Thai sản · Ro = Nghỉ không lương · Ro/2 = Nghỉ không lương nửa ngày</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <select
@@ -9520,7 +9578,7 @@ export default function CBPage() {
                                 tag === "P" || tag === "P/2" ? "bg-emerald-50 text-emerald-700" :
                                 tag === "OM" || tag === "TS" ? "bg-violet-50 text-violet-700" :
                                 tag === "OL" ? "bg-teal-50 text-teal-700" :
-                                tag === "Ro" ? "bg-amber-50 text-amber-700" : ""
+                                tag === "Ro" || tag === "Ro/2" ? "bg-amber-50 text-amber-700" : ""
                               }`}>{tag}</td>
                             );
                           })}

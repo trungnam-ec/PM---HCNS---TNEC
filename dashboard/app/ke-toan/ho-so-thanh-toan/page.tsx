@@ -115,6 +115,11 @@ function dmy(s?: string | null): string {
   const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : String(s || "");
 }
+// Nhận diện chuỗi là TÊN CÔNG TY (không phải phòng ban) để loại khỏi cột Phòng ban.
+function looksLikeCompany(s?: string): boolean {
+  return /công\s*ty|c[ôo]ng\s*ty|tnhh|cổ\s*phần|co\s*phan|\bcp\b|\bjsc\b|\bcorp\b|dntn|doanh\s*nghiệp/i.test(s || "");
+}
+
 // Đợt chuyển tiền -> cột ngày tương ứng.
 const DOT_DATE: Record<string, keyof import("@/lib/paymentDossiers").PaymentDossierRow> = {
   so_tien_chuyen: "ngay_chuyen_1",
@@ -332,10 +337,15 @@ export default function PaymentDossierPage() {
         if (!res.ok || data.error) throw new Error(data.error || `Lỗi HTTP ${res.status}`);
         const ai = (data.data || {}) as PaymentDossierAi;
         const draft = draftFromAi(ai, file.name, data.validationScores || {});
-        // Phòng ban lấy theo DANH SÁCH NHÂN VIÊN (nguồn gốc) dựa trên người đề
-        // nghị; tìm được thì ghi đè giá trị AI đoán, không thì giữ giá trị AI.
+        // Phòng ban ưu tiên tra DANH SÁCH NHÂN VIÊN theo tên người đề nghị.
+        // Tra được -> ghi đè. Không tra được mà AI lỡ trả TÊN CÔNG TY -> để trống
+        // (thà rỗng còn hơn hiển thị sai), kế toán tự điền.
         const dept = deptForName(draft.nguoi_de_nghi_tt);
-        if (dept) draft.don_vi_cong_tac = dept;
+        if (dept) {
+          draft.don_vi_cong_tac = dept;
+        } else if (looksLikeCompany(draft.don_vi_cong_tac)) {
+          draft.don_vi_cong_tac = "";
+        }
         newDrafts.push(draft);
         ok++;
       } catch (err: any) {

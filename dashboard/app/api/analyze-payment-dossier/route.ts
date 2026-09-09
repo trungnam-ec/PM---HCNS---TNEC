@@ -72,8 +72,11 @@ Quét TOÀN BỘ tài liệu theo thứ tự ưu tiên:
 ### 6. "Người đề nghị thanh toán"
 - Tìm "Người đề nghị", "Người lập", "Người yêu cầu" — thường là người ký ở cuối đơn đề nghị
 
-### 7. "Đơn vị công tác"
-- Tìm "Phòng/Ban", "Đơn vị", "Bộ phận" — phòng ban của người đề nghị
+### 7. "Đơn vị công tác" (PHÒNG BAN của người đề nghị)
+- Đây là PHÒNG / BAN / BỘ PHẬN của NGƯỜI ĐỀ NGHỊ THANH TOÁN — KHÔNG phải tên công ty.
+- Thường nằm ngay dòng "Đơn vị công tác:", "Phòng/Ban:", "Bộ phận:" cạnh hoặc ngay dưới tên người đề nghị.
+- VÍ DỤ HỢP LỆ: "Phòng Vật tư - Thiết bị", "Phòng Kế hoạch", "Ban QLDA", "Phòng Kỹ thuật", "Phòng Tài chính Kế toán".
+- ⚠️ TUYỆT ĐỐI KHÔNG lấy tên công ty / nhà thầu / đơn vị thụ hưởng làm giá trị trường này (bất kỳ chuỗi nào chứa "Công ty", "TNHH", "Cổ phần", "CP", "JSC", "Corp", "DNTN"). Nếu chỉ thấy tên công ty mà KHÔNG có phòng/ban cụ thể của người đề nghị -> trả "N/A".
 
 ### 8. "Số tài khoản"
 - Tìm "Số TK", "STK", "Số tài khoản", "Account number"

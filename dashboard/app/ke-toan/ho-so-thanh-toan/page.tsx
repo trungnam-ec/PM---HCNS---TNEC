@@ -27,6 +27,8 @@ import { useConfirmBox } from "@/components/ConfirmDialog";
 import {
   UploadCloud,
   Upload,
+  ArrowUpFromLine,
+  Eye,
   Loader2,
   Trash2,
   Save,
@@ -73,6 +75,7 @@ const COLUMNS: { key: keyof PaymentDossierRow; label: string; money?: boolean; w
   { key: "so_tien_chuyen_2", label: "Chuyển tiền đợt 2", money: true },
   { key: "so_tien_chuyen_3", label: "Chuyển tiền đợt 3", money: true },
   { key: "con_lai", label: "Còn lại", money: true },
+  { key: "file_goc_path", label: "File gốc" },
   { key: "ten_file_pdf", label: "Tên File PDF", wide: true },
   { key: "danh_muc_hs", label: "Danh mục hs kèm theo", wide: true },
   { key: "ghi_chu", label: "Ghi chú", wide: true },
@@ -107,6 +110,17 @@ function vnDateTs(d?: string | null): number {
   if (!m) return 0;
   return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])).getTime();
 }
+// "YYYY-MM-DD" (ô chọn ngày) -> "DD/MM/YYYY" để hiển thị.
+function dmy(s?: string | null): string {
+  const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(s || "");
+}
+// Đợt chuyển tiền -> cột ngày tương ứng.
+const DOT_DATE: Record<string, keyof import("@/lib/paymentDossiers").PaymentDossierRow> = {
+  so_tien_chuyen: "ngay_chuyen_1",
+  so_tien_chuyen_2: "ngay_chuyen_2",
+  so_tien_chuyen_3: "ngay_chuyen_3",
+};
 
 export default function PaymentDossierPage() {
   const [rows, setRows] = useState<PaymentDossierRow[]>([]);
@@ -137,6 +151,54 @@ export default function PaymentDossierPage() {
   const [deptByName, setDeptByName] = useState<Map<string, string>>(new Map());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { ask, confirmNode } = useConfirmBox();
+
+  // ─── File gốc đính kèm (ảnh/PDF) ───
+  const fileGocInputRef = useRef<HTMLInputElement>(null);
+  const [uploadTarget, setUploadTarget] = useState<number | null>(null);
+  const [uploadingFileGoc, setUploadingFileGoc] = useState<number | null>(null);
+  const [viewer, setViewer] = useState<{ url: string; isPdf: boolean; name: string } | null>(null);
+
+  const triggerFileGocUpload = (rowId: number) => {
+    setUploadTarget(rowId);
+    fileGocInputRef.current?.click();
+  };
+
+  const onFileGocSelected = async (file: File) => {
+    const rowId = uploadTarget;
+    if (!rowId || !file) return;
+    setUploadingFileGoc(rowId);
+    try {
+      const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+      const path = `files/${rowId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const up = await supabase.storage
+        .from("payment-dossiers")
+        .upload(path, file, { upsert: false, contentType: file.type || undefined });
+      if (up.error) throw up.error;
+      await updateDossier(rowId, { file_goc_path: path });
+      setNotice({ type: "success", text: "Đã đính kèm file gốc." });
+      await loadList(view);
+    } catch (err: any) {
+      setNotice({ type: "error", text: "Đính kèm thất bại: " + (err.message || String(err)) });
+    } finally {
+      setUploadingFileGoc(null);
+      setUploadTarget(null);
+      if (fileGocInputRef.current) fileGocInputRef.current.value = "";
+    }
+  };
+
+  const openFileGoc = async (row: PaymentDossierRow) => {
+    if (!row.file_goc_path) return;
+    try {
+      const { data, error } = await supabase.storage
+        .from("payment-dossiers")
+        .createSignedUrl(row.file_goc_path, 600);
+      if (error || !data?.signedUrl) throw error || new Error("Không tạo được link xem");
+      const isPdf = row.file_goc_path.toLowerCase().endsWith(".pdf");
+      setViewer({ url: data.signedUrl, isPdf, name: row.ten_file_pdf || "File gốc" });
+    } catch (err: any) {
+      setNotice({ type: "error", text: "Không mở được file: " + (err.message || String(err)) });
+    }
+  };
 
   // Toast tự tắt
   useEffect(() => {
@@ -334,6 +396,8 @@ export default function PaymentDossierPage() {
       onConfirm: async () => {
         try {
           await deleteDossier(row.id);
+          // Dọn file gốc đính kèm (best-effort).
+          if (row.file_goc_path) supabase.storage.from("payment-dossiers").remove([row.file_goc_path]).catch(() => {});
           setNotice({ type: "success", text: "Đã xoá hồ sơ." });
           await loadList(view);
         } catch (err: any) {
@@ -378,11 +442,40 @@ export default function PaymentDossierPage() {
   }, [rows, search, fromDate, toDate, filterDept]);
 
   const cell = (r: PaymentDossierRow, c: (typeof COLUMNS)[number]) => {
-    // "Còn lại" luôn hiển thị theo giá trị DB tính sẵn (Số tiền − Số tiền chuyển).
+    // "Còn lại" luôn hiển thị theo giá trị DB tính sẵn.
     if (c.key === "con_lai") {
       if (r.so_tien_de_nghi_num == null) return <span className="text-slate-300">—</span>;
       const n = Number(r.con_lai_num ?? 0);
       return <span className={`font-bold tabular-nums ${n > 0 ? "text-amber-600" : "text-slate-800"}`}>{formatMoney(String(n))}</span>;
+    }
+    // File gốc: nút mũi tên tải lên (khi trống) / nút mắt xem (khi đã có).
+    if (c.key === "file_goc_path") {
+      if (uploadingFileGoc === r.id) return <Loader2 size={14} className="animate-spin text-[#005BAC] mx-auto" />;
+      return (
+        <div className="flex justify-center">
+          {r.file_goc_path ? (
+            <button onClick={() => openFileGoc(r)} title="Xem file gốc" className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-all">
+              <Eye size={15} />
+            </button>
+          ) : (
+            <button onClick={() => triggerFileGocUpload(r.id)} title="Tải file gốc lên (ảnh/PDF)" className="p-1.5 rounded-lg text-slate-400 hover:text-[#005BAC] hover:bg-blue-50 transition-all">
+              <ArrowUpFromLine size={15} />
+            </button>
+          )}
+        </div>
+      );
+    }
+    // Đợt chuyển tiền: số tiền + ngày chuyển (nhỏ, dưới).
+    if (c.key in DOT_DATE) {
+      const amt = r[c.key];
+      const dt = r[DOT_DATE[c.key]] as string | null;
+      if ((amt == null || amt === "") && !dt) return <span className="text-slate-300">—</span>;
+      return (
+        <div>
+          <div className="font-bold text-slate-800 tabular-nums">{amt ? formatMoney(String(amt)) : "—"}</div>
+          {dt && <div className="text-[10px] text-slate-400 font-semibold">{dmy(dt)}</div>}
+        </div>
+      );
     }
     const v = r[c.key];
     if (v == null || v === "") return <span className="text-slate-300">—</span>;
@@ -799,7 +892,34 @@ export default function PaymentDossierPage() {
               {COLUMNS.map((c) => {
                 // STT tự đánh theo thứ tự danh sách -> không sửa tay trong modal.
                 if (c.key === "stt") return null;
-                // "Còn lại" tính sẵn = Số tiền − Số tiền chuyển, không cho sửa tay.
+                // File gốc quản lý bằng nút tải lên / xem ở bảng.
+                if (c.key === "file_goc_path") return null;
+                // Đợt chuyển tiền: số tiền + ngày chuyển (ô chọn ngày).
+                if (c.key in DOT_DATE) {
+                  const dk = DOT_DATE[c.key];
+                  return (
+                    <div key={c.key}>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">{c.label}</label>
+                      <div className="flex gap-2">
+                        <input
+                          value={(editing[c.key] as any) ?? ""}
+                          onChange={(e) => setEditing({ ...editing, [c.key]: e.target.value } as PaymentDossierRow)}
+                          onBlur={(e) => setEditing({ ...editing, [c.key]: formatMoney(e.target.value) } as PaymentDossierRow)}
+                          placeholder="Số tiền"
+                          className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-slate-100/70 focus:bg-white border border-slate-200 outline-none text-xs text-slate-700 text-right font-bold tabular-nums"
+                        />
+                        <input
+                          type="date"
+                          value={(editing[dk] as any) ?? ""}
+                          onChange={(e) => setEditing({ ...editing, [dk]: e.target.value } as PaymentDossierRow)}
+                          title="Ngày chuyển"
+                          className="px-2 py-2 rounded-xl bg-slate-100/70 focus:bg-white border border-slate-200 outline-none text-xs text-slate-700"
+                        />
+                      </div>
+                    </div>
+                  );
+                }
+                // "Còn lại" tính sẵn = Số tiền − tổng đợt chuyển, không cho sửa tay.
                 if (c.key === "con_lai") {
                   const cl = computeConLai(editing.so_tien_de_nghi ?? "", editing.so_tien_chuyen ?? "", editing.so_tien_chuyen_2 ?? "", editing.so_tien_chuyen_3 ?? "");
                   return (
@@ -839,6 +959,38 @@ export default function PaymentDossierPage() {
               >
                 {savingEdit ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Lưu thay đổi
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Input ẩn cho nút tải file gốc ở từng dòng */}
+      <input
+        ref={fileGocInputRef}
+        type="file"
+        accept={ACCEPT}
+        className="hidden"
+        onChange={(e) => e.target.files?.[0] && onFileGocSelected(e.target.files[0])}
+      />
+
+      {/* Popup xem file gốc — giữa màn hình, không mở tab mới */}
+      {viewer && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[88] flex items-center justify-center p-4" onClick={() => setViewer(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-premium w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-150 shrink-0">
+              <h3 className="font-heading font-extrabold text-slate-800 text-sm flex items-center gap-2 truncate">
+                <Eye size={15} className="text-[#005BAC] shrink-0" /> <span className="truncate">{viewer.name}</span>
+              </h3>
+              <button onClick={() => setViewer(null)} className="text-slate-400 hover:text-slate-600 shrink-0">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 bg-slate-100 overflow-auto flex items-center justify-center">
+              {viewer.isPdf ? (
+                <iframe src={viewer.url} className="w-full h-full" title="File gốc" />
+              ) : (
+                <img src={viewer.url} alt="File gốc" className="max-w-full max-h-full object-contain" />
+              )}
             </div>
           </div>
         </div>

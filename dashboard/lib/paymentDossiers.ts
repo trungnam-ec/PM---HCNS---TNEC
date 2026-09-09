@@ -44,6 +44,10 @@ export interface PaymentDossierRow {
   so_tien_chuyen: string | null;   // Chuyển tiền đợt 1
   so_tien_chuyen_2: string | null; // Chuyển tiền đợt 2
   so_tien_chuyen_3: string | null; // Chuyển tiền đợt 3
+  ngay_chuyen_1: string | null;    // Ngày chuyển đợt 1 (YYYY-MM-DD)
+  ngay_chuyen_2: string | null;    // Ngày chuyển đợt 2
+  ngay_chuyen_3: string | null;    // Ngày chuyển đợt 3
+  file_goc_path: string | null;    // Đường dẫn file gốc trong bucket payment-dossiers
   han_thanh_toan: string | null;
   ngay_chuyen: string | null;
   con_lai: string | null;
@@ -71,6 +75,9 @@ export type PaymentDossierDraft = {
   so_tien_chuyen: string;   // Chuyển tiền đợt 1 (kế toán có thể điền sẵn khi soát)
   so_tien_chuyen_2: string; // Chuyển tiền đợt 2
   so_tien_chuyen_3: string; // Chuyển tiền đợt 3
+  ngay_chuyen_1: string;    // Ngày chuyển đợt 1
+  ngay_chuyen_2: string;    // Ngày chuyển đợt 2
+  ngay_chuyen_3: string;    // Ngày chuyển đợt 3
   han_thanh_toan: string;
   con_lai: string;        // kế toán có thể điền sẵn khi soát
   danh_muc_hs: string;
@@ -160,6 +167,9 @@ export function draftFromAi(ai: PaymentDossierAi, fileName: string, scores?: Rec
     so_tien_chuyen: "",
     so_tien_chuyen_2: "",
     so_tien_chuyen_3: "",
+    ngay_chuyen_1: "",
+    ngay_chuyen_2: "",
+    ngay_chuyen_3: "",
     han_thanh_toan: ai["Hạn Thanh toán"] && ai["Hạn Thanh toán"] !== "N/A" ? normalizeDate(ai["Hạn Thanh toán"]) : (ai["Hạn Thanh toán"] || ""),
     con_lai: "",
     danh_muc_hs: ai["Danh mục hs kèm theo"] || "",
@@ -186,6 +196,9 @@ export function rowFromDraft(d: PaymentDossierDraft, createdBy?: string) {
     so_tien_chuyen: d.so_tien_chuyen ? formatMoney(d.so_tien_chuyen) : null,
     so_tien_chuyen_2: d.so_tien_chuyen_2 ? formatMoney(d.so_tien_chuyen_2) : null,
     so_tien_chuyen_3: d.so_tien_chuyen_3 ? formatMoney(d.so_tien_chuyen_3) : null,
+    ngay_chuyen_1: d.ngay_chuyen_1 || null,
+    ngay_chuyen_2: d.ngay_chuyen_2 || null,
+    ngay_chuyen_3: d.ngay_chuyen_3 || null,
     han_thanh_toan: d.han_thanh_toan || null,
     ngay_chuyen: null,
     // "Còn lại" luôn TÍNH THEO CÔNG THỨC = Số tiền - (đợt1 + đợt2 + đợt3).

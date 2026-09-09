@@ -1560,6 +1560,13 @@ export default function CBPage() {
           && !halfPaidLeaveType.includes("om che do")
           && !halfPaidLeaveType.includes("khong luong");
 
+        // Nghỉ KHÔNG hưởng lương nửa ngày — buổi nghỉ không có công, buổi còn lại vẫn
+        // được 0.5 nếu có đi làm. Phải nhận diện ở CẢ nhánh chấm công máy, không thì
+        // cùng một loại đơn lại ra hai ký hiệu khác nhau tuỳ máy ghi cột "Công" 0 hay 0.5.
+        const isHalfUnpaidLeave = !!approvedLeaveOfDay
+          && approvedLeaveOfDay.days === 0.5
+          && halfPaidLeaveType.includes("khong luong");
+
         let tag = "";
         if (detail && (detail.workday || 0) > 0) {
           const wd = detail.workday || 0;
@@ -1577,6 +1584,11 @@ export default function CBPage() {
             if (isHalfPaidLeave) {
               tag = "P/2";
               phepCoLuong += 0.5;
+            } else if (isHalfUnpaidLeave) {
+              // Buổi nghỉ không được trả công nên KHÔNG cộng thêm, nhưng phải ghi
+              // đúng 0.5 vào cột Ro — trước đây đơn bị bỏ qua hẳn, cột Ro bằng 0.
+              tag = "Ro/2";
+              nghiKhongLuong += 0.5;
             }
           } else {
             tag = "x";
@@ -1603,10 +1615,6 @@ export default function CBPage() {
             // Hôm đó đã có đơn nghỉ KHÔNG hưởng lương nửa ngày thì chỉ nửa buổi còn lại
             // được bù => 0.5 công, và giữ ký hiệu Ro/2 để thấy có nửa buổi nghỉ không lương.
             // Cộng nguyên 1 công ở đây là trả công cho cả buổi đã xin nghỉ không lương.
-            const unpaidType = normalizeText(approvedLeaveOfDay?.type || "");
-            const isHalfUnpaidLeave = !!approvedLeaveOfDay
-              && approvedLeaveOfDay.days === 0.5
-              && unpaidType.includes("khong luong");
             if (isHalfUnpaidLeave) {
               tag = "Ro/2";
               nghiKhongLuong += 0.5;
@@ -1637,6 +1645,9 @@ export default function CBPage() {
                 if (approvedLeave.days === 0.5) {
                   tag = "Ro/2";
                   nghiKhongLuong += 0.5;
+                  // Máy ghi cột "Công" = 0 cho ngày nghỉ nửa buổi, nên lấy dấu vết quét
+                  // thẻ làm bằng chứng đi làm buổi còn lại => 0.5 công.
+                  if (hasSwipeOfDay) vanPhong += 0.5;
                 } else {
                   tag = "Ro";
                   nghiKhongLuong += 1;

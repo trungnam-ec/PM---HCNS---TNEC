@@ -1506,12 +1506,6 @@ export default function CBPage() {
     const daysInMonth = new Date(year, month, 0).getDate();
 
     const rows: TimesheetMatrixRow[] = parsedEmployees.map(emp => {
-      // Người được miễn thứ Bảy vẫn tính đủ công — danh sách khai trong
-      // tenant_config.saturday_exempt_names (khớp tên kiểu chứa, không dấu)
-      const empNameNorm = normalizeText(emp.name);
-      const isSaturdayExempt = (tenantCfg.saturday_exempt_names || []).some(
-        n => n && empNameNorm.includes(normalizeText(n))
-      );
       const days: string[] = [];
       let vanPhong = 0, phepCoLuong = 0, congTac = 0, nghiKhongLuong = 0;
 
@@ -1528,7 +1522,6 @@ export default function CBPage() {
         const dateObj = new Date(year, month - 1, d);
         const dayKey = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
         const isSunday = dateObj.getDay() === 0;
-        const isSaturday = dateObj.getDay() === 6;
 
         const detail = emp.details.find(dd => toDateOnlyKey(dd.date) === dayKey);
 
@@ -1547,9 +1540,6 @@ export default function CBPage() {
             tag = "x";
             vanPhong += 1;
           }
-        } else if (isSaturday && isSaturdayExempt) {
-          // Được ưu tiên không làm thứ Bảy, vẫn tính đủ công (tenant_config.saturday_exempt_names)
-          tag = "";
         } else if (isSunday) {
           tag = "";
         } else {
@@ -5883,21 +5873,13 @@ export default function CBPage() {
                                           <div className="flex items-center gap-1 shrink-0">
                                             <button
                                               onClick={() => {
-                                                const enrichedData = (file.parsed_data || []).map((emp: any) => {
-                                                  const cleanCode = (c: string) => String(c || "").replace(/^0+/, "").trim();
-                                                  const normName = normalizeText(emp.name || "");
-                                                  if (normName === "nttquyen" || normName === "n.t.t.quyen" || cleanCode(emp.employeeCode) === "5897") {
-                                                    return {
-                                                      ...emp,
-                                                      name: "Nguyễn Trương Thùy Quyên - CV Tuyển dụng",
-                                                      department: emp.department && emp.department !== "Chưa phân loại" ? emp.department : "Phòng Hành Chính Nhân Sự",
-                                                      email: emp.email && emp.email !== "Nhập email thủ công..." ? emp.email : "quyenntt@trungnamgroup.com.vn, quyen.0408@gmail.com",
-                                                      emailFound: true
-                                                    };
-                                                  }
-                                                  return emp;
-                                                });
-                                                setParsedEmployees(enrichedData);
+                                                // Trước đây chỗ này ép cứng tên + email cho riêng mã 5897
+                                                // (N.T.T.QUYEN) vì hồi đó hồ sơ chưa khớp được danh bạ. Nay
+                                                // hồ sơ đã đủ mã lẫn email nên bản vá đó thành có HẠI: nó nối
+                                                // thêm " - CV Tuyển dụng" vào tên, khiến bảng công so tên với
+                                                // `assignee` trên đơn là trượt sạch (mất OL/phép/CT/GT), và email
+                                                // viết cứng còn thiếu một chữ so với email thật trong hồ sơ.
+                                                setParsedEmployees(file.parsed_data || []);
                                                 setTimesheetMonth(file.month);
                                                 setExcelFileName(file.file_name);
                                                 // Clear current file object as we are loading from db

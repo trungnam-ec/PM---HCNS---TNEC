@@ -37,7 +37,6 @@ export type TenantConfig = {
   admin_staff: AdminStaff[];
   // Người được miễn làm thứ Bảy nhưng vẫn tính đủ công (bảng công C&B);
   // khớp tên kiểu "chứa, không phân biệt dấu"
-  saturday_exempt_names: string[];
   plan: "basic" | "professional" | "enterprise";
   // Phân gói THEO PHÒNG BAN (quyền nội bộ) — { "_default": Plan, "<Tên phòng>": Plan }.
   // null = chưa bật: mọi người dùng chung `plan` của tenant (hành vi cũ). Khi có
@@ -70,7 +69,6 @@ export const TENANT_DEFAULTS: TenantConfig = {
     { name: "Thanh Hằng", role: "Văn thư", duties: "Phụ trách tiếp nhận, phân loại, lưu trữ và chuyển phát công văn" },
     { name: "Thanh Ngân", role: "Hành chính", duties: "Phụ trách hỗ trợ công tác hành chính, quản lý văn phòng phẩm & cấp phát vật tư" },
   ],
-  saturday_exempt_names: ["Phạm Thành Lộc"],
   plan: "enterprise",
   department_plans: null, // chưa bật phân gói theo phòng -> dùng chung `plan`
   hide_resigned_in_pickers: false, // mặc định TẮT -> hành vi y như trước khi có tính năng

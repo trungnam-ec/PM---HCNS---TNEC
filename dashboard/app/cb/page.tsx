@@ -1567,6 +1567,26 @@ export default function CBPage() {
           && approvedLeaveOfDay.days === 0.5
           && halfPaidLeaveType.includes("khong luong");
 
+        // Phép CÓ hưởng lương, KỂ CẢ đơn nguyên ngày — dùng ở nhánh chấm công thiếu
+        // để bù cho đủ 1 công. Người nghỉ phép cả ngày mà ghé văn phòng quét thẻ thì
+        // máy ghi công < 1, trước đây đơn phép bị bỏ qua nên họ mất cả công lẫn phép.
+        const isPaidLeaveOfDay = !!approvedLeaveOfDay
+          && !halfPaidLeaveType.includes("online")
+          && !halfPaidLeaveType.includes("thai san")
+          && !halfPaidLeaveType.includes("bhxh")
+          && !halfPaidLeaveType.includes("om che do")
+          && !halfPaidLeaveType.includes("khong luong");
+
+        // Giải trình ĐÃ DUYỆT của ngày này — tra ở cấp ngoài để nhánh chấm công máy
+        // cũng dùng được. Trước đây nó nằm trong nhánh "khuyết chấm công" nên ngày bị
+        // trừ nửa công (đi trễ / về sớm) không bao giờ đọc tới — giải trình duyệt xong vẫn
+        // vô tác dụng (tháng 08/2026 có 3 ca như vậy, mất 1.5 công).
+        const approvedExplanationOfDay = explanations.find(e => {
+          if (e.status !== "Đã duyệt") return false;
+          if (normalizeText(e.name || "") !== normalizeText(emp.name)) return false;
+          return toDateOnlyKey(e.date) === dayKey;
+        });
+
         let tag = "";
         if (detail && (detail.workday || 0) > 0) {
           const wd = detail.workday || 0;
@@ -1578,17 +1598,26 @@ export default function CBPage() {
             // đã được ép tròn 1.0 ngay ở khâu đọc Excel nên không rơi vào nhánh này.
             tag = "x/2";
             vanPhong += 0.5;
-            // Xin phép nửa buổi VÀ có chấm công nửa buổi còn lại => đủ 1 công
-            // (0.5 đi làm + 0.5 phép hưởng lương). Trước đây nhánh chấm công máy chốt luôn
-            // tại đây nên đơn phép không bao giờ được xét, ngày đó chỉ được 0.5 công.
-            if (isHalfPaidLeave) {
-              tag = "P/2";
-              phepCoLuong += 0.5;
-            } else if (isHalfUnpaidLeave) {
+            // Thứ tự ở đây là có chủ ý, đừng đảo:
+            //  1) Nghỉ KHÔNG lương nửa buổi chốt trước — buổi đã xin nghỉ không lương thì
+            //     không gì bù được, kể cả giải trình (user chốt 09/09/2026).
+            //  2) Giải trình đứng TRƯỚC phép (user chốt 09/09/2026): ngày đi trễ / về sớm
+            //     đã được duyệt giải trình thì bù cho đủ 1 công.
+            //  3) Còn lại mới đến đơn phép hưởng lương.
+            // Bù theo `1 - wd` chứ không cộng cứng 0.5, phòng khi máy ghi số lẻ khác.
+            if (isHalfUnpaidLeave) {
               // Buổi nghỉ không được trả công nên KHÔNG cộng thêm, nhưng phải ghi
               // đúng 0.5 vào cột Ro — trước đây đơn bị bỏ qua hẳn, cột Ro bằng 0.
               tag = "Ro/2";
               nghiKhongLuong += 0.5;
+            } else if (approvedExplanationOfDay) {
+              tag = "GT";
+              vanPhong += 1 - wd;
+            } else if (isPaidLeaveOfDay) {
+              // Nửa buổi đi làm + nửa buổi phép hưởng lương => đủ 1 công. Đơn nguyên
+              // ngày cũng vào đây: họ vẫn được trả đủ công cho phần không đi làm.
+              tag = "P/2";
+              phepCoLuong += 1 - wd;
             }
           } else {
             tag = "x";
@@ -1601,11 +1630,7 @@ export default function CBPage() {
           const approvedTripDay = findApprovedTripForDay(emp.name, dayKey, travels);
 
           // Khuyết chấm công máy (VD: quên quét vân tay lúc về) nhưng có giải trình đã được duyệt => vẫn tính đủ công
-          const approvedExplanation = explanations.find(e => {
-            if (e.status !== "Đã duyệt") return false;
-            if (normalizeText(e.name || "") !== normalizeText(emp.name)) return false;
-            return toDateOnlyKey(e.date) === dayKey;
-          });
+          const approvedExplanation = approvedExplanationOfDay;
 
           if (approvedTripDay) {
             tag = "CT";

@@ -156,7 +156,7 @@ export default function PaymentDossierPage() {
   const fileGocInputRef = useRef<HTMLInputElement>(null);
   const [uploadTarget, setUploadTarget] = useState<number | null>(null);
   const [uploadingFileGoc, setUploadingFileGoc] = useState<number | null>(null);
-  const [viewer, setViewer] = useState<{ url: string; isPdf: boolean; name: string } | null>(null);
+  const [viewer, setViewer] = useState<{ url: string; isPdf: boolean; name: string; rowId: number; path: string } | null>(null);
 
   const triggerFileGocUpload = (rowId: number) => {
     setUploadTarget(rowId);
@@ -194,10 +194,32 @@ export default function PaymentDossierPage() {
         .createSignedUrl(row.file_goc_path, 600);
       if (error || !data?.signedUrl) throw error || new Error("Không tạo được link xem");
       const isPdf = row.file_goc_path.toLowerCase().endsWith(".pdf");
-      setViewer({ url: data.signedUrl, isPdf, name: row.ten_file_pdf || "File gốc" });
+      setViewer({ url: data.signedUrl, isPdf, name: row.ten_file_pdf || "File gốc", rowId: row.id, path: row.file_goc_path });
     } catch (err: any) {
       setNotice({ type: "error", text: "Không mở được file: " + (err.message || String(err)) });
     }
+  };
+
+  // Xoá file gốc ngay trong popup xem.
+  const deleteFileGoc = () => {
+    if (!viewer) return;
+    const { rowId, path } = viewer;
+    ask({
+      title: "Xoá file gốc?",
+      message: "Gỡ file đính kèm khỏi hồ sơ này? Không thể hoàn tác.",
+      confirmLabel: "Xoá",
+      onConfirm: async () => {
+        try {
+          await supabase.storage.from("payment-dossiers").remove([path]);
+          await updateDossier(rowId, { file_goc_path: null });
+          setViewer(null);
+          setNotice({ type: "success", text: "Đã xoá file gốc." });
+          await loadList(view);
+        } catch (err: any) {
+          setNotice({ type: "error", text: "Xoá file thất bại: " + (err.message || String(err)) });
+        }
+      },
+    });
   };
 
   // Toast tự tắt
@@ -981,9 +1003,18 @@ export default function PaymentDossierPage() {
               <h3 className="font-heading font-extrabold text-slate-800 text-sm flex items-center gap-2 truncate">
                 <Eye size={15} className="text-[#005BAC] shrink-0" /> <span className="truncate">{viewer.name}</span>
               </h3>
-              <button onClick={() => setViewer(null)} className="text-slate-400 hover:text-slate-600 shrink-0">
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={deleteFileGoc}
+                  title="Xoá file gốc"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 transition-all"
+                >
+                  <Trash2 size={14} /> Xoá file
+                </button>
+                <button onClick={() => setViewer(null)} className="p-1.5 text-slate-400 hover:text-slate-600">
+                  <X size={18} />
+                </button>
+              </div>
             </div>
             <div className="flex-1 bg-slate-100 overflow-auto flex items-center justify-center">
               {viewer.isPdf ? (

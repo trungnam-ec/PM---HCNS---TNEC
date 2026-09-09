@@ -69,7 +69,9 @@ const COLUMNS: { key: keyof PaymentDossierRow; label: string; money?: boolean; w
   { key: "don_vi_cong_tac", label: "Phòng ban" },
   { key: "so_tai_khoan", label: "Số tài khoản" },
   { key: "tai_ngan_hang", label: "Tại Ngân hàng", wide: true },
-  { key: "so_tien_chuyen", label: "Số tiền chuyển", money: true },
+  { key: "so_tien_chuyen", label: "Chuyển tiền đợt 1", money: true },
+  { key: "so_tien_chuyen_2", label: "Chuyển tiền đợt 2", money: true },
+  { key: "so_tien_chuyen_3", label: "Chuyển tiền đợt 3", money: true },
   { key: "han_thanh_toan", label: "Hạn thanh toán" },
   { key: "ngay_chuyen", label: "Ngày chuyển" },
   { key: "con_lai", label: "Còn lại", money: true },
@@ -89,7 +91,9 @@ const DRAFT_FIELDS: { key: keyof PaymentDossierDraft; label: string; money?: boo
   { key: "don_vi_cong_tac", label: "Phòng ban" },
   { key: "so_tai_khoan", label: "Số tài khoản" },
   { key: "tai_ngan_hang", label: "Tại Ngân hàng", wide: true },
-  { key: "so_tien_chuyen", label: "Số tiền chuyển", money: true },
+  { key: "so_tien_chuyen", label: "Chuyển tiền đợt 1", money: true },
+  { key: "so_tien_chuyen_2", label: "Chuyển tiền đợt 2", money: true },
+  { key: "so_tien_chuyen_3", label: "Chuyển tiền đợt 3", money: true },
   { key: "han_thanh_toan", label: "Hạn TT" },
   { key: "con_lai", label: "Còn lại", money: true },
   { key: "ten_file_pdf", label: "Tên File", wide: true },
@@ -364,8 +368,12 @@ export default function PaymentDossierPage() {
       if (filterDept && (r.don_vi_cong_tac || "") !== filterDept) return false;
       return true;
     });
-    // Ngày đề nghị MỚI NHẤT lên trên; hoà thì theo thời điểm nhập (created_at).
+    // 1) Dòng CÒN NỢ (còn lại > 0) dồn lên trên cùng. 2) Ngày đề nghị mới nhất
+    // lên trên. 3) Hoà thì theo thời điểm nhập. Giúp quản lý phần còn phải chi.
     return list.sort((a, b) => {
+      const owedA = Number(a.con_lai_num) > 0 ? 0 : 1;
+      const owedB = Number(b.con_lai_num) > 0 ? 0 : 1;
+      if (owedA !== owedB) return owedA - owedB;
       const d = vnDateTs(b.ngay_de_nghi) - vnDateTs(a.ngay_de_nghi);
       return d !== 0 ? d : new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
@@ -527,7 +535,7 @@ export default function PaymentDossierPage() {
                         {DRAFT_FIELDS.map((f) => {
                           // "Còn lại" là ô TÍNH SẴN (Số tiền - Số tiền chuyển), không cho gõ tay.
                           if (f.key === "con_lai") {
-                            const cl = computeConLai(d.so_tien_de_nghi, d.so_tien_chuyen);
+                            const cl = computeConLai(d.so_tien_de_nghi, d.so_tien_chuyen, d.so_tien_chuyen_2, d.so_tien_chuyen_3);
                             return (
                               <td key={f.key} className="px-1 py-1 border border-slate-200 align-top">
                                 <div
@@ -795,7 +803,7 @@ export default function PaymentDossierPage() {
                 if (c.key === "stt") return null;
                 // "Còn lại" tính sẵn = Số tiền − Số tiền chuyển, không cho sửa tay.
                 if (c.key === "con_lai") {
-                  const cl = computeConLai(editing.so_tien_de_nghi ?? "", editing.so_tien_chuyen ?? "");
+                  const cl = computeConLai(editing.so_tien_de_nghi ?? "", editing.so_tien_chuyen ?? "", editing.so_tien_chuyen_2 ?? "", editing.so_tien_chuyen_3 ?? "");
                   return (
                     <div key={c.key}>
                       <label className="block text-[11px] font-bold text-slate-600 mb-1">

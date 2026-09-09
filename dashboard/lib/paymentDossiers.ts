@@ -41,7 +41,9 @@ export interface PaymentDossierRow {
   don_vi_cong_tac: string | null;
   so_tai_khoan: string | null;
   tai_ngan_hang: string | null;
-  so_tien_chuyen: string | null;
+  so_tien_chuyen: string | null;   // Chuyển tiền đợt 1
+  so_tien_chuyen_2: string | null; // Chuyển tiền đợt 2
+  so_tien_chuyen_3: string | null; // Chuyển tiền đợt 3
   han_thanh_toan: string | null;
   ngay_chuyen: string | null;
   con_lai: string | null;
@@ -66,7 +68,9 @@ export type PaymentDossierDraft = {
   don_vi_cong_tac: string;
   so_tai_khoan: string;
   tai_ngan_hang: string;
-  so_tien_chuyen: string; // kế toán có thể điền sẵn khi soát
+  so_tien_chuyen: string;   // Chuyển tiền đợt 1 (kế toán có thể điền sẵn khi soát)
+  so_tien_chuyen_2: string; // Chuyển tiền đợt 2
+  so_tien_chuyen_3: string; // Chuyển tiền đợt 3
   han_thanh_toan: string;
   con_lai: string;        // kế toán có thể điền sẵn khi soát
   danh_muc_hs: string;
@@ -112,16 +116,18 @@ export function moneyToNumber(val?: string | number): number | null {
   return num ? Number(num) : null;
 }
 
-// "Còn lại" = Số tiền đề nghị - Số tiền chuyển.
-// Số tiền đề nghị trống -> trả rỗng (giữ nguyên, không tính). Số tiền chuyển
-// trống coi như 0. Trả cả chuỗi hiển thị lẫn số để lọc "Tồn đề nghị".
+// "Còn lại" = Số tiền đề nghị - (chuyển đợt 1 + đợt 2 + đợt 3).
+// Số tiền đề nghị trống -> trả rỗng (giữ nguyên, không tính). Đợt nào trống coi
+// như 0. Trả cả chuỗi hiển thị lẫn số để lọc "Tồn đề nghị".
 export function computeConLai(
   soTien?: string | number,
-  soTienChuyen?: string | number
+  dot1?: string | number,
+  dot2?: string | number,
+  dot3?: string | number
 ): { text: string; num: number | null } {
   const de = moneyToNumber(soTien);
   if (de == null) return { text: "", num: null };
-  const chuyen = moneyToNumber(soTienChuyen) || 0;
+  const chuyen = (moneyToNumber(dot1) || 0) + (moneyToNumber(dot2) || 0) + (moneyToNumber(dot3) || 0);
   const remain = de - chuyen;
   const text = remain < 0 ? "-" + formatMoney(String(Math.abs(remain))) : formatMoney(String(remain));
   return { text, num: remain };
@@ -152,6 +158,8 @@ export function draftFromAi(ai: PaymentDossierAi, fileName: string, scores?: Rec
     so_tai_khoan: ai["Số tài khoản"] || "",
     tai_ngan_hang: ai["Tại Ngân hàng"] || "",
     so_tien_chuyen: "",
+    so_tien_chuyen_2: "",
+    so_tien_chuyen_3: "",
     han_thanh_toan: ai["Hạn Thanh toán"] && ai["Hạn Thanh toán"] !== "N/A" ? normalizeDate(ai["Hạn Thanh toán"]) : (ai["Hạn Thanh toán"] || ""),
     con_lai: "",
     danh_muc_hs: ai["Danh mục hs kèm theo"] || "",
@@ -176,10 +184,12 @@ export function rowFromDraft(d: PaymentDossierDraft, createdBy?: string) {
     so_tai_khoan: d.so_tai_khoan || null,
     tai_ngan_hang: d.tai_ngan_hang || null,
     so_tien_chuyen: d.so_tien_chuyen ? formatMoney(d.so_tien_chuyen) : null,
+    so_tien_chuyen_2: d.so_tien_chuyen_2 ? formatMoney(d.so_tien_chuyen_2) : null,
+    so_tien_chuyen_3: d.so_tien_chuyen_3 ? formatMoney(d.so_tien_chuyen_3) : null,
     han_thanh_toan: d.han_thanh_toan || null,
     ngay_chuyen: null,
-    // "Còn lại" luôn TÍNH THEO CÔNG THỨC = Số tiền - Số tiền chuyển.
-    con_lai: computeConLai(d.so_tien_de_nghi, d.so_tien_chuyen).text || null,
+    // "Còn lại" luôn TÍNH THEO CÔNG THỨC = Số tiền - (đợt1 + đợt2 + đợt3).
+    con_lai: computeConLai(d.so_tien_de_nghi, d.so_tien_chuyen, d.so_tien_chuyen_2, d.so_tien_chuyen_3).text || null,
     ten_file_pdf: d.ten_file_pdf || null,
     danh_muc_hs: d.danh_muc_hs || null,
     ghi_chu: d.ghi_chu || null,
@@ -216,9 +226,20 @@ export async function updateDossier(id: number, patch: Partial<PaymentDossierRow
   if (typeof patch.so_tien_chuyen === "string") {
     clean.so_tien_chuyen = patch.so_tien_chuyen ? formatMoney(patch.so_tien_chuyen) : null;
   }
-  // "Còn lại" tính lại theo công thức mỗi khi sửa Số tiền / Số tiền chuyển.
-  if ("so_tien_de_nghi" in patch || "so_tien_chuyen" in patch) {
-    clean.con_lai = computeConLai(patch.so_tien_de_nghi ?? undefined, patch.so_tien_chuyen ?? undefined).text || null;
+  if (typeof patch.so_tien_chuyen_2 === "string") {
+    clean.so_tien_chuyen_2 = patch.so_tien_chuyen_2 ? formatMoney(patch.so_tien_chuyen_2) : null;
+  }
+  if (typeof patch.so_tien_chuyen_3 === "string") {
+    clean.so_tien_chuyen_3 = patch.so_tien_chuyen_3 ? formatMoney(patch.so_tien_chuyen_3) : null;
+  }
+  // "Còn lại" tính lại mỗi khi sửa Số tiền hoặc bất kỳ đợt chuyển nào.
+  if ("so_tien_de_nghi" in patch || "so_tien_chuyen" in patch || "so_tien_chuyen_2" in patch || "so_tien_chuyen_3" in patch) {
+    clean.con_lai = computeConLai(
+      patch.so_tien_de_nghi ?? undefined,
+      patch.so_tien_chuyen ?? undefined,
+      patch.so_tien_chuyen_2 ?? undefined,
+      patch.so_tien_chuyen_3 ?? undefined
+    ).text || null;
   }
   delete clean.id;
   delete clean.created_at;

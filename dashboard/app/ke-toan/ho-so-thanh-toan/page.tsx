@@ -37,6 +37,7 @@ import {
   Pencil,
   Search,
   RefreshCw,
+  Download,
   CheckCircle2,
   AlertTriangle,
   ListChecks,
@@ -48,6 +49,7 @@ import {
   deleteDossier,
   draftFromAi,
   formatMoney,
+  moneyToNumber,
   computeConLai,
   type PaymentDossierRow,
   type PaymentDossierDraft,
@@ -140,6 +142,7 @@ export default function PaymentDossierPage() {
   const [uploading, setUploading] = useState(false);
   const [processingText, setProcessingText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
   const [notice, setNotice] = useState<Notice>(null);
@@ -473,6 +476,61 @@ export default function PaymentDossierPage() {
     });
   }, [rows, search, fromDate, toDate, filterDept]);
 
+  // ─── Tải Excel: xuất ĐÚNG danh sách đang hiển thị (theo tab + lọc hiện tại) ───
+  const exportExcel = async () => {
+    if (filtered.length === 0) return;
+    setExporting(true);
+    try {
+      const XLSX = await import("xlsx");
+      const tabLabel = view === "ton" ? "Tồn đề nghị" : "Bảng kê";
+      const period =
+        fromDate || toDate
+          ? `Từ ${fromDate ? dmy(fromDate) : "..."} đến ${toDate ? dmy(toDate) : "..."}`
+          : "Toàn bộ";
+      const deptLabel = filterDept || "Tất cả phòng ban";
+
+      const header = [
+        "STT", "Ngày nhập", "Ngày đề nghị", "Người nhận tiền", "Nội dung thanh toán",
+        "Số tiền đề nghị", "Dự án", "Người đề nghị TT", "Phòng ban", "Số tài khoản", "Tại Ngân hàng",
+        "Chuyển tiền đợt 1", "Ngày CT đợt 1", "Chuyển tiền đợt 2", "Ngày CT đợt 2",
+        "Chuyển tiền đợt 3", "Ngày CT đợt 3", "Còn lại", "Tên File PDF", "Danh mục hs kèm theo", "Ghi chú",
+      ];
+      const body = filtered.map((r, i) => [
+        i + 1, r.ngay_nhap || "", r.ngay_de_nghi || "", r.nguoi_nhan_tien || "", r.noi_dung_tt || "",
+        Number(r.so_tien_de_nghi_num) || 0, r.du_an || "", r.nguoi_de_nghi_tt || "", r.don_vi_cong_tac || "",
+        r.so_tai_khoan || "", r.tai_ngan_hang || "",
+        moneyToNumber(r.so_tien_chuyen ?? "") || 0, dmy(r.ngay_chuyen_1),
+        moneyToNumber(r.so_tien_chuyen_2 ?? "") || 0, dmy(r.ngay_chuyen_2),
+        moneyToNumber(r.so_tien_chuyen_3 ?? "") || 0, dmy(r.ngay_chuyen_3),
+        Number(r.con_lai_num) || 0, r.ten_file_pdf || "", r.danh_muc_hs || "", r.ghi_chu || "",
+      ]);
+
+      const sheet = XLSX.utils.aoa_to_sheet([
+        [`HỒ SƠ THANH TOÁN — ${tabLabel}`],
+        [`Kỳ: ${period}`, "", `Phòng ban: ${deptLabel}`, "", `Số hồ sơ: ${filtered.length}`,
+         "", `Xuất lúc: ${new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}`],
+        [],
+        header,
+        ...body,
+      ]);
+      sheet["!cols"] = [
+        { wch: 5 }, { wch: 12 }, { wch: 12 }, { wch: 26 }, { wch: 40 },
+        { wch: 15 }, { wch: 26 }, { wch: 18 }, { wch: 22 }, { wch: 16 }, { wch: 24 },
+        { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 },
+        { wch: 15 }, { wch: 22 }, { wch: 28 }, { wch: 24 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, sheet, tabLabel);
+      const stamp = fromDate || toDate ? `_${fromDate || "dau"}_${toDate || "cuoi"}` : "_toanbo";
+      XLSX.writeFile(wb, `ho-so-thanh-toan_${view === "ton" ? "ton-de-nghi" : "bang-ke"}${stamp}.xlsx`);
+    } catch (err: any) {
+      setNotice({ type: "error", text: "Không xuất được Excel: " + (err.message || String(err)) });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const cell = (r: PaymentDossierRow, c: (typeof COLUMNS)[number]) => {
     // "Còn lại" luôn hiển thị theo giá trị DB tính sẵn.
     if (c.key === "con_lai") {
@@ -777,6 +835,14 @@ export default function PaymentDossierPage() {
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all shrink-0"
                 >
                   <RefreshCw size={13} /> Tải lại
+                </button>
+                <button
+                  onClick={exportExcel}
+                  disabled={exporting || filtered.length === 0}
+                  title={filtered.length === 0 ? "Chưa có dữ liệu để xuất" : "Tải danh sách đang hiển thị về Excel"}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0"
+                >
+                  {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Tải Excel
                 </button>
               </div>
             </div>

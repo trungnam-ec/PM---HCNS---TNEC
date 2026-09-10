@@ -875,7 +875,7 @@ export default function PaymentDossierPage() {
                           <td
                             key={c.key}
                             className={`px-2.5 py-2 border-r border-slate-100 text-slate-600 align-top ${
-                              c.wide ? "max-w-[240px]" : "whitespace-nowrap"
+                              c.wide ? "max-w-[240px] whitespace-normal break-words" : "whitespace-nowrap"
                             } ${c.money ? "text-right" : ""}`}
                           >
                             {c.key === "stt" ? <span className="font-bold text-slate-500">{idx + 1}</span> : cell(r, c)}

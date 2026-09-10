@@ -844,6 +844,12 @@ export default function CBPage() {
   const [expFormDate, setExpFormDate] = useState(new Date().toISOString().substring(0, 10));
   const [expFormEmployeeId, setExpFormEmployeeId] = useState("");
   const [expFormEmployeeName, setExpFormEmployeeName] = useState("");
+  // Ô "Họ và tên nhân viên" ở nhánh nhập thủ công: tra danh bạ toàn công ty để thư
+  // ký phòng giải trình hộ cấp quản lý khi họ bận. Dùng chính `expFormEmployeeName`
+  // làm từ khoá tìm, không thêm state chuỗi riêng — gõ tự do vẫn lưu được cho người
+  // chưa có trong danh bạ.
+  const [showExpNameDropdown, setShowExpNameDropdown] = useState(false);
+  const expNamePickerRef = useRef<HTMLDivElement>(null);
   const [expFormDepartment, setExpFormDepartment] = useState("");
   const [expFormReason, setExpFormReason] = useState("");
   const [expFormPropose, setExpFormPropose] = useState("");
@@ -4024,6 +4030,35 @@ export default function CBPage() {
     return showAllMachineLogs ? filteredAttendanceLogs : filteredAttendanceLogs.slice(0, MACHINE_LOGS_PREVIEW_COUNT);
   }, [filteredAttendanceLogs, showAllMachineLogs]);
 
+  // Đóng dropdown gợi ý tên khi bấm ra ngoài — cùng cách đã dùng ở form Đăng ký.
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (expNamePickerRef.current && !expNamePickerRef.current.contains(e.target as Node)) {
+        setShowExpNameDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  // Gợi ý tên từ danh bạ ĐẦY ĐỦ (`approverDirectory`, lấy từ view employees_directory)
+  // chứ KHÔNG từ `employees` — mảng đó đã bị cắt còn đúng người đang đăng nhập.
+  const expNameSuggestions = useMemo(() => {
+    const q = normalizeText(expFormEmployeeName.trim());
+    return approverDirectory
+      .filter(e => !q || normalizeText(e.name).includes(q) || normalizeText(e.department || "").includes(q))
+      .slice(0, 30);
+  }, [approverDirectory, expFormEmployeeName]);
+
+  // Chọn một người từ dropdown: điền luôn phòng ban và người phê duyệt tương ứng.
+  // Luồng duyệt không đổi: vẫn đi qua getJustificationApprover như khi chọn từ ô trên.
+  const pickExpEmployeeFromDirectory = (person: { name: string; department: string }) => {
+    setExpFormEmployeeName(person.name);
+    setExpFormDepartment(person.department || "");
+    setExpFormApprover(getJustificationApprover(person.name, person.department || ""));
+    setShowExpNameDropdown(false);
+  };
+
   // Người phê duyệt giải trình — SUY RA bằng đúng khung cấp 1 của nghỉ phép / công
   // tác / đăng ký xe (lib/approvers.ts), thay cho bản chép riêng của trang này.
   //
@@ -6136,16 +6171,44 @@ export default function CBPage() {
 
                         {/* Tên nhân viên (nếu nhập thủ công) */}
                         {expFormEmployeeId === "custom" ? (
-                          <div className="space-y-1">
+                          <div className="space-y-1 relative" ref={expNamePickerRef}>
                             <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Họ và tên nhân viên *</label>
-                            <input
-                              type="text"
-                              required
-                              placeholder="Nhập họ tên..."
-                              value={expFormEmployeeName}
-                              onChange={(e) => setExpFormEmployeeName(e.target.value)}
-                              className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none"
-                            />
+                            <div className="relative">
+                              <Search size={13} className="absolute left-3 top-2 text-slate-400 pointer-events-none" />
+                              <input
+                                type="text"
+                                required
+                                placeholder="Tìm tên nhân viên hoặc bấm để chọn nhanh..."
+                                value={expFormEmployeeName}
+                                onChange={(e) => { setExpFormEmployeeName(e.target.value); setShowExpNameDropdown(true); }}
+                                onFocus={() => setShowExpNameDropdown(true)}
+                                className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none"
+                              />
+                            </div>
+                            {showExpNameDropdown && (
+                              <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-premium z-30 max-h-56 overflow-y-auto">
+                                {expNameSuggestions.length === 0 ? (
+                                  <p className="text-center text-slate-400 text-[11px] italic py-4">Không tìm thấy nhân viên phù hợp.</p>
+                                ) : (
+                                  expNameSuggestions.map((person) => (
+                                    <button
+                                      key={person.name + person.department}
+                                      type="button"
+                                      onClick={() => pickExpEmployeeFromDirectory(person)}
+                                      className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 transition-colors text-left cursor-pointer"
+                                    >
+                                      <span className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 text-white text-[9px] font-bold flex items-center justify-center shrink-0">
+                                        {person.name.split(" ").filter(Boolean).map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                                      </span>
+                                      <span className="flex-1 min-w-0">
+                                        <span className="block text-xs font-bold text-slate-700 truncate">{person.name}</span>
+                                        <span className="block text-[10px] text-slate-400 font-semibold truncate">{person.department || "Chưa xếp phòng"}{person.role ? ` • ${person.role}` : ""}</span>
+                                      </span>
+                                    </button>
+                                  ))
+                                )}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="space-y-1">

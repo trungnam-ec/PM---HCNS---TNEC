@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
       doc_number: meeting.doc_number || docNumber,
       location_date: location_date,
       // KHÔNG điền giờ/địa điểm giả vào văn bản chính thức: thiếu thì để dấu
-      // chấm lửng cho người ký điền tay (xem quy tắc chống bịa ở /api/meeting/process).
+      // chấm lửng cho người ký điền tay (xem quy tắc chống bịa ở lib/meetingAnalysisServer.ts).
       start_time: meeting.start_time || "………",
       meeting_date_text: meeting_date_text,
       meeting_location: meeting.location || "………",

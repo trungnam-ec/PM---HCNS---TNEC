@@ -63,16 +63,16 @@ export function voiceSampleMime(path: string): string {
 // ─── Tham số ghi âm trong app ───
 // opus mono 32kbps ≈ 240KB/phút -> chạm trần 25MB ở khoảng phút thứ 87.
 //
-// ĐỘ DÀI ĐOẠN KHÔNG DO DUNG LƯỢNG QUYẾT ĐỊNH, MÀ DO THỜI GIAN CHẠY:
-// đo thật ngày 14/09/2026 — 80 giây tiếng mất 49 giây gỡ băng (≈ 0,61× thời
-// lượng). Nền tảng serverless cắt hàm ở 300 giây, nên một đoạn 20 phút cần
-// khoảng 570 giây là chết chắc: cổng cắt kết nối trước khi có phản hồi, trình
-// duyệt báo "Failed to fetch" (đã xảy ra thật với đoạn 15:31).
+// 20 phút là con số do TRẦN 25MB quyết định, không phải do thời gian chạy:
+// đoạn 20 phút ≈ 4.8MB, còn cách trần rất xa kể cả khi nói liên tục.
 //
-// 5 phút tiếng ≈ 185 giây gỡ băng, cộng tải file lên xuống vẫn còn dư xa 300s.
-// Nếu đổi model gỡ băng hoặc nâng trần thời gian chạy thì tính lại số này.
+// Đã có lúc phải hạ xuống 5 phút vì gói Vercel Free cắt hàm ở 60 giây (gỡ băng
+// mất ≈ 0,6× thời lượng tiếng, đoạn 15:31 chết với "Failed to fetch"). Nay cuộc
+// gọi OpenAI chạy thẳng từ trình duyệt (lib/meetingOpenAI.ts) nên KHÔNG còn
+// trần thời gian nào -> quay lại 20 phút, ít mối nối hơn thì nhãn người nói
+// cũng ít bị đánh số lại giữa các đoạn hơn.
 export const RECORD_AUDIO_BITRATE = 32000;
-export const RECORD_SEGMENT_SEC = 5 * 60;
+export const RECORD_SEGMENT_SEC = 20 * 60;
 
 // ─── Bucket ───
 export const MEETINGS_BUCKET = "meetings";

@@ -1,21 +1,18 @@
-import { requireApiAuth } from "@/lib/apiAuth";
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
-import OpenAI from "openai";
-import { normalizePlan, isFeatureAllowed } from "@/lib/planShared";
-import { getTenantConfigServer } from "@/lib/tenantConfigServer";
-import {
-  DEFAULT_ANALYSIS_MODEL,
-  ANALYSIS_REASONING_EFFORT,
-  formatTs,
-  type TimelineMode,
-} from "@/lib/meetingModels";
+// ============================================================
+// meetingAnalysisServer — luật dựng biên bản, CHẠY Ở MÁY CHỦ.
+//
+// Cuộc gọi OpenAI đã chuyển sang trình duyệt (gói Vercel Free cắt hàm ở 60
+// giây), nhưng LUẬT thì không được chuyển theo: prompt chống bịa và việc quyết
+// chế độ timeline phải do máy chủ soạn từ dữ liệu trong CSDL. Nếu để client tự
+// dựng, mỗi người có thể sửa luật một kiểu và mọi bảo đảm về "không bịa" tan hết.
+//
+// Dùng chung cho /api/meeting/prepare-analysis (soạn prompt) và
+// /api/meeting/save-analysis (kiểm tra rồi lưu).
+// ============================================================
 
-// GPT phân tích transcript dài có thể mất vài phút; tránh Vercel timeout trả về non-JSON.
-export const maxDuration = 300;
+import { formatTs, type TimelineMode } from "./meetingModels";
 
-type DiarizedSegment = { speaker: string; start: number; end: number; text: string };
+export type DiarizedSegment = { speaker: string; start: number; end: number; text: string };
 
 // ────────────────────────────────────────────────────────────
 // LUẬT TIMELINE — phần quyết định biên bản có bịa giờ hay không
@@ -39,12 +36,13 @@ const TIMELINE_RULES: Record<TimelineMode, string> = {
 - Trường "ts" của mọi dòng để null.`,
 };
 
-const buildSystemPrompt = (
+export function buildSystemPrompt(
   companyName: string,
   chairmanName: string,
   timelineMode: TimelineMode,
   roster: string[],
-) => `
+): string {
+  return `
 Bạn là Trợ lý Thư ký Trưởng cấp cao của Ban Giám Đốc công ty ${companyName}.
 Nhiệm vụ: nhận văn bản gỡ băng thô của cuộc họp, LỌC BỎ các đoạn nói chuyện phiếm, thảo luận lan man ngoài lề, ý kiến trùng lặp và từ ngữ rườm rà; tập trung 100% vào Ý CHÍNH TRỌNG TÂM, KẾT LUẬN CỦA CHỦ TRÌ và CÁC ĐẦU VIỆC ĐƯỢC GIAO.
 
@@ -102,12 +100,22 @@ ${TIMELINE_RULES[timelineMode]}
 
 Người chủ trì thường gặp của công ty là ông ${chairmanName} — chỉ dùng tên này khi nội dung thực sự cho thấy ông ấy phát biểu.
 `.trim();
+}
+
+/** Chế độ timeline suy từ DỮ LIỆU TRONG CSDL, không bao giờ tin client. */
+export function resolveTimelineMode(
+  segments: DiarizedSegment[],
+  recordingStartedAt: string | null,
+): TimelineMode {
+  if (segments.length === 0) return "none";
+  return recordingStartedAt ? "clock" : "relative";
+}
 
 /**
  * Dựng văn bản đưa cho AI từ các câu đã tách người nói.
  * Mỗi dòng kèm mốc [HH:MM:SS | ts=<giây>] để AI trích dẫn được.
  */
-function buildTimedTranscript(
+export function buildTimedTranscript(
   segments: DiarizedSegment[],
   speakerMap: Record<string, string>,
   recordingStartedAt: string | null,
@@ -138,169 +146,14 @@ function buildTimedTranscript(
   }).join("\n");
 }
 
-export async function POST(req: NextRequest) {
-  const auth = await requireApiAuth(req);
-  if (!auth.ok) return auth.response;
-
-  try {
-    const authHeader = req.headers.get("Authorization");
-    const apiKey = (authHeader && authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null) || process.env.OPENAI_API_KEY;
-
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "Mã khoá OpenAI API Key chưa được cấu hình. Vui lòng kiểm tra cài đặt." },
-        { status: 400 }
-      );
-    }
-
-    const body = await req.json();
-    const { meetingId } = body;
-    const roster: string[] = Array.isArray(body.roster) ? body.roster.filter(Boolean) : [];
-
-    if (!meetingId) {
-      return NextResponse.json({ error: "Thiếu meetingId." }, { status: 400 });
-    }
-
-    // RLS on meetings blocks the shared anon client: the UPDATE below would
-    // silently match 0 rows and the AI result would never be saved. Use the
-    // caller's session token (same pattern as /api/export-template).
-    const supabaseToken = req.headers.get("x-supabase-auth");
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-    const dbClient = (supabaseToken && supabaseUrl && supabaseAnonKey)
-      ? createClient(supabaseUrl, supabaseAnonKey, {
-          global: { headers: { Authorization: `Bearer ${supabaseToken}` } }
-        })
-      : supabase;
-
-    // GATE GÓI DỊCH VỤ: module Biên bản họp mở từ gói Basic (lib/planShared.ts)
-    const { data: planRow } = await dbClient
-      .from("tenant_config").select("value").eq("key", "plan").maybeSingle();
-    if (!isFeatureAllowed(normalizePlan(planRow?.value), "meeting_ai")) {
-      return NextResponse.json({
-        error: "Tính năng Biên bản họp AI chưa được mở cho gói dịch vụ hiện tại. Vui lòng liên hệ Quản trị viên để nâng cấp."
-      }, { status: 403 });
-    }
-
-    // 1. Lấy bản gỡ băng TỪ CSDL (không tin body của client) để biết đang ở chế
-    //    độ timeline nào — client không có quyền quyết định việc này.
-    const { data: meeting, error: readError } = await dbClient
-      .from("meetings")
-      .select("transcript_raw, transcript_segments, speaker_map, recording_started_at")
-      .eq("id", meetingId)
-      .single();
-
-    if (readError || !meeting) {
-      return NextResponse.json(
-        { error: `Không đọc được biên bản: ${readError?.message || "Không tìm thấy"}` },
-        { status: 404 }
-      );
-    }
-
-    const segments: DiarizedSegment[] = Array.isArray(meeting.transcript_segments)
-      ? meeting.transcript_segments
-      : [];
-    const speakerMap: Record<string, string> = (meeting.speaker_map && typeof meeting.speaker_map === "object")
-      ? meeting.speaker_map
-      : {};
-
-    let timelineMode: TimelineMode;
-    let transcriptForAI: string;
-
-    if (segments.length > 0) {
-      timelineMode = meeting.recording_started_at ? "clock" : "relative";
-      transcriptForAI = buildTimedTranscript(segments, speakerMap, meeting.recording_started_at);
-    } else {
-      timelineMode = "none";
-      transcriptForAI = meeting.transcript_raw || body.transcriptRaw || "";
-    }
-
-    if (!transcriptForAI.trim()) {
-      return NextResponse.json({ error: "Biên bản chưa có nội dung gỡ băng để phân tích." }, { status: 400 });
-    }
-
-    // 2. Gọi OpenAI
-    const openai = new OpenAI({ apiKey });
-    const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || DEFAULT_ANALYSIS_MODEL;
-
-    const tenantCfg = await getTenantConfigServer();
-    const SYSTEM_PROMPT = buildSystemPrompt(
-      tenantCfg.company_name,
-      tenantCfg.chairman_name,
-      timelineMode,
-      roster,
-    );
-
-    // Dòng 5.6 là model suy luận: KHÔNG truyền temperature, dùng reasoning_effort.
-    const completion = await openai.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `Hãy chắt lọc các ý chính trọng tâm từ bản gỡ băng sau và trả về JSON theo đúng định dạng:\n\n${transcriptForAI}` }
-      ],
-      reasoning_effort: ANALYSIS_REASONING_EFFORT,
-      response_format: { type: "json_object" },
-    } as any);
-
-    const reply = completion.choices[0]?.message?.content || "{}";
-    const ext = JSON.parse(reply);
-
-    // 3. Chốt chặn phía server cho chế độ "relative": file tải lên không có giờ
-    //    đồng hồ, nên giờ họp dạng 00:01 / 0:37 chắc chắn là AI quy nhầm mốc
-    //    phút-của-file thành giờ họp.
-    if (timelineMode !== "clock") {
-      const looksLikeFileOffset = (v: any) => typeof v === "string" && /^0?0:\d{2}$/.test(v.trim());
-      if (looksLikeFileOffset(ext.start_time)) ext.start_time = "";
-      if (looksLikeFileOffset(ext.end_time)) ext.end_time = "";
-    }
-
-    // 4. Lưu kết quả. KHÔNG điền giá trị mặc định cho các ô AI để trống —
-    //    thà để người dùng tự điền còn hơn đưa số liệu phỏng đoán vào văn bản
-    //    chính thức. Riêng title/meeting_date phải có vì là cột NOT NULL.
-    const today = new Date().toISOString().split("T")[0];
-    // Người dự do người dùng chọn trước khi chạy đáng tin hơn danh sách AI nghe
-    // được, nên chỉ ghi đè khi AI thực sự trả về tên — AI trả mảng rỗng mà ghi
-    // đè là xoá mất danh sách đã chọn.
-    const aiAttendees = Array.isArray(ext.attendees) ? ext.attendees.filter(Boolean) : [];
-    const { data: updatedRows, error: dbError } = await dbClient
-      .from("meetings")
-      .update({
-        title: ext.title || "Biên bản họp (chưa đặt tên)",
-        meeting_date: ext.meeting_date || today,
-        start_time: ext.start_time || "",
-        end_time: ext.end_time || "",
-        location: ext.location || "",
-        secretary: ext.secretary || "",
-        ...(aiAttendees.length > 0 ? { attendees: aiAttendees } : {}),
-        project_name: ext.project_name || "",
-        package_name: ext.package_name || "",
-        transcript_clean: ext.transcript_clean || "",
-        summary: ext.summary || "",
-        action_items: Array.isArray(ext.action_items) ? ext.action_items : [],
-        ai_model: model,
-      })
-      .eq("id", meetingId)
-      .select("id");
-
-    if (dbError) {
-      throw new Error(`Lỗi cập nhật CSDL: ${dbError.message}`);
-    }
-
-    // RLS chặn sẽ trả về 0 dòng mà không báo lỗi — phải bắt tường minh,
-    // nếu không client tưởng thành công nhưng biên bản vẫn trống metadata.
-    if (!updatedRows || updatedRows.length === 0) {
-      throw new Error("Không lưu được kết quả phân tích vào biên bản (bị chặn bởi quyền truy cập CSDL). Vui lòng đăng nhập lại và thử lần nữa.");
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: ext,
-      model,
-      used_real_timeline: timelineMode === "clock",
-      timeline_mode: timelineMode,
-    });
-  } catch (err: any) {
-    console.error("AI processing error:", err);
-    return NextResponse.json({ error: err.message || "Lỗi khi phân tích AI" }, { status: 500 });
-  }
+/**
+ * Chốt chặn cho chế độ KHÔNG có giờ đồng hồ: file tải lên không mang giờ họp,
+ * nên giờ dạng 00:01 / 0:37 chắc chắn là AI quy nhầm mốc phút-của-file thành
+ * giờ họp. Sửa ngay tại máy chủ trước khi lưu.
+ */
+export function stripFileOffsetTimes(ext: any, timelineMode: TimelineMode) {
+  if (timelineMode === "clock") return;
+  const looksLikeFileOffset = (v: any) => typeof v === "string" && /^0?0:\d{2}$/.test(v.trim());
+  if (looksLikeFileOffset(ext.start_time)) ext.start_time = "";
+  if (looksLikeFileOffset(ext.end_time)) ext.end_time = "";
 }

@@ -12,6 +12,7 @@ import { useCurrentUser } from "@/lib/useCurrentUser";
 import { DialogProvider, useDialog } from "@/components/DialogProvider";
 import MeetingRecorder, { type RecordedSegment } from "@/components/MeetingRecorder";
 import VoiceSampleManager from "@/components/VoiceSampleManager";
+import { transcribeSegmentInBrowser, analyzeInBrowser, type KnownSpeaker } from "@/lib/meetingOpenAI";
 import PersonSearchCell, { type PersonOption } from "@/components/PersonSearchCell";
 import {
   ANALYSIS_MODELS,
@@ -319,6 +320,54 @@ function MeetingTeamContent() {
   // PIPELINE DÙNG CHUNG CHO CẢ HAI ĐƯỜNG VÀO
   // (ghi âm trực tiếp và tải file lên chỉ khác nhau ở khâu lấy đoạn ghi âm)
   // ════════════════════════════════════════════════════════════
+  /** Nhờ máy chủ nối một đoạn vừa gỡ vào bản gỡ băng của biên bản. */
+  const saveTranscriptPart = useCallback(async (
+    meetingId: string,
+    result: { text: string; segments: any[] },
+    reset = false,
+  ) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await apiFetch("/api/meeting/save-transcript", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-supabase-auth": session?.access_token || "" },
+      body: JSON.stringify({ meetingId, text: result.text, segments: result.segments, reset }),
+    });
+    const data = await readJsonSafe(res, "Lỗi lưu bản gỡ băng");
+    if (!res.ok) throw new Error(data.error || "Không lưu được bản gỡ băng.");
+    return data;
+  }, []);
+
+  /** Dựng biên bản: máy chủ soạn prompt -> trình duyệt gọi AI -> máy chủ lưu. */
+  const runAnalysis = useCallback(async (meetingId: string, roster: string[]) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || "";
+
+    const prepRes = await apiFetch("/api/meeting/prepare-analysis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-supabase-auth": token },
+      body: JSON.stringify({ meetingId, roster }),
+    });
+    const prep = await readJsonSafe(prepRes, "Lỗi soạn nội dung phân tích");
+    if (!prepRes.ok) throw new Error(prep.error || "Không soạn được nội dung phân tích.");
+
+    const ext = await analyzeInBrowser({
+      apiKey: openaiKey,
+      model: analysisModel,
+      reasoningEffort: prep.reasoning_effort,
+      systemPrompt: prep.system_prompt,
+      userContent: prep.user_content,
+    });
+
+    const saveRes = await apiFetch("/api/meeting/save-analysis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-supabase-auth": token },
+      body: JSON.stringify({ meetingId, data: ext, model: analysisModel }),
+    });
+    const saved = await readJsonSafe(saveRes, "Lỗi lưu biên bản");
+    if (!saveRes.ok) throw new Error(saved.error || "Không lưu được biên bản.");
+    return saved;
+  }, [analysisModel, openaiKey]);
+
   const runPipeline = useCallback(async (opts: {
     startedAt: string | null;
     segs: AudioSegment[];
@@ -332,11 +381,11 @@ function MeetingTeamContent() {
     const rosterRows = employees.filter(e => selectedAttendeeIds.includes(e.id));
     const rosterNames = Array.from(new Set([chairperson, ...rosterRows.map(r => r.name)].filter(Boolean)));
     // Mẫu giọng: ưu tiên người chủ trì, tối đa 4 (giới hạn của OpenAI)
-    const knownSpeakerIds = rosterRows
+    const knownSpeakers: KnownSpeaker[] = rosterRows
       .filter(r => r.voice_sample_path)
       .sort((a, b) => (a.name === chairperson ? -1 : b.name === chairperson ? 1 : 0))
       .slice(0, MAX_KNOWN_SPEAKERS)
-      .map(r => r.id);
+      .map(r => ({ name: r.name, path: r.voice_sample_path }));
 
     let draftId = "";
     try {
@@ -366,7 +415,7 @@ function MeetingTeamContent() {
       if (dbError) throw dbError;
       draftId = draftMeeting.id;
 
-      log(`[2/4] Bắt đầu gỡ băng ${segs.length} đoạn${knownSpeakerIds.length > 0 ? ` (có ${knownSpeakerIds.length} mẫu giọng)` : ""}…`);
+      log(`[2/4] Bắt đầu gỡ băng ${segs.length} đoạn${knownSpeakers.length > 0 ? ` (có ${knownSpeakers.length} mẫu giọng)` : ""}…`);
 
       // ─── Gỡ băng TUẦN TỰ từng đoạn ───
       // Server nối thêm vào transcript nên đoạn nào xong là chắc chắn giữ được,
@@ -382,35 +431,23 @@ function MeetingTeamContent() {
         // response — không bắt ở đây thì họp 2 tiếng chỉ cần một lần rớt mạng
         // là mất luôn các đoạn phía sau.
         try {
-          const { data: { session } } = await supabase.auth.getSession();
-          const res = await apiFetch("/api/meeting/transcribe", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${openaiKey}`,
-              "x-supabase-auth": session?.access_token || "",
-            },
-            body: JSON.stringify({
-              meetingId: draftId,
-              audioPath: segs[i].path,
-              offsetSec: segs[i].offsetSec,
-              knownSpeakerIds,
-            }),
+          // Gọi OpenAI THẲNG TỪ TRÌNH DUYỆT: gói Vercel Free cắt hàm ở 60 giây,
+          // không đoạn ghi âm nào gỡ kịp. Trình duyệt không có trần nào.
+          const result = await transcribeSegmentInBrowser({
+            apiKey: openaiKey,
+            audioPath: segs[i].path,
+            offsetSec: segs[i].offsetSec,
+            knownSpeakers,
           });
 
-          const data = await readJsonSafe(res, `Lỗi gỡ băng đoạn ${i + 1}`);
-          if (!res.ok) {
-            warnings.push(`Đoạn ${i + 1}: ${data.error || "lỗi không xác định"}`);
-            log(`  ❌ Đoạn ${i + 1} lỗi: ${data.error || "không xác định"} — bỏ qua, chạy tiếp.`);
-            continue;
-          }
-
+          // Máy chủ vẫn là nơi DUY NHẤT ghi vào biên bản: nó nối thêm chứ không
+          // ghi đè, và gác gói dịch vụ.
+          const saved = await saveTranscriptPart(draftId, result);
           okCount++;
-          const names = (data.known_speakers_used || []).length;
-          log(`  ✅ Đoạn ${i + 1}: ${(data.text || "").length} ký tự · ${(data.speakers || []).length} người nói${names > 0 ? ` (nhận ra ${names} tên thật)` : ""}`);
-          if (data.is_hallucination) {
-            warnings.push(`Đoạn ${i + 1}: ${data.hallucination_warning}`);
-            log(`  ⚠️ Đoạn ${i + 1}: ${data.hallucination_warning}`);
+          log(`  ✅ Đoạn ${i + 1}: ${result.text.length} ký tự · ${result.speakers.length} người nói${result.knownSpeakersUsed.length > 0 ? ` (nhận ra ${result.knownSpeakersUsed.length} tên thật)` : ""}`);
+          if (saved.is_hallucination) {
+            warnings.push(`Đoạn ${i + 1}: ${saved.hallucination_warning}`);
+            log(`  ⚠️ Đoạn ${i + 1}: ${saved.hallucination_warning}`);
           }
         } catch (segErr: any) {
           const msg = String(segErr?.message || segErr);
@@ -430,24 +467,11 @@ function MeetingTeamContent() {
       log(`[3/4] Gỡ băng xong ${okCount}/${segs.length} đoạn. Bắt đầu dựng biên bản bằng ${analysisModel}…`);
       setProcessingStep("ai");
 
-      const { data: { session: processSession } } = await supabase.auth.getSession();
-      const processRes = await apiFetch("/api/meeting/process", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${openaiKey}`,
-          "x-supabase-auth": processSession?.access_token || "",
-          "x-openai-model": analysisModel,
-        },
-        body: JSON.stringify({ meetingId: draftId, roster: rosterNames }),
-      });
+      const analysis = await runAnalysis(draftId, rosterNames);
 
-      const processData = await readJsonSafe(processRes, "Lỗi AI dựng biên bản");
-      if (!processRes.ok) throw new Error(processData.error || "Gặp lỗi khi AI dựng biên bản.");
-
-      const modeLabel = processData.timeline_mode === "clock"
+      const modeLabel = analysis.timeline_mode === "clock"
         ? "có giờ đồng hồ thật"
-        : processData.timeline_mode === "relative"
+        : analysis.timeline_mode === "relative"
           ? "theo phút của file (không có giờ đồng hồ)"
           : "không có mốc thời gian";
       log(`[4/4] Dựng biên bản xong — timeline ${modeLabel}. Đang mở màn hình soát…`);
@@ -485,7 +509,7 @@ function MeetingTeamContent() {
       setIsUploading(false);
       pipelineLockRef.current = false;
     }
-  }, [analysisModel, chairperson, dialog, employees, log, openaiKey, selectedAttendeeIds]);
+  }, [analysisModel, chairperson, dialog, employees, log, openaiKey, runAnalysis, saveTranscriptPart, selectedAttendeeIds]);
 
   /** Kiểm tra các điều kiện bắt buộc trước khi cho bắt đầu. */
   const checkReady = useCallback(async (): Promise<boolean> => {
@@ -705,32 +729,22 @@ function MeetingTeamContent() {
 
     setIsRetranscribing(true);
     try {
-      // Dọn sạch trước: server luôn NỐI THÊM, không dọn là nội dung nhân đôi.
-      await supabase.from("meetings")
-        .update({ transcript_raw: "", transcript_segments: [] })
-        .eq("id", selectedMeeting.id);
-
       const rosterRows = employees.filter(e => (selectedMeeting.attendees || []).includes(e.name));
-      const knownSpeakerIds = rosterRows.filter(r => r.voice_sample_path).slice(0, MAX_KNOWN_SPEAKERS).map(r => r.id);
+      const knownSpeakers: KnownSpeaker[] = rosterRows
+        .filter(r => r.voice_sample_path)
+        .slice(0, MAX_KNOWN_SPEAKERS)
+        .map(r => ({ name: r.name, path: r.voice_sample_path }));
 
       for (let i = 0; i < segs.length; i++) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const res = await apiFetch("/api/meeting/transcribe", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${openaiKey}`,
-            "x-supabase-auth": session?.access_token || "",
-          },
-          body: JSON.stringify({
-            meetingId: selectedMeeting.id,
-            audioPath: segs[i].path,
-            offsetSec: segs[i].offsetSec,
-            knownSpeakerIds,
-          }),
+        const result = await transcribeSegmentInBrowser({
+          apiKey: openaiKey,
+          audioPath: segs[i].path,
+          offsetSec: segs[i].offsetSec,
+          knownSpeakers,
         });
-        const data = await readJsonSafe(res, `Lỗi gỡ đoạn ${i + 1}`);
-        if (!res.ok) throw new Error(data.error || `Lỗi gỡ đoạn ${i + 1}`);
+        // Đoạn ĐẦU dọn sạch bản gỡ cũ (server luôn nối thêm, không dọn là nhân
+        // đôi nội dung); các đoạn sau nối tiếp bình thường.
+        await saveTranscriptPart(selectedMeeting.id, result, i === 0);
       }
 
       await refreshSelected(selectedMeeting.id);
@@ -761,23 +775,7 @@ function MeetingTeamContent() {
 
     setIsReprocessing(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await apiFetch("/api/meeting/process", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${openaiKey}`,
-          "x-supabase-auth": session?.access_token || "",
-          "x-openai-model": analysisModel,
-        },
-        body: JSON.stringify({
-          meetingId: selectedMeeting.id,
-          roster: editableAttendees,
-        }),
-      });
-      const data = await readJsonSafe(res, "Lỗi AI phân tích biên bản");
-      if (!res.ok) throw new Error(data.error || "Gặp lỗi khi AI dựng biên bản.");
-
+      await runAnalysis(selectedMeeting.id, editableAttendees);
       await refreshSelected(selectedMeeting.id);
       await dialog.alert("AI đã dựng lại nội dung biên bản.", { title: "Xong", tone: "success" });
     } catch (err: any) {

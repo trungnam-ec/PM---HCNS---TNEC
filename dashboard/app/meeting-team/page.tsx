@@ -45,7 +45,6 @@ import {
   Users,
   Volume2,
   Eraser,
-  RotateCcw,
   X,
   Check,
 } from "lucide-react";
@@ -186,7 +185,6 @@ function MeetingTeamContent() {
   const [speakerSearch, setSpeakerSearch] = useState("");
   const speakerPickerRef = useRef<HTMLDivElement>(null);
   const [isReprocessing, setIsReprocessing] = useState(false);
-  const [isRetranscribing, setIsRetranscribing] = useState(false);
   const [isDeletingAudio, setIsDeletingAudio] = useState(false);
 
   // Trình phát: tự chọn đúng đoạn chứa mốc ts rồi tua tới giây cần nghe
@@ -654,69 +652,6 @@ function MeetingTeamContent() {
     }
   };
 
-  /** Gỡ băng lại từ các đoạn ghi âm còn lưu (dọn sạch trước để không nhân đôi). */
-  const handleReTranscribe = async () => {
-    if (!selectedMeeting) return;
-    const segs: AudioSegment[] = Array.isArray(selectedMeeting.audio_segments) ? selectedMeeting.audio_segments : [];
-    if (segs.length === 0) {
-      await dialog.alert(
-        selectedMeeting.audio_deleted_at
-          ? "File ghi âm của biên bản này đã được dọn nên không gỡ băng lại được."
-          : "Biên bản này không còn đoạn ghi âm nào được lưu lại.",
-        { title: "Không gỡ băng lại được", tone: "warning" },
-      );
-      return;
-    }
-    if (!openaiKey) {
-      await dialog.alert("Vui lòng nhập OpenAI API Key trước khi gỡ băng.", { title: "Thiếu API Key", tone: "warning" });
-      return;
-    }
-    const ok = await dialog.confirm(
-      `Gỡ băng lại toàn bộ ${segs.length} đoạn ghi âm? Bản gỡ băng hiện tại sẽ bị thay thế và thao tác này TỐN PHÍ API.`,
-      { title: "Gỡ băng lại", tone: "warning", confirmText: "Gỡ băng lại" },
-    );
-    if (!ok) return;
-
-    setIsRetranscribing(true);
-    setProcessingLog([]);
-    try {
-      // Dọn sạch trước: server luôn NỐI THÊM, không dọn là nội dung nhân đôi.
-      await supabase.from("meetings")
-        .update({ transcript_raw: "", transcript_segments: [] })
-        .eq("id", selectedMeeting.id);
-
-      const rosterRows = employees.filter(e => (selectedMeeting.attendees || []).includes(e.name));
-      const knownSpeakerIds = rosterRows.filter(r => r.voice_sample_path).slice(0, MAX_KNOWN_SPEAKERS).map(r => r.id);
-
-      for (let i = 0; i < segs.length; i++) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const res = await apiFetch("/api/meeting/transcribe", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${openaiKey}`,
-            "x-supabase-auth": session?.access_token || "",
-          },
-          body: JSON.stringify({
-            meetingId: selectedMeeting.id,
-            audioPath: segs[i].path,
-            offsetSec: segs[i].offsetSec,
-            knownSpeakerIds,
-          }),
-        });
-        const data = await readJsonSafe(res, `Lỗi gỡ băng đoạn ${i + 1}`);
-        if (!res.ok) throw new Error(data.error || `Lỗi gỡ băng đoạn ${i + 1}`);
-      }
-
-      await refreshSelected(selectedMeeting.id);
-      await dialog.alert("Đã gỡ băng lại xong. Bấm \"Phân tích lại bằng AI\" để dựng lại biên bản.", { title: "Xong", tone: "success" });
-    } catch (err: any) {
-      await dialog.alert("Lỗi gỡ băng lại: " + err.message, { title: "Lỗi", tone: "danger" });
-    } finally {
-      setIsRetranscribing(false);
-    }
-  };
-
   // Chạy lại bước AI dựng biên bản từ transcript đã có (không tốn tiền gỡ băng lần nữa)
   const handleReAnalyze = async () => {
     if (!selectedMeeting) return;
@@ -793,19 +728,10 @@ function MeetingTeamContent() {
     }
   };
 
-  const parseVietnameseDate = (dateStr: string): string | null => {
-    if (!dateStr) return null;
-    const match = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-    if (match) {
-      return `${match[3]}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}`;
-    }
-    return null;
-  };
-
   const handleConfirmMeeting = async () => {
     if (!selectedMeeting) return;
     const ok = await dialog.confirm(
-      "Khoá biên bản họp? Hệ thống sẽ tạo Task tự động cho các bộ phận và xuất file Word. Sau khi khoá sẽ không sửa được nữa.",
+      "Khoá biên bản họp? Hệ thống sẽ xuất file Word và tải về. Sau khi khoá sẽ không sửa được nội dung nữa.",
       { title: "Khoá biên bản", tone: "warning", confirmText: "Khoá biên bản" },
     );
     if (!ok) return;
@@ -828,33 +754,8 @@ function MeetingTeamContent() {
       if (!docxRes.ok) throw new Error(docxData.error || "Không thể biên dịch file Word.");
       const documentUrl = docxData.documentUrl;
 
-      if (editableActionItems.length > 0) {
-        const tasksToInsert = editableActionItems
-          .filter(item => !item.is_header && item.assignee && item.assignee.trim() !== "")
-          .map(item => ({
-            title: `[Họp] ${item.content}`,
-            assignee: item.assignee || "Nhân viên",
-            priority: "Trung bình",
-            due_date: parseVietnameseDate(item.deadline),
-            progress: 0,
-            status: "planning",
-            description: `Đầu việc được phân công từ biên bản cuộc họp: "${editableTitle}".\n\nNội dung công việc: ${item.content}\nNgười chịu trách nhiệm: ${item.assignee}\nPhối hợp: ${item.coop || "Không"}\nHạn hoàn thành: ${item.deadline}\n\nTải biên bản Word: ${documentUrl}`,
-            start_date: editableDate || new Date().toISOString().split("T")[0],
-            link: documentUrl,
-            notes: JSON.stringify({ meetingId: selectedMeeting.id, origin: "meeting-team", stt: item.stt }),
-          }));
-
-        if (tasksToInsert.length > 0) {
-          const { error: taskError } = await supabase.from("tasks").insert(tasksToInsert);
-          if (taskError) {
-            console.error("Error creating tasks:", taskError);
-            await dialog.alert("Biên bản đã được khoá nhưng gặp lỗi khi tự động tạo Task: " + taskError.message, { title: "Tạo Task lỗi", tone: "warning" });
-          }
-        }
-      }
-
       await downloadFile(documentUrl, `Bien_Ban_Hop_${editableTitle.replace(/[^a-zA-Z0-9]/g, "_")}.docx`);
-      await dialog.alert("Biên bản đã được khoá. Các đầu việc đã được tạo thành Task.", { title: "Đã khoá biên bản", tone: "success" });
+      await dialog.alert("Biên bản đã được khoá và tải file Word về máy.", { title: "Đã khoá biên bản", tone: "success" });
 
       const { data: updatedMeeting } = await supabase.from("meetings").select("*").eq("id", selectedMeeting.id).single();
       if (updatedMeeting) {
@@ -1583,22 +1484,15 @@ function MeetingTeamContent() {
                   {selectedMeeting.status === "draft" && (
                     <>
                       <button
-                        onClick={handleReTranscribe}
-                        disabled={isRetranscribing}
-                        className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 active:scale-[0.97] disabled:opacity-50"
-                      >
-                        {isRetranscribing ? <><Loader2 className="animate-spin" size={14} /> Đang gỡ băng...</> : <><RotateCcw size={14} /> Gỡ băng lại</>}
-                      </button>
-                      <button
                         onClick={handleReAnalyze}
                         disabled={isReprocessing}
-                        className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 active:scale-[0.97] disabled:opacity-50"
+                        className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 active:scale-[0.97] disabled:opacity-50"
                       >
                         {isReprocessing ? <><Loader2 className="animate-spin" size={14} /> Đang phân tích...</> : <><Brain size={14} /> Phân tích lại bằng AI</>}
                       </button>
                       <button
                         onClick={handleSaveDraftEdits}
-                        className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-sm"
+                        className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-xl text-[11px] font-bold transition-all"
                       >
                         Lưu nháp
                       </button>
@@ -1606,7 +1500,7 @@ function MeetingTeamContent() {
                         onClick={handleConfirmMeeting}
                         className="px-4 py-2 bg-gradient-to-r from-[#005BAC] to-[#00AEEF] hover:from-blue-700 hover:to-cyan-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-blue-500/15 active:scale-[0.97]"
                       >
-                        <FileCheck size={14} /> Khóa biên bản &amp; Tạo Task
+                        <FileCheck size={14} /> Khóa biên bản
                       </button>
                     </>
                   )}

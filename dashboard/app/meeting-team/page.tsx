@@ -245,11 +245,14 @@ function MeetingTeamContent() {
         const email = session.user.email || "";
         const { data: empRows } = await supabase
           .from("employees_directory")
-          .select("name, email")
+          .select("id, name, email")
           .ilike("email", `%${email}%`);
         const empData = (empRows || []).find((r) => emailFieldMatches(r.email, email));
         setCurrentUser({
           email,
+          // id để hộp Mẫu giọng biết dòng nào là của chính người này -> họ tự ghi
+          // được cho mình mà không cần quyền quản lý nhân sự (migration 077).
+          employeeId: empData?.id || "",
           name: empData?.name || session.user.user_metadata?.full_name || "Nhân sự",
         });
       }
@@ -2157,6 +2160,7 @@ function MeetingTeamContent() {
       {showVoiceManager && (
         <VoiceSampleManager
           employees={employees.map(e => ({ id: e.id, name: e.name, position: e.role, voice_sample_path: e.voice_sample_path }))}
+          currentEmployeeId={currentUser?.employeeId || ""}
           onClose={() => setShowVoiceManager(false)}
           onChanged={fetchEmployees}
         />

@@ -10,10 +10,15 @@
 // Nên ghi cho: người chủ trì + 3 người phát biểu nhiều nhất (OpenAI nhận tối đa
 // 4 mẫu mỗi lần gọi).
 //
-// QUYỀN GHI: cột `voice_sample_path` nằm trên bảng `employees`, mà UPDATE bảng
-// này bị khoá sau can_manage_employees_caller() (migration 007). Người không có
-// quyền nhân sự sẽ bị RLS trả 0 dòng MÀ KHÔNG BÁO LỖI -> phải .select("id") rồi
-// kiểm tra mảng rỗng, nếu không họ tưởng đã lưu.
+// QUYỀN GHI — HAI LỐI KHÁC NHAU:
+//   • Mẫu giọng của CHÍNH MÌNH -> gọi RPC `set_my_voice_sample` (migration 077).
+//     Ai cũng tự ghi được cho mình, không cần nhờ HCNS.
+//   • Mẫu giọng của NGƯỜI KHÁC -> update thẳng bảng `employees`, chỉ Admin và
+//     người có cờ quản lý nhân sự làm được (khoá từ migration 007).
+//
+// Bảng `employees` bị RLS chặn thì trả 0 DÒNG MÀ KHÔNG BÁO LỖI -> phải
+// .select("id") rồi kiểm tra mảng rỗng, nếu không họ tưởng đã lưu. RPC thì trả
+// null khi không ghi được.
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -36,10 +41,13 @@ export type VoiceEmployee = {
 
 export default function VoiceSampleManager({
   employees,
+  currentEmployeeId,
   onClose,
   onChanged,
 }: {
   employees: VoiceEmployee[];
+  /** Hồ sơ nhân sự của chính người đang đăng nhập — dòng của họ đi lối RPC. */
+  currentEmployeeId?: string;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -87,6 +95,30 @@ export default function VoiceSampleManager({
     return () => clearInterval(timer);
   }, [recordingFor]);
 
+  /** Ghi cột voice_sample_path — tự chọn lối tuỳ là hồ sơ của mình hay người khác. */
+  const writeVoicePath = useCallback(async (employeeId: string, path: string | null) => {
+    if (currentEmployeeId && employeeId === currentEmployeeId) {
+      // RPC chỉ đụng đúng một cột trên đúng hồ sơ khớp email đăng nhập, và ép
+      // đường dẫn phải mang id của chính người gọi (xem migration 077).
+      const { data, error: rpcErr } = await supabase.rpc("set_my_voice_sample", { p_path: path });
+      if (rpcErr) throw rpcErr;
+      if (!data) {
+        throw new Error("Không ghi được mẫu giọng: hệ thống không tìm thấy hồ sơ nhân sự nào khớp email đăng nhập của bạn. Nhờ Phòng HCNS bổ sung email vào hồ sơ.");
+      }
+      return;
+    }
+
+    const { data: rows, error: dbErr } = await supabase
+      .from("employees")
+      .update({ voice_sample_path: path })
+      .eq("id", employeeId)
+      .select("id");
+    if (dbErr) throw dbErr;
+    if (!rows || rows.length === 0) {
+      throw new Error("Tài khoản của bạn chưa được cấp phép sửa xóa mẫu giọng của người khác.");
+    }
+  }, [currentEmployeeId]);
+
   const saveSample = useCallback(async (
     employeeId: string,
     blob: Blob,
@@ -108,19 +140,15 @@ export default function VoiceSampleManager({
         .upload(path, blob, { contentType, upsert: true });
       if (upErr) throw upErr;
 
-      const { data: rows, error: dbErr } = await supabase
-        .from("employees")
-        .update({ voice_sample_path: path })
-        .eq("id", employeeId)
-        .select("id");
-      if (dbErr) throw dbErr;
-      if (!rows || rows.length === 0) {
+      try {
+        await writeVoicePath(employeeId, path);
+      } catch (dbErr) {
         // Ghi CSDL hỏng -> dọn file vừa tải lên, trả mọi thứ về đúng như trước
         // khi bấm. Mẫu giọng cũ (nếu có) KHÔNG bị đụng tới.
         if (path !== oldPath) {
-          await supabase.storage.from(MEETINGS_BUCKET).remove([path]).catch(() => {});
+          await supabase.storage.from(MEETINGS_BUCKET).remove([path]);
         }
-        throw new Error("Tài khoản của bạn chưa được cấp phép sửa xóa.");
+        throw dbErr;
       }
 
       // Chỉ tới đây mới an toàn để dọn mẫu cũ. Khác đuôi file thì `upsert`
@@ -134,7 +162,7 @@ export default function VoiceSampleManager({
     } finally {
       setBusyId(null);
     }
-  }, [employees, onChanged]);
+  }, [employees, onChanged, writeVoicePath]);
 
   // ─── Tải file mẫu giọng có sẵn ───
   const pickFileFor = useCallback((employeeId: string) => {
@@ -258,15 +286,7 @@ export default function VoiceSampleManager({
       // Ghi CSDL TRƯỚC, xoá file SAU — xem ghi chú thứ tự ở saveSample. Làm
       // ngược thì người không đủ quyền vẫn xoá được file, để lại hồ sơ trỏ vào
       // một mẫu giọng không còn tồn tại.
-      const { data: rows, error: dbErr } = await supabase
-        .from("employees")
-        .update({ voice_sample_path: null })
-        .eq("id", employeeId)
-        .select("id");
-      if (dbErr) throw dbErr;
-      if (!rows || rows.length === 0) {
-        throw new Error("Tài khoản của bạn chưa được cấp phép sửa xóa.");
-      }
+      await writeVoicePath(employeeId, null);
       await supabase.storage.from(MEETINGS_BUCKET).remove([path]);
       onChanged();
     } catch (err: any) {
@@ -274,12 +294,17 @@ export default function VoiceSampleManager({
     } finally {
       setBusyId(null);
     }
-  }, [onChanged]);
+  }, [onChanged, writeVoicePath]);
 
   const keyword = search.trim().toLowerCase();
-  const rows = keyword
+  const matched = keyword
     ? employees.filter(e => (e.name || "").toLowerCase().includes(keyword))
     : employees;
+  // Hồ sơ của chính mình lên đầu: ai vào đây cũng tìm mình trước, mà danh bạ
+  // hơn 120 người thì cuộn mỏi tay.
+  const rows = currentEmployeeId
+    ? [...matched].sort((a, b) => (a.id === currentEmployeeId ? -1 : b.id === currentEmployeeId ? 1 : 0))
+    : matched;
 
   // createPortal xuống document.body: phần tử `fixed` nằm trong một khối có
   // backdrop-filter sẽ bị nhốt trong khối đó chứ không căn theo màn hình nữa.
@@ -333,7 +358,12 @@ export default function VoiceSampleManager({
             return (
               <div key={emp.id} className="flex items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5">
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-slate-700 truncate">{emp.name}</p>
+                  <p className="text-xs font-bold text-slate-700 truncate flex items-center gap-1.5">
+                    {emp.name}
+                    {emp.id === currentEmployeeId && (
+                      <span className="bg-blue-50 text-[#005BAC] border border-blue-200 rounded-full px-1.5 py-0.5 text-[9px] font-extrabold shrink-0">Bạn</span>
+                    )}
+                  </p>
                   <p className="text-[10px] font-semibold text-slate-400 truncate">
                     {emp.voice_sample_path
                       ? <span className="text-emerald-600 inline-flex items-center gap-1"><CheckCircle2 size={11} /> Đã có mẫu giọng</span>

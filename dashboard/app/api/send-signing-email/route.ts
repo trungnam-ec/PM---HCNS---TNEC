@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
 
     const origin =
       b.siteUrl || request.headers.get("origin") || process.env.NEXT_PUBLIC_SITE_URL || cfg.site_url;
-    const link = `${origin}/bao-cao`;
+    const link = `${origin}/ho-so-trinh-ky`;
 
     const info = [
       row("Mã phiếu", esc(b.maPhieu)),

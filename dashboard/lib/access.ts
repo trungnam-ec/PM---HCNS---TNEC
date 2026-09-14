@@ -113,7 +113,7 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleDef> = {
   // Báo cáo quản trị (Kế hoạch thu chi, Sản lượng, Doanh thu). Số liệu tài chính
   // toàn công ty -> để ở gói cao nhất; grantFlag cho phép cấp riêng từng người
   // (VD Trưởng phòng KHĐT) mà không phải nâng gói cả phòng.
-  reports:        { minPlan: "enterprise", route: "/bao-cao", grantFlag: "canViewReports", requireFlag: true },
+  reports:        { minPlan: "enterprise", route: "/ho-so-trinh-ky", grantFlag: "canViewReports", requireFlag: true },
   ai_search:      { minPlan: "enterprise" }, // tính năng, không có route riêng
 };
 

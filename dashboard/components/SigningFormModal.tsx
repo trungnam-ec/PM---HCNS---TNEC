@@ -28,14 +28,14 @@ import {
 } from "@/lib/financePartners";
 import {
   tinhDeNghi, tinhLuyKe, fmtMoney, uploadDossierFile, resolveDossierUrl, errText,
-  downloadSigningForm, docxFileName,
+  downloadSigningForm, docxFileName, buildSigningRoute, resolveCap1,
   type SigningSubmission, type SigningFile,
   LOAI_META, SO_SANH_MAU,
   type SigningLoai, type SoSanhRow,
 } from "@/lib/signingSubmissions";
 import {
   X, Upload, Sparkles, Loader2, Save, Send, Trash2, FileText, Plus,
-  AlertTriangle, Download, Calculator, ExternalLink, Settings, Search,
+  AlertTriangle, Download, Calculator, ExternalLink, Settings, Search, Check,
 } from "lucide-react";
 
 const inputCls =
@@ -68,10 +68,14 @@ const toRate = (s: string): number | null => {
 const showNum = (v: number | null | undefined): string =>
   typeof v === "number" && Number.isFinite(v) ? new Intl.NumberFormat("vi-VN").format(v) : "";
 
-function toDraft(s: SigningSubmission | null, defaultDept = ""): Draft {
+function toDraft(s: SigningSubmission | null, defaultDept = "", prefill?: Record<string, string>): Draft {
   // Phiếu mới: mặc định Phòng ban = phòng của người lập (tra danh bạ). "Chưa xếp
   // phòng" thì để trống cho họ tự chọn thay vì ghi một giá trị vô nghĩa.
-  if (!s) return { don_vi: /^chưa xếp/i.test(defaultDept) ? "" : defaultDept };
+  // `prefill` (vd trình ký từ dòng Kế hoạch TC) đè lên mặc định.
+  if (!s) {
+    const base: Draft = { don_vi: /^chưa xếp/i.test(defaultDept) ? "" : defaultDept };
+    return prefill ? { ...base, ...prefill } : base;
+  }
   const d: Draft = {};
   for (const k of ["don_vi", "ve_viec", "noi_dung_trinh", "chu_dau_tu", "du_an",
     "hop_dong_so", "ngay_ky_hop_dong", "goi_thau", "project_code",
@@ -81,13 +85,16 @@ function toDraft(s: SigningSubmission | null, defaultDept = ""): Draft {
   }
   d.vat_percent = s.vat_percent != null ? String(s.vat_percent) : "";
   d.dot_so = s.dot_so != null ? String(s.dot_so) : "";
+  // migration 074 — 2 ô tích PGĐ, dẫn xuất từ route của phiếu (nguồn sự thật).
+  d.pgd_qlda = s.route?.includes("cho_pgd_qlda") ? "1" : "";
+  d.pgd_khdt = s.route?.includes("cho_pgd_khdt") ? "1" : "";
   for (const k of NUM_FIELDS) d[k] = showNum(s[k]);
   for (const k of RATE_FIELDS) d[k] = s[k] != null ? String(s[k]) : "";
   return d;
 }
 
 export default function SigningFormModal({
-  existing, loai: loaiMoi, currentEmail, currentName, currentDepartment, onClose, onSaved,
+  existing, loai: loaiMoi, currentEmail, currentName, currentDepartment, prefill, onClose, onSaved, onCreated,
 }: {
   existing: SigningSubmission | null;
   /** Loại phiếu khi LẬP MỚI. Sửa phiếu cũ thì lấy theo phiếu, không đổi được. */
@@ -96,8 +103,12 @@ export default function SigningFormModal({
   currentName: string;
   /** Phòng ban của người lập (useCurrentUser().department) — mặc định ô Phòng ban. */
   currentDepartment?: string;
+  /** Giá trị điền sẵn khi LẬP MỚI (vd trình ký từ dòng Kế hoạch TC). Khoá draft. */
+  prefill?: Record<string, string>;
   onClose: () => void;
   onSaved: () => void;
+  /** Gọi sau khi TẠO MỚI phiếu thành công, kèm id — để nơi gọi liên kết (Kế hoạch TC). */
+  onCreated?: (id: string) => void | Promise<void>;
 }) {
   const { projects } = useProjectCatalog();
   // Danh sách phòng ban + BĐH (bảng departments) — nguồn cho ô "Phòng ban".
@@ -111,7 +122,7 @@ export default function SigningFormModal({
   const loai: SigningLoai = existing ? existing.loai : (loaiMoi || "ho_so");
   const laHopDong = loai === "hop_dong";
   const meta = LOAI_META[loai];
-  const [d, setD] = useState<Draft>(() => toDraft(existing, currentDepartment));
+  const [d, setD] = useState<Draft>(() => toDraft(existing, currentDepartment, prefill));
   // Bảng so sánh A-B ↔ B-B′ — mảng riêng, không nhét vào Draft (Draft toàn chuỗi).
   const [soSanh, setSoSanh] = useState<SoSanhRow[]>(
     () => (existing?.so_sanh?.length ? existing.so_sanh : SO_SANH_MAU).map((r) => ({ ...r }))
@@ -282,6 +293,9 @@ export default function SigningFormModal({
       vat_percent: toRate(d.vat_percent || ""),
       // Bỏ dòng trống trước khi lưu — người lập hay để lại vài dòng mẫu chưa điền.
       so_sanh: soSanh.filter((r) => [r.muc, r.ab, r.bb].some((v) => (v || "").trim() !== "")),
+      // migration 074 — ghi lại lựa chọn PGĐ (route dựng ở save()); route mới là
+      // nguồn sự thật, cột này chỉ để đối chiếu nhanh.
+      pgd_chon: [d.pgd_qlda ? "qlda" : "", d.pgd_khdt ? "khdt" : ""].filter(Boolean).join(","),
     };
     for (const k of NUM_FIELDS) if (k !== "de_nghi_thanh_toan") p[k] = toNum(d[k] || "");
     for (const k of RATE_FIELDS) p[k] = toRate(d[k] || "");
@@ -410,20 +424,34 @@ export default function SigningFormModal({
       // hợp đồng, không có đợt nào cả.
       if (submit && !laHopDong && !payload.dot_so) throw new Error("Phải có Đợt số trước khi trình.");
 
+      // Dựng luồng riêng của phiếu + tính người duyệt cấp 1 (theo Phòng ban trên
+      // phiếu + người lập). Bước đầu luôn là 'cho_cap1'. Tính cả khi lưu nháp để
+      // lúc "Trình" ở màn chi tiết cũng đi đúng luồng.
+      const route = buildSigningRoute(loai, d.pgd_qlda === "1", d.pgd_khdt === "1");
+      const cap1 = await resolveCap1({
+        submitterName: currentName || "",
+        submitterEmail: currentEmail || "",
+        dept: ((payload.don_vi as string) || currentDepartment || ""),
+      });
+      const routeFields = { route, cap1_email: cap1.email };
+
       if (existing) {
         const { error } = await supabase
           .from("signing_submissions")
-          .update({ ...payload, ...(submit ? { status: "cho_pho_giam_doc" } : {}) })
+          .update({ ...payload, ...routeFields, ...(submit ? { status: route[0] } : {}) })
           .eq("id", existing.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("signing_submissions").insert([{
+        const { data, error } = await supabase.from("signing_submissions").insert([{
           ...payload,
-          status: submit ? "cho_pho_giam_doc" : "nhap",
+          ...routeFields,
+          status: submit ? route[0] : "nhap",
           created_by: currentEmail,
           created_by_name: currentName || null,
-        }]);
+        }]).select("id").single();
         if (error) throw error;
+        // Liên kết ngược (vd dòng Kế hoạch TC) — chờ xong để khoá dòng chắc chắn.
+        if (onCreated && data?.id) await onCreated(data.id as string);
       }
       onSaved();
       onClose();
@@ -726,6 +754,34 @@ export default function SigningFormModal({
                 <input value={d.noi_dung_trinh || ""} onChange={(e) => set("noi_dung_trinh", e.target.value)}
                   className={inputCls} />
               </label>
+              {/* Tham vấn Phó Giám đốc — TÙY CHỌN, tích tự do 0/1/2 vị. Không tích
+                  thì cấp 1 xong lên thẳng Giám đốc; tích vị nào thì chèn vị đó vào
+                  luồng (route dựng lúc lưu theo lựa chọn này). */}
+              <div className="flex flex-col gap-1.5 md:col-span-3">
+                <span className={labelCls}>Tham vấn Phó Giám đốc (Tùy chọn - nếu cần)</span>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    ["pgd_qlda", "Phó Giám đốc phụ trách Dự án (QLDA)"],
+                    ["pgd_khdt", "Phó Giám đốc phụ trách Kế hoạch Đấu thầu (KHĐT)"],
+                  ] as const).map(([k, lb]) => {
+                    const on = d[k] === "1";
+                    return (
+                      <button key={k} type="button" onClick={() => set(k, on ? "" : "1")}
+                        className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                          on ? "bg-blue-50 border-blue-300 text-blue-700"
+                             : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                        }`}>
+                        <span className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
+                          on ? "bg-blue-600 text-white" : "border border-slate-300"
+                        }`}>
+                          {on && <Check size={11} />}
+                        </span>
+                        {lb}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </section>
 
@@ -1041,7 +1097,7 @@ export default function SigningFormModal({
           <button type="button" onClick={() => save(true)} disabled={!!busy}
             className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-md shadow-blue-500/10 transition-all cursor-pointer">
             {busy === "submit" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-            Trình Phó Giám đốc
+            Trình duyệt
           </button>
         </div>
       </div>

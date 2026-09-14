@@ -55,7 +55,7 @@ export const ROUTE_MIN_PLAN: { prefix: string; min: Plan }[] = [
   { prefix: "/document-control", min: "professional" },
   { prefix: "/van-thu", min: "professional" },
   { prefix: "/tong-hop", min: "professional" },
-  { prefix: "/bao-cao", min: "enterprise" },
+  { prefix: "/ho-so-trinh-ky", min: "enterprise" },
 ];
 
 // ─── PHÂN GÓI THEO TÍNH NĂNG (không gắn với route riêng) ───

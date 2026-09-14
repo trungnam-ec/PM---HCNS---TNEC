@@ -16,6 +16,9 @@ import { supabase } from "./supabase";
 import { apiFetch } from "./apiClient";
 import { emailFieldMatches } from "./emailMatch";
 import type { ApprovalPermissions } from "./approvers";
+import {
+  fetchApprovalGroups, getApprovalGroupOfMember, isDepartmentManagerRole, normalizeName,
+} from "./approvers";
 
 export const SIGNING_BUCKET = "signing-dossiers";
 const SIGNED_TTL = 60 * 60; // 1 giờ
@@ -24,13 +27,14 @@ const SIGNED_TTL = 60 * 60; // 1 giờ
 // (migration 053). Hai giá trị cũ giữ trong kiểu để phiếu lịch sử không vỡ.
 export type SigningStatus =
   | "nhap"
+  | "cho_cap1"           // migration 074 — bước Cấp 1 (Tổ trưởng / TP-PP / Admin)
   | "cho_pho_giam_doc"
   | "cho_giam_doc"
   | "cho_ke_toan"
   | "hoan_tat"
   | "tra_lai"
-  | "cho_pgd_qlda"
-  | "cho_pgd_khdt";
+  | "cho_pgd_qlda"       // migration 074 — PGĐ Dự án (được chọn)
+  | "cho_pgd_khdt";      // migration 074 — PGĐ KHĐT (được chọn)
 
 export type SigningFile = { path: string; name: string; size?: number };
 
@@ -109,6 +113,14 @@ export type SigningSubmission = {
 
   status: SigningStatus;
 
+  // ─── migration 074: luồng động + cấp 1 ───
+  route: SigningStatus[];        // danh sách bước của riêng phiếu
+  cap1_email: string | null;     // email người duyệt cấp 1 (null = Admin duyệt thay)
+  cap1_by: string | null;
+  cap1_at: string | null;
+  ykien_cap1: string | null;
+  pgd_chon: "" | "qlda" | "khdt" | null;  // PGĐ người trình chọn
+
   ykien_qlda: string | null;
   qlda_by: string | null;
   qlda_at: string | null;
@@ -139,6 +151,7 @@ export const STATUS_META: Record<
   { label: string; short: string; chip: string }
 > = {
   nhap:             { label: "Nháp",              short: "Nháp",      chip: "bg-slate-100 text-slate-600" },
+  cho_cap1:         { label: "Chờ Trưởng bộ phận", short: "Trưởng BP", chip: "bg-amber-50 text-amber-700" },
   cho_pho_giam_doc: { label: "Chờ Phó Giám đốc",  short: "Phó GĐ",    chip: "bg-amber-50 text-amber-700" },
   cho_giam_doc:     { label: "Chờ Giám đốc",      short: "Giám đốc",  chip: "bg-orange-50 text-orange-700" },
   cho_ke_toan:      { label: "Chờ Kế toán chi",   short: "Kế toán",   chip: "bg-blue-50 text-blue-700" },
@@ -213,9 +226,100 @@ export function nextStatus(cur: SigningStatus, loai: SigningLoai): SigningStatus
   return i >= 0 && i < flow.length - 1 ? flow[i + 1] : null;
 }
 
-// Cờ quyền giữ từng chặng. Chặng Phó Giám đốc nhận CẢ HAI cờ — chỉ cần một.
+// ─── LUỒNG ĐỘNG THEO ROUTE (migration 074) ───
+// Dựng danh sách bước cho phiếu MỚI: Cấp 1 → [PGĐ nếu chọn] → Giám đốc →
+// [Kế toán nếu là phiếu chi tiền = loại 'ho_so']. Đây là chỗ DUY NHẤT quyết
+// định luồng — trigger CSDL chỉ đi theo mảng này, không tự suy.
+// PGĐ chọn TỰ DO (0, 1 hoặc 2 ô tích): đi qua lần lượt QLDA rồi KHĐT nếu tích cả
+// hai. Thứ tự QLDA trước KHĐT khớp thứ tự ô ý kiến trên tờ phiếu (mục 3 rồi mục 4).
+export function buildSigningRoute(
+  loai: SigningLoai,
+  pgdQlda: boolean,
+  pgdKhdt: boolean
+): SigningStatus[] {
+  const r: SigningStatus[] = ["cho_cap1"];
+  if (pgdQlda) r.push("cho_pgd_qlda");
+  if (pgdKhdt) r.push("cho_pgd_khdt");
+  r.push("cho_giam_doc");
+  if (loai !== "hop_dong") r.push("cho_ke_toan"); // chỉ phiếu chi tiền
+  return r;
+}
+
+// Các bước để hiển thị thanh tiến trình: route riêng của phiếu nếu có, không thì
+// suy từ luồng cũ (phiếu trước 074).
+export function stepsOfSubmission(s: SigningSubmission): SigningStatus[] {
+  if (Array.isArray(s.route) && s.route.length) return s.route;
+  return flowOf(s.loai).filter((x) => x !== "hoan_tat");
+}
+
+// Bước kế tiếp khi duyệt: theo route nếu có (bước cuối -> 'hoan_tat'); phiếu cũ
+// dùng lại nextStatus. null = không xác định được (không nên xảy ra khi đang duyệt).
+export function advanceStatus(s: SigningSubmission): SigningStatus | null {
+  if (Array.isArray(s.route) && s.route.length) {
+    const i = s.route.indexOf(s.status);
+    if (i < 0) return null;
+    return i < s.route.length - 1 ? s.route[i + 1] : "hoan_tat";
+  }
+  return nextStatus(s.status, s.loai);
+}
+
+// ─── Tính NGƯỜI DUYỆT CẤP 1 lúc lập/trình phiếu (migration 074) ───
+// Thứ tự: Tổ trưởng (nếu người trình thuộc tổ) → Trưởng/Phó phòng cùng phòng
+// (ưu tiên Trưởng phòng, loại chính người trình) → thiếu cả 3 thì Admin (email null).
+// Trả EMAIL để trigger CSDL khớp danh tính người duyệt; kèm tên để hiển thị.
+export type Cap1Result = { email: string | null; name: string | null };
+
+export async function resolveCap1(params: {
+  submitterName: string;
+  submitterEmail: string;
+  dept: string;
+}): Promise<Cap1Result> {
+  const { submitterName, submitterEmail, dept } = params;
+  await fetchApprovalGroups();
+
+  const { data: people } = await supabase
+    .from("employees_directory")
+    .select("name, email, role, department");
+  const list = (people || []) as {
+    name: string; email: string | null; role: string | null; department: string | null;
+  }[];
+  const emailOf = (name: string): string | null =>
+    list.find((p) => normalizeName(p.name) === normalizeName(name))?.email || null;
+
+  // 1) Tổ trưởng của tổ người trình.
+  const group = getApprovalGroupOfMember(submitterName);
+  if (group?.leader_name && normalizeName(group.leader_name) !== normalizeName(submitterName)) {
+    return { email: emailOf(group.leader_name), name: group.leader_name };
+  }
+
+  // 2) Trưởng/Phó phòng cùng phòng (loại chính người trình).
+  const d = normalizeName(dept);
+  const mgrs = d
+    ? list.filter((p) =>
+        normalizeName(p.department) === d &&
+        normalizeName(p.name) !== normalizeName(submitterName) &&
+        (!submitterEmail || normalizeName(p.email || "") !== normalizeName(submitterEmail)) &&
+        isDepartmentManagerRole(p.role))
+    : [];
+  const isTP = (r?: string | null) => {
+    const x = normalizeName(r);
+    return x.includes("truong phong") && !x.includes("pho truong phong");
+  };
+  const chosen = mgrs.find((p) => isTP(p.role)) || mgrs[0];
+  if (chosen) return { email: chosen.email || null, name: chosen.name };
+
+  // 3) Không có ai -> Admin duyệt thay.
+  return { email: null, name: null };
+}
+
+// Cờ quyền giữ từng chặng.
+//  - cho_pho_giam_doc: chặng GỘP của phiếu CŨ (một trong hai cờ) — giữ cho phiếu lịch sử.
+//  - cho_pgd_qlda / cho_pgd_khdt: chặng PGĐ được CHỌN của phiếu mới (074) — mỗi bên một cờ.
+//  - cho_cap1: KHÔNG theo cờ mà theo email lưu trên phiếu (xử lý riêng trong canActOn).
 const STAGE_FLAGS: Partial<Record<SigningStatus, (keyof ApprovalPermissions)[]>> = {
   cho_pho_giam_doc: ["canApproveSigningQlda", "canApproveSigningKhdt"],
+  cho_pgd_qlda: ["canApproveSigningQlda"],
+  cho_pgd_khdt: ["canApproveSigningKhdt"],
   cho_giam_doc: ["canApproveSigningDirector"],
   cho_ke_toan:  ["canApproveSigningAccounting"],
 };
@@ -223,6 +327,8 @@ const STAGE_FLAGS: Partial<Record<SigningStatus, (keyof ApprovalPermissions)[]>>
 // Tên cột trong approval_permissions, để tra email người giữ chặng kế tiếp.
 const STAGE_COLUMNS: Partial<Record<SigningStatus, string[]>> = {
   cho_pho_giam_doc: ["can_approve_signing_qlda", "can_approve_signing_khdt"],
+  cho_pgd_qlda: ["can_approve_signing_qlda"],
+  cho_pgd_khdt: ["can_approve_signing_khdt"],
   cho_giam_doc: ["can_approve_signing_director"],
   cho_ke_toan:  ["can_approve_signing_accounting"],
 };
@@ -233,7 +339,9 @@ const STAGE_COLUMNS: Partial<Record<SigningStatus, string[]>> = {
  * gmail), nên phải tách ra hết chứ không lấy mỗi cái đầu.
  */
 export async function fetchStageApproverEmails(stage: SigningStatus): Promise<string[]> {
-  const cols = STAGE_COLUMNS[normalizeStatus(stage)];
+  // KHÔNG normalize: chặng PGĐ được chọn (cho_pgd_qlda/khdt) phải tra ĐÚNG một cột,
+  // normalize sẽ quy về cho_pho_giam_doc rồi lấy cả hai — sai người nhận.
+  const cols = STAGE_COLUMNS[stage];
   if (!cols?.length) return [];
   // Chặng Phó Giám đốc có 2 cột -> lấy dòng nào bật MỘT trong hai (or của
   // PostgREST), vì chỉ cần một vị xem xét là phiếu đi tiếp.
@@ -256,10 +364,18 @@ export async function fetchStageApproverEmails(stage: SigningStatus): Promise<st
 export function canActOn(
   s: SigningSubmission,
   perms: ApprovalPermissions,
-  isAdmin: boolean
+  isAdmin: boolean,
+  email?: string
 ): boolean {
   if (isAdmin) return true;
-  const flags = STAGE_FLAGS[normalizeStatus(s.status)];
+  // Cấp 1: khớp email đã lưu trên phiếu (không theo cờ). Admin duyệt thay khi
+  // phiếu không tính được cấp 1 (cap1_email rỗng) — đã xử lý ở nhánh isAdmin trên.
+  if (s.status === "cho_cap1") {
+    return !!email && !!s.cap1_email &&
+      s.cap1_email.toLowerCase().includes(email.toLowerCase());
+  }
+  // Các chặng theo cờ. KHÔNG normalize: cho_pgd_qlda/khdt phải khớp đúng một cờ.
+  const flags = STAGE_FLAGS[s.status];
   return !!flags?.some((f) => !!perms[f]);
 }
 
@@ -507,6 +623,10 @@ function normalizeRow(r: Record<string, unknown>): SigningSubmission {
     // để mọi chỗ đọc `s.loai` / `s.so_sanh` không phải kiểm null.
     loai: (r.loai as SigningLoai) || "ho_so",
     so_sanh: Array.isArray(r.so_sanh) ? (r.so_sanh as SoSanhRow[]) : [],
+    // migration 074 — phiếu cũ không có route/cap1: về mặc định để mọi chỗ đọc
+    // s.route/s.pgd_chon không phải kiểm null.
+    route: Array.isArray(r.route) ? (r.route as SigningStatus[]) : [],
+    pgd_chon: (r.pgd_chon as SigningSubmission["pgd_chon"]) ?? "",
   };
 }
 

@@ -1093,8 +1093,8 @@ export default function Header({ title, subtitle }: Props) {
                           // Mở thẳng bảng công việc và bung sẵn modal của đúng việc đó
                           ? `/tasks?taskId=${notif.taskId}`
                           : notif.type === "signing"
-                          // Mở thẳng tab Kế hoạch thu chi > Phiếu trình ký
-                          ? "/bao-cao"
+                          // Mở thẳng module Hồ sơ trình ký > Phiếu trình ký
+                          ? "/ho-so-trinh-ky"
                           : notif.type === "leave"
                           ? "/settings?tab=approvals&subtab=leave"
                           : notif.type === "trip"

@@ -21,12 +21,12 @@ import { apiFetch } from "@/lib/apiClient";
 import { crumpleToss } from "@/lib/crumpleToss";
 import { useConfirmBox } from "@/components/ConfirmDialog";
 import {
-  fetchSubmissions, canActOn, canEdit, nextStatus, tinhDeNghi,
+  fetchSubmissions, canActOn, canEdit, advanceStatus, stepsOfSubmission, tinhDeNghi,
   fmtMoney, fmtDateTime, resolveDossierUrl, fetchStageApproverEmails, errText,
   normalizeStatus, pgdOpinionField, downloadSigningForm, docxPayloadFromRow, docxFileName,
   deleteSubmission, duplicateSubmission, appendDossierFiles, removeDossierFile,
   pushToPaymentDossier,
-  STATUS_META, ACTION_LABEL, EVENT_LABEL, FLOW, flowOf, LOAI_META,
+  STATUS_META, ACTION_LABEL, EVENT_LABEL, FLOW, LOAI_META,
   type SigningSubmission, type SigningStatus, type SigningLoai,
 } from "@/lib/signingSubmissions";
 import {
@@ -219,8 +219,8 @@ export default function SigningPanel() {
   // "Cần tôi xử lý" ở dải KPI phía trên đếm hộ.
 
   const canDuyet = useMemo(
-    () => rows.filter((r) => canActOn(r, user.perms, user.isAdmin) && !["hoan_tat", "nhap", "tra_lai"].includes(r.status)),
-    [rows, user.perms, user.isAdmin]
+    () => rows.filter((r) => canActOn(r, user.perms, user.isAdmin, user.email) && !["hoan_tat", "nhap", "tra_lai"].includes(r.status)),
+    [rows, user.perms, user.isAdmin, user.email]
   );
   const cuaToi = useMemo(
     () => rows.filter((r) => r.created_by.toLowerCase() === user.email.toLowerCase()),
@@ -467,7 +467,7 @@ export default function SigningPanel() {
             <div className="divide-y divide-slate-100">
               {visible.map((r) => {
                 const meta = STATUS_META[r.status];
-                const mine = canActOn(r, user.perms, user.isAdmin) &&
+                const mine = canActOn(r, user.perms, user.isAdmin, user.email) &&
                   !["hoan_tat", "nhap", "tra_lai"].includes(r.status);
                 return (
                   // Dòng là <div role="button"> chứ không phải <button>: bên trong
@@ -865,7 +865,7 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
     }
   };
 
-  const actable = canActOn(row, user.perms, user.isAdmin) &&
+  const actable = canActOn(row, user.perms, user.isAdmin, user.email) &&
     !["hoan_tat", "nhap", "tra_lai"].includes(row.status);
   const editable = canEdit(row, user.email, user.isAdmin);
   // Người lập trình phiếu đi — từ nháp hoặc sau khi bị trả lại. Nút này trước
@@ -888,6 +888,9 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
       const nextEmails =
         event === "tra_lai" || toStatus === "hoan_tat"
           ? []
+          // Bước cấp 1 không theo cờ — email người duyệt đã lưu trên phiếu.
+          : toStatus === "cho_cap1"
+          ? (row.cap1_email || "").split(",").map((e) => e.trim()).filter((e) => e.includes("@"))
           : await fetchStageApproverEmails(toStatus);
       const res = await apiFetch("/api/send-signing-email", {
         method: "POST",
@@ -929,9 +932,13 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
     dangChay.current = true;
     setBusy(true); setErr("");
     try {
+      // Bước đầu = route[0] của phiếu (thường 'cho_cap1'); phiếu cũ không route
+      // thì về luồng cũ 'cho_pho_giam_doc'.
+      const firstStep: SigningStatus =
+        row.route && row.route.length ? row.route[0] : "cho_pho_giam_doc";
       const { error } = await supabase
         .from("signing_submissions")
-        .update({ status: "cho_pho_giam_doc" })
+        .update({ status: firstStep })
         .eq("id", row.id);
       if (error) throw error;
 
@@ -942,7 +949,7 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
       // Email chỉ là báo tin, hỏng cũng không làm sai dữ liệu — và cảnh báo của
       // nó nổi ở PANEL CHA (onMailWarn) nên modal đóng rồi vẫn đọc được.
       onDone();
-      void notify("trinh", row.status, "cho_pho_giam_doc", {});
+      void notify("trinh", row.status, firstStep, {});
     } catch (e) {
       setErr(errText(e));
       dangChay.current = false;
@@ -959,7 +966,7 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
 
   // Ghi ý kiến vào đúng cột của cấp đang giữ phiếu, rồi đẩy sang bước kế tiếp.
   const approve = async () => {
-    const nxt = nextStatus(row.status, row.loai);
+    const nxt = advanceStatus(row);
     if (!nxt || dangChay.current) return;
     dangChay.current = true;
     setBusy(true); setErr("");
@@ -967,18 +974,27 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
       const now = new Date().toISOString();
       const who = user.name || user.email;
       const patch: Record<string, unknown> = { status: nxt };
-      const cur = normalizeStatus(row.status);
-      if (cur === "cho_pho_giam_doc") {
-        // Ghi vào ô của ĐÚNG vị Phó Giám đốc đang ký — tờ phiếu có hai ô riêng
-        // (mục 3 P.QLDA, mục 4 P.KHĐT), ô của vị không ký để trắng.
+      // Dùng THẲNG row.status (không normalize): chặng PGĐ mới (cho_pgd_qlda/khdt)
+      // ghi vào đúng ô của vị đó; chặng cũ gộp (cho_pho_giam_doc) thì suy theo cờ.
+      const cur = row.status;
+      if (cur === "cho_cap1") {
+        Object.assign(patch, { ykien_cap1: ykien || null, cap1_by: who, cap1_at: now });
+      } else if (cur === "cho_pgd_qlda") {
+        Object.assign(patch, { ykien_qlda: ykien || null, qlda_by: who, qlda_at: now });
+      } else if (cur === "cho_pgd_khdt") {
+        Object.assign(patch, { ykien_khdt: ykien || null, khdt_by: who, khdt_at: now });
+      } else if (cur === "cho_pho_giam_doc") {
+        // Phiếu CŨ: chặng PGĐ gộp — ghi vào ô của vị đang ký (theo cờ).
         if (pgdOpinionField(user.perms) === "qlda") {
           Object.assign(patch, { ykien_qlda: ykien || null, qlda_by: who, qlda_at: now });
         } else {
           Object.assign(patch, { ykien_khdt: ykien || null, khdt_by: who, khdt_at: now });
         }
+      } else if (cur === "cho_giam_doc") {
+        Object.assign(patch, { ykien_giam_doc: ykien || null, giam_doc_by: who, giam_doc_at: now });
+      } else if (cur === "cho_ke_toan") {
+        Object.assign(patch, { ke_toan_by: who, ke_toan_at: now, ngay_chi: now.slice(0, 10) });
       }
-      if (cur === "cho_giam_doc") Object.assign(patch, { ykien_giam_doc: ykien || null, giam_doc_by: who, giam_doc_at: now });
-      if (cur === "cho_ke_toan") Object.assign(patch, { ke_toan_by: who, ke_toan_at: now, ngay_chi: now.slice(0, 10) });
 
       const { error } = await supabase.from("signing_submissions").update(patch).eq("id", row.id);
       if (error) throw error;
@@ -1081,25 +1097,39 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
         ["Tạm ứng còn lại", `${fmtMoney(row.tam_ung_con_lai)} đồng`],
       ];
 
-  // Chặng Phó Giám đốc gộp làm một dòng: chỉ cần MỘT trong hai vị xem xét.
-  // Lấy vết của vị nào đã ký (QLDA hoặc KHĐT), kèm nhãn để biết ai ký.
-  const pgdBy = row.qlda_by || row.khdt_by;
-  const pgdAt = row.qlda_at || row.khdt_at;
-  const pgdYk = row.qlda_at ? row.ykien_qlda : row.khdt_at ? row.ykien_khdt : null;
-  const pgdName = row.qlda_at ? "Phó Giám đốc (P.QLDA)"
-    : row.khdt_at ? "Phó Giám đốc (P.KHĐT)"
-    : "Phó Giám đốc (QLDA hoặc KHĐT)";
-
-  // Phiếu HỢP ĐỒNG không có chặng Kế toán — bỏ dòng đó khỏi thanh tiến trình,
-  // nếu không người xem tưởng phiếu còn thiếu một bước chưa ai làm.
-  const steps: [SigningStatus, string, string | null, string | null, string | null][] = [
-    ["cho_pho_giam_doc", pgdName, pgdBy, pgdAt, pgdYk],
-    ["cho_giam_doc", "Giám đốc", row.giam_doc_by, row.giam_doc_at, row.ykien_giam_doc],
-    ...(row.loai === "hop_dong"
-      ? []
-      : [["cho_ke_toan", "Kế toán", row.ke_toan_by, row.ke_toan_at, null] as
-          [SigningStatus, string, string | null, string | null, string | null]]),
-  ];
+  // ─── Tiến trình duyệt — dựng theo ROUTE của chính phiếu (migration 074) ───
+  // Phiếu mới đọc route riêng; phiếu cũ (route rỗng) suy từ luồng cũ. Mỗi bước
+  // lấy đúng ô vết ký + ý kiến tương ứng. "here" = bước hiện tại (chưa ký).
+  const stepInfo = (st: SigningStatus): { name: string; by: string | null; at: string | null; yk: string | null } => {
+    switch (st) {
+      case "cho_cap1":
+        return {
+          name: row.cap1_email ? "Trưởng bộ phận" : "Trưởng bộ phận (Admin duyệt thay)",
+          by: row.cap1_by, at: row.cap1_at, yk: row.ykien_cap1,
+        };
+      case "cho_pgd_qlda":
+        return { name: "Phó Giám đốc (Dự án)", by: row.qlda_by, at: row.qlda_at, yk: row.ykien_qlda };
+      case "cho_pgd_khdt":
+        return { name: "Phó Giám đốc (KHĐT)", by: row.khdt_by, at: row.khdt_at, yk: row.ykien_khdt };
+      case "cho_pho_giam_doc": // phiếu cũ — chặng PGĐ gộp
+        return {
+          name: "Phó Giám đốc",
+          by: row.qlda_by || row.khdt_by,
+          at: row.qlda_at || row.khdt_at,
+          yk: row.qlda_at ? row.ykien_qlda : row.khdt_at ? row.ykien_khdt : null,
+        };
+      case "cho_giam_doc":
+        return { name: "Giám đốc", by: row.giam_doc_by, at: row.giam_doc_at, yk: row.ykien_giam_doc };
+      case "cho_ke_toan":
+        return { name: "Kế toán", by: row.ke_toan_by, at: row.ke_toan_at, yk: null };
+      default:
+        return { name: STATUS_META[st]?.label || st, by: null, at: null, yk: null };
+    }
+  };
+  const steps = stepsOfSubmission(row).map((st) => {
+    const x = stepInfo(st);
+    return { key: st, name: x.name, by: x.by, at: x.at, yk: x.yk, here: row.status === st };
+  });
 
   return createPortal(
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-start justify-center pt-[5vh] p-4">
@@ -1215,28 +1245,27 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
           <section className="space-y-2">
             <h5 className={labelCls}>Tiến trình duyệt</h5>
             <div className="space-y-2">
-              {steps.map(([st, name, by, at, yk]) => {
-                const done = !!at;
-                const here = normalizeStatus(row.status) === st;
+              {steps.map((s, i) => {
+                const done = !!s.at;
                 return (
-                  <div key={st} className={`flex gap-3 rounded-xl px-3.5 py-2.5 border ${
+                  <div key={s.key} className={`flex gap-3 rounded-xl px-3.5 py-2.5 border ${
                     done ? "bg-emerald-50/60 border-emerald-200"
-                    : here ? "bg-amber-50/70 border-amber-200"
+                    : s.here ? "bg-amber-50/70 border-amber-200"
                     : "bg-slate-50/50 border-slate-200/60"
                   }`}>
                     <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
-                      done ? "bg-emerald-500" : here ? "bg-amber-500" : "bg-slate-300"
+                      done ? "bg-emerald-500" : s.here ? "bg-amber-500" : "bg-slate-300"
                     }`}>
                       {done ? <Check size={12} className="text-white" />
-                        : <span className="text-white text-[9px] font-extrabold">{flowOf(row.loai).indexOf(st) + 1}</span>}
+                        : <span className="text-white text-[9px] font-extrabold">{i + 1}</span>}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-[11px] font-extrabold text-slate-700">
-                        {name}
-                        {done && by ? ` · ${by}` : here ? " · đang chờ" : ""}
+                        {s.name}
+                        {done && s.by ? ` · ${s.by}` : s.here ? " · đang chờ" : ""}
                       </p>
-                      {at && <p className="text-[10px] font-semibold text-slate-400">{fmtDateTime(at)}</p>}
-                      {yk && <p className="text-[11px] font-medium text-slate-600 mt-1 whitespace-pre-wrap">{yk}</p>}
+                      {s.at && <p className="text-[10px] font-semibold text-slate-400">{fmtDateTime(s.at)}</p>}
+                      {s.yk && <p className="text-[11px] font-medium text-slate-600 mt-1 whitespace-pre-wrap">{s.yk}</p>}
                     </div>
                   </div>
                 );
@@ -1286,7 +1315,7 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
             <button type="button" onClick={submit} disabled={busy}
               className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-md shadow-blue-500/10 transition-all cursor-pointer">
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-              {row.status === "tra_lai" ? "Trình lại Phó Giám đốc" : "Trình Phó Giám đốc"}
+              {row.status === "tra_lai" ? "Trình lại" : "Trình duyệt"}
             </button>
           )}
           {actable && (

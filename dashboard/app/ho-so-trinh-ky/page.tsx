@@ -1,12 +1,12 @@
 "use client";
 
 // ============================================================
-// /bao-cao — Module BÁO CÁO (gói Enterprise)
+// /ho-so-trinh-ky — Module Hồ sơ trình ký (gói Enterprise)
 //
 // Ba nhóm báo cáo quản trị: Kế hoạch thu chi, Sản lượng, Doanh thu.
 //
 // PHÂN QUYỀN (2 lớp, không được bỏ lớp nào):
-//  1. AuthWrapper chặn theo đường dẫn — /bao-cao khai ở ROUTE_MIN_PLAN là
+//  1. AuthWrapper chặn theo đường dẫn — /ho-so-trinh-ky khai ở ROUTE_MIN_PLAN là
 //     "enterprise" nên gõ thẳng URL cũng bị màn hình nâng gói chặn lại.
 //  2. Trang tự kiểm tra lại bằng user.can("reports") — Admin, phòng đã ở gói
 //     Enterprise, hoặc người được cấp riêng cờ can_view_reports (migration 042).
@@ -45,7 +45,7 @@ type ThuChiTab = "doi-tac" | "trinh-ky" | "ke-hoach";
 
 const THU_CHI_TABS: { id: ThuChiTab; label: string; desc: string }[] = [
   { id: "trinh-ky", label: "Phiếu trình ký", desc: "Lập phiếu, trình duyệt 4 cấp, xuất Word" },
-  { id: "ke-hoach", label: "Kế hoạch TC", desc: "Kế hoạch tài chính tháng — thu / chi theo tuần, theo dự án" },
+  { id: "ke-hoach", label: "Kế hoạch thu chi", desc: "Kế hoạch tài chính tháng — thu / chi theo tuần, theo dự án" },
   { id: "doi-tac", label: "Danh mục đối tác", desc: "Nhà thầu, số tài khoản, hợp đồng theo dự án" },
 ];
 

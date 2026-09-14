@@ -39,10 +39,13 @@ import { createPortal } from "react-dom";
 import {
   Plus, X, Save, Trash2, Wallet, ArrowDownCircle, ArrowUpCircle,
   Calendar, Download, Loader2, AlertTriangle, Search, Building2, Eye, FileText,
+  Send, Check,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/apiClient";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import SigningFormModal from "@/components/SigningFormModal";
+import { STATUS_META, type SigningStatus } from "@/lib/signingSubmissions";
 import TransferRequestPreview, {
   exportTransferRequestDocx,
   type TransferRequestData,
@@ -68,7 +71,7 @@ const thCls = "px-3 py-3 font-extrabold uppercase tracking-wider text-[10px] tex
 
 const COLS =
   "id, department, flow, customer, content, amount, project_code, project_name, " +
-  "fund_source, week, month, year, pay_date, sort_order, created_by";
+  "fund_source, week, month, year, pay_date, sort_order, created_by, signing_submission_id";
 
 export type PlanFlow = "thu" | "chi";
 
@@ -88,6 +91,7 @@ export type FinancePlanRow = {
   pay_date: string;
   sort_order: number;
   created_by: string;
+  signing_submission_id: string | null;  // migration 075 — phiếu trình ký đã tạo từ dòng này
 };
 
 // Ô <input type="date"> nói chuyện bằng yyyy-mm-dd. Lấy "hôm nay" theo giờ
@@ -137,6 +141,7 @@ const emptyRow = (anchor: string): FinancePlanRow => {
     pay_date: anchor,
     sort_order: 0,
     created_by: "",
+    signing_submission_id: null,
   };
 };
 
@@ -155,6 +160,8 @@ const Dash = () => <span className="text-slate-300">—</span>;
 export default function FinancePlanPanel() {
   const user = useCurrentUser();
   const [rows, setRows] = useState<FinancePlanRow[]>([]);
+  // Trạng thái phiếu trình ký theo signing_submission_id (migration 075).
+  const [signStatuses, setSignStatuses] = useState<Record<string, SigningStatus>>({});
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<FinancePlanRow | null>(null);
   // Khoảng lọc — mở màn hình ra là trọn tháng chứa ngày hôm nay.
@@ -196,26 +203,40 @@ export default function FinancePlanPanel() {
       // Bảng này chưa có trong bộ kiểu sinh sẵn của Supabase nên `data` về dạng
       // lỗi chung — ép về mảng bản ghi thô rồi ánh xạ tay từng cột.
       const raw = (data || []) as unknown as Record<string, unknown>[];
-      setRows(
-        raw.map(r => ({
-          id: String(r.id),
-          department: (r.department as string) || "",
-          flow: (r.flow as PlanFlow) || "chi",
-          customer: (r.customer as string) || "",
-          content: (r.content as string) || "",
-          amount: Number(r.amount) || 0,
-          project_code: (r.project_code as string) || "",
-          project_name: (r.project_name as string) || "",
-          fund_source: (r.fund_source as string) || "",
-          week: r.week == null ? "" : String(r.week),
-          month: r.month == null ? "" : String(r.month),
-          year: r.year == null ? "" : String(r.year),
-          pay_date: (r.pay_date as string) || "",
-          sort_order: Number(r.sort_order) || 0,
-          created_by: (r.created_by as string) || "",
-        }))
-      );
+      const mapped = raw.map(r => ({
+        id: String(r.id),
+        department: (r.department as string) || "",
+        flow: (r.flow as PlanFlow) || "chi",
+        customer: (r.customer as string) || "",
+        content: (r.content as string) || "",
+        amount: Number(r.amount) || 0,
+        project_code: (r.project_code as string) || "",
+        project_name: (r.project_name as string) || "",
+        fund_source: (r.fund_source as string) || "",
+        week: r.week == null ? "" : String(r.week),
+        month: r.month == null ? "" : String(r.month),
+        year: r.year == null ? "" : String(r.year),
+        pay_date: (r.pay_date as string) || "",
+        sort_order: Number(r.sort_order) || 0,
+        created_by: (r.created_by as string) || "",
+        signing_submission_id: (r.signing_submission_id as string) || null,
+      }));
+      setRows(mapped);
       setErr("");
+
+      // Trạng thái phiếu đã trình ký (để hiện chip ngay trên dòng). RLS chỉ trả
+      // phiếu người này được xem — dòng nào không thấy phiếu thì coi như trạng
+      // thái ẩn, không phải lỗi.
+      const ids = mapped.map(m => m.signing_submission_id).filter((x): x is string => !!x);
+      if (ids.length) {
+        const { data: subs } = await supabase
+          .from("signing_submissions").select("id, status").in("id", ids);
+        const m: Record<string, SigningStatus> = {};
+        for (const s of (subs || []) as { id: string; status: SigningStatus }[]) m[s.id] = s.status;
+        setSignStatuses(m);
+      } else {
+        setSignStatuses({});
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -421,7 +442,7 @@ export default function FinancePlanPanel() {
       {/* Thanh công cụ */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h3 className={labelCls}>Kế hoạch tài chính</h3>
+          <h3 className={labelCls}>Kế hoạch thu chi</h3>
           <p className="text-[11px] text-slate-400 font-medium mt-1">
             Hiện <strong className="text-slate-600">{visible.length}</strong> dòng · {periodLabel}
             {search.trim() && <> · lọc theo &ldquo;{search.trim()}&rdquo;</>}
@@ -578,8 +599,22 @@ export default function FinancePlanPanel() {
                           {r.flow === "thu" ? "Thu" : "Chi"}
                         </span>
                       </td>
-                      <td className="px-3 py-3 font-bold text-slate-800 max-w-[220px] truncate" title={r.customer}>
-                        {r.customer || <Dash />}
+                      <td className="px-3 py-3 font-bold text-slate-800 max-w-[220px]" title={r.customer}>
+                        <span className="block truncate">{r.customer || <Dash />}</span>
+                        {/* Đã trình ký online -> chip trạng thái phiếu (migration 075).
+                            Không đọc được status (RLS/ẩn) thì chỉ báo "đã trình ký". */}
+                        {r.signing_submission_id && (
+                          <span className={`inline-flex mt-1 items-center gap-1 px-1.5 py-0.5 rounded font-bold text-[9px] ${
+                            signStatuses[r.signing_submission_id]
+                              ? STATUS_META[signStatuses[r.signing_submission_id]].chip
+                              : "bg-slate-100 text-slate-500"
+                          }`}>
+                            <Send size={9} />
+                            {signStatuses[r.signing_submission_id]
+                              ? `Trình ký · ${STATUS_META[signStatuses[r.signing_submission_id]].short}`
+                              : "Đã trình ký"}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-3 font-medium text-slate-500 max-w-[300px] truncate" title={r.content}>
                         {r.content || <Dash />}
@@ -677,6 +712,7 @@ export default function FinancePlanPanel() {
         <PlanRowModal
           row={editing}
           onSave={save}
+          onReload={load}
           onClose={() => setEditing(null)}
         />
       )}
@@ -722,9 +758,10 @@ function Kpi({ label, value, icon: Icon, grad, tone }: {
 // ─── Modal nhập một dòng kế hoạch ───
 // createPortal ra body: modal `fixed` đặt trong khối có backdrop-filter sẽ bị
 // khối đó nhốt lại, không ra được giữa màn hình.
-function PlanRowModal({ row, onSave, onClose }: {
+function PlanRowModal({ row, onSave, onReload, onClose }: {
   row: FinancePlanRow;
   onSave: (r: FinancePlanRow) => Promise<void>;
+  onReload: () => void | Promise<void>;
   onClose: () => void;
 }) {
   const departments = useDepartments();
@@ -733,6 +770,10 @@ function PlanRowModal({ row, onSave, onClose }: {
   const me = useCurrentUser();
 
   const [d, setD] = useState<FinancePlanRow>(row);
+  // Trình ký online: mở form phiếu trình ký điền sẵn từ dòng này (migration 075).
+  const [showSigning, setShowSigning] = useState(false);
+  const [signErr, setSignErr] = useState("");
+  const canSign = me.isAdmin || me.perms.canCreateSigning;
   const [amountText, setAmountText] = useState(fmtMoney(row.amount));
   const [saving, setSaving] = useState(false);
   // Hợp đồng đang lấy nội dung — chỉ để tô đậm ô đang chọn, không lưu xuống CSDL.
@@ -1164,6 +1205,31 @@ function PlanRowModal({ row, onSave, onClose }: {
               : <><FileText size={13} /> Xuất đề nghị chuyển tiền</>}
           </button>
 
+          {/* Trình ký online — chỉ dòng CHI, đã lưu, có quyền lập phiếu, chưa trình.
+              Đã trình rồi thì hiện trạng thái, khoá không cho trình lần hai. */}
+          {d.flow === "chi" && canSign && (
+            d.signing_submission_id ? (
+              <span className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 text-slate-500 font-bold rounded-xl text-[11px]">
+                <Check size={13} /> Đã trình ký
+              </span>
+            ) : d.id ? (
+              <button type="button" onClick={() => { setSignErr(""); setShowSigning(true); }}
+                title="Tạo phiếu trình ký online từ dòng kế hoạch này"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl text-[11px] shadow-md transition-all cursor-pointer">
+                <Send size={13} /> Trình ký online
+              </button>
+            ) : (
+              <span className="text-[10px] font-bold text-amber-600 max-w-[160px] leading-tight">
+                Lưu dòng trước khi trình ký.
+              </span>
+            )
+          )}
+          {signErr && (
+            <span className="text-[10px] font-bold text-rose-600 max-w-[240px] leading-tight break-words">
+              {signErr}
+            </span>
+          )}
+
           {/* Nói TRƯỚC là giấy sẽ trống ô số tài khoản, đừng để in ra mới thấy. */}
           {canMakeTransfer && !payAccount && (
             <span className="text-[10px] font-bold text-amber-600 max-w-[220px] leading-tight">
@@ -1191,6 +1257,36 @@ function PlanRowModal({ row, onSave, onClose }: {
       </div>
       {showTransfer && (
         <TransferRequestPreview data={transferData} onClose={() => setShowTransfer(false)} />
+      )}
+      {showSigning && (
+        <SigningFormModal
+          existing={null}
+          loai="ho_so"
+          currentEmail={me.email}
+          currentName={me.name}
+          currentDepartment={me.department}
+          prefill={{
+            don_vi: d.department,
+            chu_dau_tu: d.customer,
+            du_an: d.project_name,
+            project_code: d.project_code,
+            ve_viec: d.content,
+            noi_dung_trinh: d.content,
+            de_nghi_thanh_toan: d.amount ? new Intl.NumberFormat("vi-VN").format(d.amount) : "",
+          }}
+          onClose={() => setShowSigning(false)}
+          onSaved={() => {}}
+          onCreated={async (signingId) => {
+            // Khoá dòng kế hoạch vào đúng phiếu vừa tạo (mỗi dòng trình 1 lần).
+            const { error } = await supabase
+              .from("finance_plans")
+              .update({ signing_submission_id: signingId })
+              .eq("id", d.id);
+            if (error) { setSignErr(errText(error)); return; }
+            setD(prev => ({ ...prev, signing_submission_id: signingId }));
+            await onReload();
+          }}
+        />
       )}
     </div>,
     document.body

@@ -59,3 +59,6 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# cấu hình chạy preview tại máy, không đẩy lên
+.claude/

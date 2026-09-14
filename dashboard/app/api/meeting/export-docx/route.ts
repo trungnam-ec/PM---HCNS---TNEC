@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
 
     // Format list of attendees to a single string: Name (Role)
     const attendeesList = Array.isArray(meeting.attendees) ? meeting.attendees : [];
-    const attendeesText = attendeesList.join(", ") || "(Trống)";
+    const attendeesText = attendeesList.join(", ") || "………";
 
     // Prepare tasks list for Docxtemplater loop
     const rawTasks = Array.isArray(meeting.action_items) ? meeting.action_items : [];
@@ -97,16 +97,18 @@ export async function POST(req: NextRequest) {
     doc.setData({
       doc_number: meeting.doc_number || docNumber,
       location_date: location_date,
-      start_time: meeting.start_time || "09:00",
+      // KHÔNG điền giờ/địa điểm giả vào văn bản chính thức: thiếu thì để dấu
+      // chấm lửng cho người ký điền tay (xem quy tắc chống bịa ở /api/meeting/process).
+      start_time: meeting.start_time || "………",
       meeting_date_text: meeting_date_text,
-      meeting_location: meeting.location || "Văn phòng công ty",
+      meeting_location: meeting.location || "………",
       meeting_title: meeting.title || "Cuộc họp giao ban",
-      chair_name: meeting.chairperson || "Chưa xác định",
+      chair_name: meeting.chairperson || "………",
       chair_role: "Chủ trì",
-      sec_name: meeting.secretary || "Chưa xác định",
+      sec_name: meeting.secretary || "………",
       sec_role: "Thư ký",
       attendees_text: attendeesText,
-      end_time: meeting.end_time || "10:30",
+      end_time: meeting.end_time || "………",
       distribution: meeting.distribution || "P. KHĐT, P. QLDA, P. VTTB; Lưu: HCNS.",
       tasks: tasksList,
       meeting_summary: meeting.summary || "Không có tóm tắt.",

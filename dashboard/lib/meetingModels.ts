@@ -1,0 +1,63 @@
+// ============================================================
+// meetingModels.ts — hằng số dùng chung của module Biên bản họp
+//
+// Gom về một chỗ vì các con số này ràng buộc lẫn nhau: trần 25MB của OpenAI
+// quyết định độ dài đoạn cắt, độ dài đoạn cắt lại phụ thuộc bitrate ghi âm.
+// Sửa một chỗ mà quên chỗ kia là đúng 20 phút họp bị API từ chối.
+// ============================================================
+
+// ─── Model gỡ băng ───
+// Bắt buộc dùng bản "diarize" thì mới có người nói + mốc giờ trong kết quả.
+// LƯU Ý: model này KHÔNG nhận tham số `prompt` (API trả 400). Mọi gợi ý từ vựng
+// phải đẩy sang khâu dựng biên bản.
+export const TRANSCRIBE_MODEL = "gpt-4o-transcribe-diarize";
+
+// ─── Model dựng biên bản ───
+export const ANALYSIS_MODELS = [
+  {
+    id: "gpt-5.6-sol",
+    label: "GPT-5.6 Sol — chính xác nhất (mặc định)",
+    hint: "Họp 1–2 tiếng, nhiều số liệu. ~$0.35/cuộc họp.",
+  },
+  {
+    id: "gpt-5.6-terra",
+    label: "GPT-5.6 Terra — nhanh & rẻ hơn",
+    hint: "Họp nội bộ ngắn, ít số liệu. ~$0.20/cuộc họp.",
+  },
+] as const;
+
+export const DEFAULT_ANALYSIS_MODEL = "gpt-5.6-sol";
+
+// Dòng 5.6 là model suy luận: KHÔNG truyền temperature, dùng reasoning_effort.
+export const ANALYSIS_REASONING_EFFORT = "high";
+
+// ─── Giới hạn của OpenAI ───
+// 25MB mỗi lần gọi API gỡ băng, áp dụng cho MỌI model. Không có endpoint nhận
+// URL hay chạy bất đồng bộ để lách.
+export const MAX_TRANSCRIBE_BYTES = 25 * 1024 * 1024;
+
+// Tối đa 4 mẫu giọng mỗi lần gọi, mỗi mẫu 2–10 giây.
+export const MAX_KNOWN_SPEAKERS = 4;
+export const VOICE_SAMPLE_MIN_SEC = 2;
+export const VOICE_SAMPLE_MAX_SEC = 10;
+
+// ─── Tham số ghi âm trong app ───
+// opus mono 32kbps ≈ 240KB/phút -> chạm trần 25MB ở khoảng phút thứ 87.
+// Cắt mỗi 20 phút (≈ 4.8MB) để còn dư rất xa kể cả khi nói liên tục.
+export const RECORD_AUDIO_BITRATE = 32000;
+export const RECORD_SEGMENT_SEC = 20 * 60;
+
+// ─── Bucket ───
+export const MEETINGS_BUCKET = "meetings";
+
+export type TimelineMode = "clock" | "relative" | "none";
+
+/** Đổi số giây thành HH:MM:SS để hiển thị mốc trích dẫn. */
+export function formatTs(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${pad(h)}:${pad(m)}:${pad(ss)}` : `${pad(m)}:${pad(ss)}`;
+}

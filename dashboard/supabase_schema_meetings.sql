@@ -1,5 +1,10 @@
 -- SQL Schema to create the 'meetings' table and setup storage for meeting recordings & documents.
 -- Copy this query, go to Supabase -> SQL Editor -> New Query, paste and run it.
+--
+-- ⚠️ FILE NÀY CHỈ LÀ BƯỚC 1. Sau khi chạy xong PHẢI chạy tiếp
+--    migrations/076_meeting_recording_diarization.sql — nó bổ sung các cột cho
+--    ghi âm nhiều đoạn, tách người nói, mốc trích dẫn, và mở mime type
+--    audio/webm cho bucket (thiếu là không ghi âm trong app được).
 
 CREATE TABLE IF NOT EXISTS public.meetings (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,

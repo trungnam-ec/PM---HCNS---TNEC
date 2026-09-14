@@ -7,20 +7,26 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { normalizePlan, isFeatureAllowed } from "@/lib/planShared";
-import { getTenantConfigServer } from "@/lib/tenantConfigServer";
+import {
+  TRANSCRIBE_MODEL,
+  MAX_TRANSCRIBE_BYTES,
+  MAX_KNOWN_SPEAKERS,
+  MEETINGS_BUCKET,
+} from "@/lib/meetingModels";
 
-// Whisper trên file ~20MB mất vài phút; mặc định Vercel cắt function sớm hơn
+// Gỡ băng một đoạn 20 phút mất vài phút; mặc định Vercel cắt function sớm hơn
 // khiến client nhận trang lỗi HTML/text ("A server error...") thay vì JSON.
 export const maxDuration = 300;
 
+type DiarizedSegment = { speaker: string; start: number; end: number; text: string };
+
 /**
- * Detects Whisper hallucination: repetitive garbage output that indicates
- * the model couldn't understand the audio (poor quality, over-compressed, silence).
- * 
- * Common hallucination patterns:
- * - "Tạm biệt, hẹn gặp lại các bạn..." repeated 100+ times
- * - "Cảm ơn các bạn đã theo dõi..." repeated
- * - Very few unique sentences compared to total sentence count
+ * Nhận diện lỗi lặp vòng của model gỡ băng: cùng một câu trả về hàng chục lần,
+ * dấu hiệu model không nghe được nội dung thật (thu âm quá nén, im lặng dài).
+ *
+ * QUAN TRỌNG: hàm này CHỈ để cảnh báo. Không bao giờ dùng kết quả của nó để vứt
+ * nội dung đi — mất 20 phút họp mà chỉ đổi lấy một dòng log là cái giá quá đắt
+ * cho một phép đoán.
  */
 function detectHallucination(text: string): { isHallucination: boolean; warning: string } {
   if (!text || text.length < 50) {
@@ -28,16 +34,13 @@ function detectHallucination(text: string): { isHallucination: boolean; warning:
   }
 
   // Chỉ xét các câu đủ dài (>15 ký tự) để bỏ qua các câu đệm ngắn tự nhiên trong hội thoại
-  // (VD: "Vâng ạ.", "Dạ đúng rồi.", "Cảm ơn anh.") - những câu này lặp lại nhiều lần là bình thường,
-  // không phải dấu hiệu Whisper bị lặp vòng (hallucination).
+  // (VD: "Vâng ạ.", "Dạ đúng rồi.", "Cảm ơn anh.") - những câu này lặp lại nhiều lần là bình thường.
   const sentences = text.split(/[.!?。]+/).map(s => s.trim()).filter(s => s.length > 15);
 
-  // Cần đủ số lượng câu dài mới xét, tránh báo nhầm với các bản ghi ngắn/ít câu
   if (sentences.length < 15) {
     return { isHallucination: false, warning: "" };
   }
 
-  // Đếm số lần lặp của câu dài xuất hiện nhiều nhất
   const counts: Record<string, number> = {};
   for (const s of sentences) counts[s] = (counts[s] || 0) + 1;
   const uniqueSentences = new Set(sentences);
@@ -45,16 +48,15 @@ function detectHallucination(text: string): { isHallucination: boolean; warning:
   const mostRepeated = findMostRepeatedSentence(sentences);
   const mostRepeatedCount = counts[mostRepeated] || 0;
 
-  // Chỉ báo lỗi khi vừa có tỉ lệ trùng lặp cao (< 15% câu độc nhất) VỪA có 1 câu dài lặp lại
-  // rất nhiều lần (>= 8 lần) - kết hợp 2 điều kiện để giảm báo sai với các cuộc họp dài, tự nhiên.
+  // Chỉ báo khi vừa có tỉ lệ trùng lặp cao (< 15% câu độc nhất) VỪA có 1 câu dài lặp lại
+  // rất nhiều lần (>= 8 lần) — kết hợp 2 điều kiện để giảm báo sai với họp dài, tự nhiên.
   if (uniqueRatio < 0.15 && mostRepeatedCount >= 8) {
     return {
       isHallucination: true,
-      warning: `Phát hiện lỗi ảo giác (hallucination) của AI gỡ băng! Chỉ có ${uniqueSentences.size} câu độc nhất trong tổng số ${sentences.length} câu (${(uniqueRatio * 100).toFixed(0)}% độc nhất), trong đó câu "${mostRepeated.substring(0, 80)}..." lặp lại ${mostRepeatedCount} lần. Nguyên nhân: File âm thanh bị nén quá mức, chất lượng quá thấp hoặc nhiều đoạn im lặng. Vui lòng kiểm tra lại file ghi âm gốc và tải lên bản chất lượng tốt hơn (bitrate >= 48kbps).`
+      warning: `Nghi ngờ AI gỡ băng bị lặp vòng: chỉ ${uniqueSentences.size} câu độc nhất trong ${sentences.length} câu (${(uniqueRatio * 100).toFixed(0)}%), câu "${mostRepeated.substring(0, 80)}..." lặp ${mostRepeatedCount} lần. Nguyên nhân thường gặp: thu âm quá nén hoặc nhiều đoạn im lặng. Nội dung VẪN được giữ lại — hãy đọc kiểm tra đoạn này ở màn Review.`
     };
   }
 
-  // Check for known hallucination phrases (thường gặp ở nội dung ngoài ngữ cảnh họp, kiểu YouTube outro)
   const hallucinationPhrases = [
     "tạm biệt",
     "hẹn gặp lại",
@@ -73,7 +75,7 @@ function detectHallucination(text: string): { isHallucination: boolean; warning:
     if (matches && matches.length > 8) {
       return {
         isHallucination: true,
-        warning: `Phát hiện lỗi ảo giác (hallucination)! Cụm từ "${phrase}" xuất hiện ${matches.length} lần trong bản gỡ băng. Đây là dấu hiệu Whisper không nghe được nội dung thực tế. Vui lòng kiểm tra lại file ghi âm gốc: đảm bảo giọng nói rõ ràng, bitrate >= 48kbps, và file không bị hỏng.`
+        warning: `Nghi ngờ AI gỡ băng bị lặp vòng: cụm "${phrase}" xuất hiện ${matches.length} lần. Nội dung VẪN được giữ lại — hãy đọc kiểm tra đoạn này ở màn Review.`
       };
     }
   }
@@ -97,6 +99,23 @@ function findMostRepeatedSentence(sentences: string[]): string {
   return maxSentence;
 }
 
+/** Ghép các câu đã tách người nói thành văn bản đọc được. */
+function segmentsToText(segments: DiarizedSegment[]): string {
+  const lines: string[] = [];
+  let lastSpeaker = "";
+  for (const seg of segments) {
+    const text = (seg.text || "").trim();
+    if (!text) continue;
+    if (seg.speaker && seg.speaker !== lastSpeaker) {
+      lines.push(`${seg.speaker}: ${text}`);
+      lastSpeaker = seg.speaker;
+    } else {
+      lines.push(text);
+    }
+  }
+  return lines.join("\n");
+}
+
 export async function POST(req: NextRequest) {
   const auth = await requireApiAuth(req);
   if (!auth.ok) return auth.response;
@@ -115,6 +134,8 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { meetingId, audioPath } = body;
+    const offsetSec = Number(body.offsetSec) || 0;
+    const knownSpeakerIds: string[] = Array.isArray(body.knownSpeakerIds) ? body.knownSpeakerIds : [];
 
     if (!meetingId || !audioPath) {
       return NextResponse.json({ error: "Thiếu meetingId hoặc audioPath." }, { status: 400 });
@@ -131,18 +152,18 @@ export async function POST(req: NextRequest) {
         })
       : supabase;
 
-    // GATE GÓI DỊCH VỤ: Biên bản họp AI thuộc gói Enterprise (tenant_config.plan)
+    // GATE GÓI DỊCH VỤ: module Biên bản họp mở từ gói Basic (lib/planShared.ts)
     const { data: planRow } = await dbClient
       .from("tenant_config").select("value").eq("key", "plan").maybeSingle();
     if (!isFeatureAllowed(normalizePlan(planRow?.value), "meeting_ai")) {
       return NextResponse.json({
-        error: "Tính năng Biên bản họp AI thuộc gói Enterprise. Vui lòng liên hệ Quản trị viên để nâng cấp gói dịch vụ."
+        error: "Tính năng Biên bản họp AI chưa được mở cho gói dịch vụ hiện tại. Vui lòng liên hệ Quản trị viên để nâng cấp."
       }, { status: 403 });
     }
 
-    // 1. Download file from Supabase Storage
+    // 1. Tải đoạn ghi âm từ Storage
     const { data: fileData, error: downloadError } = await dbClient.storage
-      .from("meetings")
+      .from(MEETINGS_BUCKET)
       .download(audioPath);
 
     if (downloadError || !fileData) {
@@ -153,45 +174,126 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Write to a temporary file in the OS temp directory
     const buffer = Buffer.from(await fileData.arrayBuffer());
-    const ext = audioPath.split(".").pop() || "mp3";
-    const tempDir = os.tmpdir();
 
-    const tempFileName = `temp_transcribe_${meetingId}_${Date.now()}.${ext}`;
-    tempFilePath = path.join(tempDir, tempFileName);
+    // Chặn sớm thay vì để OpenAI trả lỗi sau khi đã chờ upload xong: trần 25MB
+    // áp cho MỌI model gỡ băng, không có endpoint nhận URL để lách.
+    if (buffer.length > MAX_TRANSCRIBE_BYTES) {
+      return NextResponse.json({
+        error: `Đoạn ghi âm nặng ${(buffer.length / (1024 * 1024)).toFixed(1)}MB, vượt trần 25MB mỗi lần gọi API gỡ băng của OpenAI. Hãy cắt nhỏ file (dưới 20 phút mỗi đoạn) rồi tải lên lại.`
+      }, { status: 400 });
+    }
+
+    // 2. Ghi ra file tạm để truyền stream cho OpenAI
+    const ext = audioPath.split(".").pop() || "mp3";
+    tempFilePath = path.join(os.tmpdir(), `temp_transcribe_${meetingId}_${Date.now()}.${ext}`);
     fs.writeFileSync(tempFilePath, buffer);
 
-    // 3. Call OpenAI Whisper API
+    // 3. Nạp mẫu giọng của những người đã đăng ký (tối đa 4, mỗi mẫu 2–10 giây).
+    // Có mẫu giọng thì kết quả gọi thẳng tên thật, không có thì ra nhãn Speaker 1/2/3.
+    const knownSpeakerNames: string[] = [];
+    const knownSpeakerReferences: string[] = [];
+
+    if (knownSpeakerIds.length > 0) {
+      const { data: speakerRows } = await dbClient
+        .from("employees_directory")
+        .select("id, name, voice_sample_path")
+        .in("id", knownSpeakerIds.slice(0, MAX_KNOWN_SPEAKERS));
+
+      for (const row of speakerRows || []) {
+        if (!row.voice_sample_path || !row.name) continue;
+        const { data: sampleBlob } = await dbClient.storage
+          .from(MEETINGS_BUCKET)
+          .download(row.voice_sample_path);
+        if (!sampleBlob) continue;
+        const sampleBuffer = Buffer.from(await sampleBlob.arrayBuffer());
+        const mime = row.voice_sample_path.endsWith(".webm") ? "audio/webm" : "audio/mpeg";
+        knownSpeakerNames.push(row.name);
+        knownSpeakerReferences.push(`data:${mime};base64,${sampleBuffer.toString("base64")}`);
+      }
+    }
+
+    // 4. Gọi OpenAI
     const openai = new OpenAI({ apiKey });
     const fileStream = fs.createReadStream(tempFilePath);
-    
-    // Use a Vietnamese business-meeting prompt hint to guide Whisper (vocabulary only, no sentences to prevent hallucination loops)
-    const transcription = await openai.audio.transcriptions.create({
+
+    // KHÔNG truyền `prompt`: model diarization từ chối thẳng với
+    // "400 Prompt is not supported for diarization models". Gợi ý từ vựng cho
+    // AI nằm ở khâu dựng biên bản (/api/meeting/process).
+    const params: any = {
       file: fileStream,
-      model: "whisper-1",
-      language: "vi",
-      prompt: `${(await getTenantConfigServer()).company_name}, họp giao ban, dự án, báo cáo`,
-    });
+      model: TRANSCRIBE_MODEL,
+      response_format: "diarized_json", // bắt buộc mới có speaker + start/end
+      chunking_strategy: "auto",        // bắt buộc với audio dài hơn 30 giây
+    };
+    if (knownSpeakerNames.length > 0) {
+      params.known_speaker_names = knownSpeakerNames;
+      params.known_speaker_references = knownSpeakerReferences;
+    }
 
-    const rawText = transcription.text || "";
+    // Các tham số trên mới hơn type của openai@6.32.0 — ép kiểu, payload vẫn chuẩn.
+    const transcription: any = await openai.audio.transcriptions.create(params as any);
 
-    // 4. Detect Whisper hallucination (repetitive garbage output)
-    const hallucinationCheck = detectHallucination(rawText);
+    // 5. Quy mốc giờ của đoạn về trục thời gian CẢ cuộc họp
+    const rawSegments: any[] = Array.isArray(transcription?.segments) ? transcription.segments : [];
+    const segments: DiarizedSegment[] = rawSegments.map((s: any) => ({
+      speaker: String(s.speaker || "Speaker ?"),
+      start: Number(s.start || 0) + offsetSec,
+      end: Number(s.end || 0) + offsetSec,
+      text: String(s.text || "").trim(),
+    })).filter(s => s.text.length > 0);
 
-    // 5. Update meeting raw transcript in DB
-    const { error: dbError } = await dbClient
+    const segmentText = segments.length > 0 ? segmentsToText(segments) : String(transcription?.text || "");
+    const speakers = Array.from(new Set(segments.map(s => s.speaker)));
+
+    // 6. Cảnh báo lặp vòng — CHỈ cảnh báo, nội dung luôn được giữ
+    const hallucinationCheck = detectHallucination(segmentText);
+
+    // 7. NỐI THÊM vào bản gỡ băng, KHÔNG ghi đè.
+    // Cuộc họp 2 tiếng gồm 6 đoạn; ghi đè thì tiến trình chết giữa chừng chỉ còn
+    // lại đoạn cuối cùng và phải gỡ băng lại từ đầu (tốn tiền API thật).
+    const { data: current, error: readError } = await dbClient
       .from("meetings")
-      .update({ transcript_raw: rawText })
-      .eq("id", meetingId);
+      .select("transcript_raw, transcript_segments")
+      .eq("id", meetingId)
+      .single();
+
+    if (readError) {
+      throw new Error(`Không đọc được biên bản để nối bản gỡ băng: ${readError.message}`);
+    }
+
+    const prevText = current?.transcript_raw || "";
+    const prevSegments: DiarizedSegment[] = Array.isArray(current?.transcript_segments)
+      ? current.transcript_segments
+      : [];
+
+    const mergedText = prevText ? `${prevText}\n\n${segmentText}` : segmentText;
+    const mergedSegments = [...prevSegments, ...segments];
+
+    const { data: updatedRows, error: dbError } = await dbClient
+      .from("meetings")
+      .update({
+        transcript_raw: mergedText,
+        transcript_segments: mergedSegments,
+      })
+      .eq("id", meetingId)
+      .select("id");
 
     if (dbError) {
       throw new Error(`Lỗi cập nhật CSDL: ${dbError.message}`);
     }
+    // RLS chặn UPDATE thì Supabase trả 0 dòng mà KHÔNG báo lỗi — phải bắt tường
+    // minh, nếu không client tưởng đã lưu trong khi bản gỡ băng rơi mất.
+    if (!updatedRows || updatedRows.length === 0) {
+      throw new Error("Không lưu được bản gỡ băng (bị chặn bởi quyền truy cập CSDL). Vui lòng đăng nhập lại và thử lần nữa.");
+    }
 
-    return NextResponse.json({ 
-      success: true, 
-      text: rawText,
+    return NextResponse.json({
+      success: true,
+      text: segmentText,
+      segments,
+      speakers,
+      known_speakers_used: knownSpeakerNames,
       is_hallucination: hallucinationCheck.isHallucination,
       hallucination_warning: hallucinationCheck.warning,
     });
@@ -199,7 +301,6 @@ export async function POST(req: NextRequest) {
     console.error("Transcription API Error:", err);
     return NextResponse.json({ error: err.message || "Lỗi xử lý file âm thanh" }, { status: 500 });
   } finally {
-    // 5. Cleanup temp file
     if (tempFilePath && fs.existsSync(tempFilePath)) {
       try {
         fs.unlinkSync(tempFilePath);

@@ -5,61 +5,83 @@ import { supabase } from "@/lib/supabase";
 import OpenAI from "openai";
 import { normalizePlan, isFeatureAllowed } from "@/lib/planShared";
 import { getTenantConfigServer } from "@/lib/tenantConfigServer";
+import {
+  DEFAULT_ANALYSIS_MODEL,
+  ANALYSIS_REASONING_EFFORT,
+  formatTs,
+  type TimelineMode,
+} from "@/lib/meetingModels";
 
 // GPT phân tích transcript dài có thể mất vài phút; tránh Vercel timeout trả về non-JSON.
 export const maxDuration = 300;
 
-const buildSystemPrompt = (companyName: string, chairmanName: string) => `
+type DiarizedSegment = { speaker: string; start: number; end: number; text: string };
+
+// ────────────────────────────────────────────────────────────
+// LUẬT TIMELINE — phần quyết định biên bản có bịa giờ hay không
+//
+// Nói dối model ở đây là sinh ra đúng loại bịa cần dẹp: đưa mốc "00:01" của một
+// file tải lên rồi bảo đó là giờ họp, model sẽ viết "cuộc họp bắt đầu lúc 0 giờ
+// 01 phút". Ba chế độ dưới đây mô tả ĐÚNG thứ đang có trong tay.
+// ────────────────────────────────────────────────────────────
+const TIMELINE_RULES: Record<TimelineMode, string> = {
+  clock: `Mỗi dòng transcript có dạng [HH:MM:SS | ts=<số giây>]. HH:MM:SS là GIỜ ĐỒNG HỒ THẬT (giờ Việt Nam) lúc câu đó được nói, đã đo bằng đồng hồ máy chứ không phải suy đoán.
+- "start_time" = giờ của dòng ĐẦU TIÊN, "end_time" = giờ của dòng CUỐI CÙNG, lấy đúng theo mốc, không làm tròn kiểu "khoảng 9 giờ".
+- Phần timeline trong "summary" dùng đúng các mốc giờ này (ví dụ "09:14 - 09:31: ...").`,
+
+  relative: `Mỗi dòng transcript có dạng [HH:MM:SS | ts=<số giây>]. HH:MM:SS là THỜI ĐIỂM TÍNH TỪ ĐẦU FILE GHI ÂM, KHÔNG PHẢI giờ đồng hồ. [00:00:00] nghĩa là phút thứ 0 của file, KHÔNG phải 0 giờ sáng.
+- TUYỆT ĐỐI CẤM suy ra giờ họp từ các mốc này. "start_time" và "end_time" để RỖNG "" trừ khi có người NÓI RÕ giờ trong nội dung (ví dụ "bây giờ là 9 giờ 15").
+- Phần timeline trong "summary" ghi theo phút của file, dạng "Phút 00:00 – 00:37: ...".`,
+
+  none: `Bản gỡ băng KHÔNG có mốc thời gian nào.
+- TUYỆT ĐỐI CẤM bịa ra giờ. "start_time" và "end_time" để RỖNG "" trừ khi có người nói rõ giờ trong nội dung.
+- Phần timeline trong "summary" trình bày theo trình tự "1. ...", "2. ...", "3. ..." chứ không theo giờ.
+- Trường "ts" của mọi dòng để null.`,
+};
+
+const buildSystemPrompt = (
+  companyName: string,
+  chairmanName: string,
+  timelineMode: TimelineMode,
+  roster: string[],
+) => `
 Bạn là Trợ lý Thư ký Trưởng cấp cao của Ban Giám Đốc công ty ${companyName}.
-Nhiệm vụ của bạn là nhận văn bản gỡ băng thô (transcript_raw) từ cuộc họp, LỌC BỎ HOÀN TOÀN các đoạn nói chuyện phiếm, thảo luận lan man ngoài lề, ý kiến trùng lặp hoặc từ ngữ rườm rà. Hãy tập trung 100% VÀO CÁC Ý CHÍNH TRỌNG TÂM, KẾT LUẬN CỦA CHỦ TRÌ VÀ CÁC ĐẦU VIỆC ĐƯỢC GIAO.
+Nhiệm vụ: nhận văn bản gỡ băng thô của cuộc họp, LỌC BỎ các đoạn nói chuyện phiếm, thảo luận lan man ngoài lề, ý kiến trùng lặp và từ ngữ rườm rà; tập trung 100% vào Ý CHÍNH TRỌNG TÂM, KẾT LUẬN CỦA CHỦ TRÌ và CÁC ĐẦU VIỆC ĐƯỢC GIAO.
 
-━━ QUY TẮC PHÂN TÍCH VÀ CHẮT LỌC NỘI DUNG (RẤT BẮT BUỘC) ━━
-1. BỎ QUA HOÀN TOÀN:
-   - Các câu chào hỏi, tán gẫu, trò chuyện cá nhân ngoài lề.
-   - Các đoạn tranh luận dông dài không đi đến kết luận.
-   - Các từ đệm thừa (à, ừ, thì, là, hả, vâng, nhỉ, nhé, cái này, cái kia...).
-2. CHỈ TRÍCH XUẤT CÁC THÔNG TIN TRỌNG TÂM:
-   - "title": Tên cuộc họp súc tích, phản ánh đúng chủ đề trọng tâm chính (Ví dụ: "Họp giao ban giải quyết vướng mắc dự án Tây Ninh & Rạch Xuyên Tâm").
-   - "meeting_date": Ngày diễn ra cuộc họp (YYYY-MM-DD). Cố gắng trích xuất ngày được nhắc đến, nếu không thấy thì để rỗng "".
-   - "start_time" / "end_time": Thời gian bắt đầu và kết thúc cuộc họp (HH:MM). Nếu không thấy thì điền "09:00" và "10:30".
-   - "location": Địa điểm họp (Ví dụ: "Phòng họp A - Văn phòng TPHCM").
-   - "secretary": Thư ký ghi chép cuộc họp.
-   - "attendees": Mảng chứa tên các thành viên chính tham dự cuộc họp được trích xuất từ văn bản.
-   - "project_name": Tên dự án chính được thảo luận.
-   - "package_name": Tên gói thầu liên quan (nếu có).
-3. TRÍCH XUẤT NỘI DUNG CHI TIẾT ("transcript_clean"):
-   - Hãy biên tập lại bản gỡ băng thành các đoạn thoại ngắn gọn, lịch sự, chuẩn mực ngôn ngữ doanh nghiệp.
-   - Gán đúng tên người phát biểu (Ví dụ: "Ông ${chairmanName}:", "Bà Nguyễn Thị B:").
-   - Chỉ giữ lại các ý kiến đóng góp mang tính chuyên môn, báo cáo số liệu thực tế và các câu chỉ đạo quan trọng của Chủ trì.
-4. TÓM TẮT TRỌNG TÂM & DIỄN BIẾN CUỘC HỌP ("summary"):
-    - Trình bày chi tiết, chuyên nghiệp và chia làm 2 phần rõ rệt bằng tiếng Việt:
-      * "PHẦN 1: TÓM TẮT DIỄN BIẾN CUỘC HỌP" (Nêu rõ bối cảnh, lý do họp, các báo cáo chính và các ý kiến đóng góp/thảo luận quan trọng của các bộ phận).
-      * "PHẦN 2: TIẾN TRÌNH & TIMELINE CHI TIẾT" (Phác thảo lại diễn biến cuộc họp theo trình tự thời gian hoặc trình tự phát biểu của các thành viên. Ví dụ: "09:00 - 09:15: ...", "09:15 - 09:40: ...", hoặc "1. Báo cáo tiến độ dự án (đại diện BĐH)...", "2. Ý kiến phản hồi của Phòng KHĐT...", "3. Kết luận và chỉ đạo của Chủ trì (${chairmanName})..."). Phần này cần chi tiết, có số liệu thực tế được nhắc đến trong file ghi âm để người đọc nắm được dòng sự kiện chính.
-5. BÓC TÁCH NỘI DUNG CUỘC HỌP & ĐẦU VIỆC ("action_items"):
-    - Trích xuất mảng JSON chứa toàn bộ nội dung diễn biến cuộc họp và các đầu việc được giao, phân tách theo các mục chính (như mẫu Biên bản họp của công ty).
-    - Các phần chính bắt buộc phải xuất hiện (tương ứng với các dòng Tiêu đề phần trong mảng action_items):
-      * Mục A: "A. MỤC ĐÍCH CUỘC HỌP"
-      * Mục B: "B. SỰ CẦN THIẾT TRIỂN KHAI" hoặc "BỐI CẢNH/HIỆN TRẠNG"
-      * Mục C: "C. TỔNG QUAN LỘ TRÌNH TRIỂN KHAI" hoặc "DIỄN BIẾN THẢO LUẬN"
-      * Mục D: "D. PHÂN CÔNG NHIỆM VỤ CHI TIẾT" (hoặc mục tiêu cụ thể khác được bàn bạc).
-    
-    - Đối với mỗi dòng Tiêu đề mục (Ví dụ: "A. MỤC ĐÍCH CUỘC HỌP"), bạn thiết lập các thuộc tính như sau:
-      * "stt": Chữ cái mục (Ví dụ: "A", "B", "C", "D")
-      * "content": Tên của mục viết hoa (Ví dụ: "MỤC ĐÍCH CUỘC HỌP", "SỰ CẦN THIẾT TRIỂN KHAI", "TỔNG QUAN LỘ TRÌNH TRIỂN KHAI", "PHÂN CÔNG NHIỆM VỤ")
-      * "assignee": ""
-      * "coop": ""
-      * "deadline": ""
-      * "is_header": true
+━━ LUẬT TỐI THƯỢNG: KHÔNG ĐƯỢC BỊA ━━
+Biên bản họp là văn bản chính thức của công ty, gán trách nhiệm cho người thật. Một chi tiết bịa nghe hợp lý còn nguy hiểm hơn một ô để trống.
+1. DANH SÁCH TÊN ĐÓNG. Chỉ được dùng tên người trong danh sách sau:
+${roster.length > 0 ? roster.map(n => `   - ${n}`).join("\n") : "   (không có danh sách — tuyệt đối không nêu tên riêng của bất kỳ ai)"}
+   Nếu nghe thấy một người phát biểu mà không xác định được là ai trong danh sách, hãy ghi theo bộ phận ("Đại diện P. QLDA", "Đại diện BĐH"). CẤM tự nghĩ ra một cái tên nghe hợp lý.
+2. SỐ LIỆU LẤY NGUYÊN VĂN. Không làm tròn, không quy đổi, không suy diễn thêm con số nào không được nói ra.
+3. THIẾU THÌ ĐỂ TRỐNG "". Cấm điền giá trị phỏng đoán để lấp chỗ trống — kể cả giờ họp, địa điểm, tên dự án, tên thư ký.
+4. TIMELINE:
+${TIMELINE_RULES[timelineMode]}
 
-    - Đối với các dòng nội dung chi tiết hoặc công việc cụ thể nằm dưới từng mục:
-      * "stt": Số thứ tự dạng số (1, 2, 3...)
-      * "content": Mô tả đầy đủ, chi tiết, chuyên nghiệp nội dung phát biểu, báo cáo của bộ phận, các chỉ đạo/góp ý cốt lõi của sếp (${chairmanName} hoặc người chủ trì). Viết đầy đủ nghiệp vụ dài từ 2-4 câu, KHÔNG tóm tắt sơ sài chung chung.
-      * "assignee": Bộ phận hoặc Cá nhân chịu trách nhiệm chính (Ví dụ: "Tất cả", "Mr A", "P. HCNS", "P. MKT", "P. QLDA", "BĐH", "Mr B"). Cố gắng chuẩn hoá tên.
-      * "coop": Bộ phận phối hợp (nếu có, ví dụ: "Tất cả", "P. Nhân sự", "Mr A"). Nếu không có thì để "".
-      * "deadline": Hạn hoàn thành cụ thể (Ví dụ: "Trước 11/07/2026", "Nắm chủ trương thực hiện", "Đang vận hành").
-      * "is_header": false
+━━ QUY TẮC CHẮT LỌC NỘI DUNG ━━
+1. BỎ QUA HOÀN TOÀN: câu chào hỏi, tán gẫu, chuyện cá nhân ngoài lề; tranh luận dông dài không đi đến kết luận; từ đệm thừa (à, ừ, thì, là, hả, vâng, nhỉ, nhé...).
+2. TRÍCH XUẤT THÔNG TIN ĐẦU BIÊN BẢN:
+   - "title": tên cuộc họp súc tích, phản ánh đúng chủ đề trọng tâm (VD: "Họp giao ban giải quyết vướng mắc dự án Tây Ninh").
+   - "meeting_date": ngày họp (YYYY-MM-DD) nếu được nhắc tới, không thấy thì "".
+   - "start_time" / "end_time": theo đúng luật timeline ở trên.
+   - "location": địa điểm họp nếu được nhắc tới, không thấy thì "".
+   - "secretary": thư ký ghi chép, không xác định được thì "".
+   - "attendees": mảng tên thành viên tham dự, CHỈ lấy từ danh sách tên đóng ở trên.
+   - "project_name" / "package_name": tên dự án và gói thầu được bàn, không có thì "".
+3. "transcript_clean": biên tập lại bản gỡ băng thành các đoạn thoại ngắn gọn, chuẩn mực ngôn ngữ doanh nghiệp, gán đúng tên người phát biểu theo danh sách tên đóng. Chỉ giữ ý kiến chuyên môn, số liệu báo cáo và chỉ đạo của Chủ trì.
+4. "summary": chia 2 phần rõ rệt bằng tiếng Việt:
+   * "PHẦN 1: TÓM TẮT DIỄN BIẾN CUỘC HỌP" — bối cảnh, lý do họp, các báo cáo chính, ý kiến đóng góp quan trọng của các bộ phận.
+   * "PHẦN 2: TIẾN TRÌNH & TIMELINE CHI TIẾT" — diễn biến theo trình tự, trình bày đúng luật timeline ở trên, kèm số liệu thực tế được nhắc đến.
+5. "action_items": mảng gồm CẢ nội dung diễn biến lẫn đầu việc được giao, chia theo các mục chính của mẫu Biên bản họp công ty:
+   * Mục A: "MỤC ĐÍCH CUỘC HỌP"
+   * Mục B: "SỰ CẦN THIẾT TRIỂN KHAI" hoặc "BỐI CẢNH/HIỆN TRẠNG"
+   * Mục C: "TỔNG QUAN LỘ TRÌNH TRIỂN KHAI" hoặc "DIỄN BIẾN THẢO LUẬN"
+   * Mục D: "PHÂN CÔNG NHIỆM VỤ CHI TIẾT"
+   - Dòng TIÊU ĐỀ MỤC: "stt" là chữ cái ("A"/"B"/"C"/"D"), "content" là tên mục viết hoa, "assignee"/"coop"/"deadline" để "", "ts" để null, "is_header": true.
+   - Dòng NỘI DUNG CHI TIẾT: "stt" là số (1, 2, 3...), "content" mô tả đầy đủ 2-4 câu nghiệp vụ (KHÔNG tóm tắt sơ sài), "assignee" là bộ phận/cá nhân chịu trách nhiệm chính (VD: "P. QLDA", "P. HCNS", "BĐH", hoặc tên trong danh sách tên đóng), "coop" là bộ phận phối hợp (không có thì ""), "deadline" là hạn hoàn thành như đã nói trong họp (không có thì ""), "is_header": false.
+   - "ts": BẮT BUỘC với mọi dòng không phải tiêu đề — điền số giây (nguyên, lấy từ ts=<số> của dòng transcript làm căn cứ chính cho nội dung đó) để người kiểm tra bấm vào là nghe lại đúng đoạn. ${timelineMode === "none" ? "Chế độ hiện tại không có mốc thời gian nên để null." : "Không được bỏ trống, không được đoán bừa — lấy đúng ts của dòng transcript mà bạn dựa vào."}
 
-━━━ ĐỊNH DẠNG ĐẦU RA (JSON CHUẨN) ━━━
+━━━ ĐỊNH DẠNG ĐẦU RA (JSON CHUẨN, không kèm giải thích) ━━━
 {
   "title": "...",
   "meeting_date": "YYYY-MM-DD",
@@ -73,25 +95,48 @@ Nhiệm vụ của bạn là nhận văn bản gỡ băng thô (transcript_raw) 
   "transcript_clean": "...",
   "summary": "...",
   "action_items": [
-    {
-      "stt": "A",
-      "content": "MỤC ĐÍCH CUỘC HỌP",
-      "assignee": "",
-      "coop": "",
-      "deadline": "",
-      "is_header": true
-    },
-    {
-      "stt": 1,
-      "content": "...",
-      "assignee": "...",
-      "coop": "...",
-      "deadline": "...",
-      "is_header": false
-    }
+    { "stt": "A", "content": "MỤC ĐÍCH CUỘC HỌP", "assignee": "", "coop": "", "deadline": "", "ts": null, "is_header": true },
+    { "stt": 1, "content": "...", "assignee": "P. QLDA", "coop": "", "deadline": "Trước 20/09/2026", "ts": 1247, "is_header": false }
   ]
 }
+
+Người chủ trì thường gặp của công ty là ông ${chairmanName} — chỉ dùng tên này khi nội dung thực sự cho thấy ông ấy phát biểu.
 `.trim();
+
+/**
+ * Dựng văn bản đưa cho AI từ các câu đã tách người nói.
+ * Mỗi dòng kèm mốc [HH:MM:SS | ts=<giây>] để AI trích dẫn được.
+ */
+function buildTimedTranscript(
+  segments: DiarizedSegment[],
+  speakerMap: Record<string, string>,
+  recordingStartedAt: string | null,
+): string {
+  const startMs = recordingStartedAt ? new Date(recordingStartedAt).getTime() : null;
+
+  return segments.map(seg => {
+    const ts = Math.round(Number(seg.start) || 0);
+    let stamp: string;
+    if (startMs !== null && !Number.isNaN(startMs)) {
+      // Route API chạy theo giờ UTC: toLocale* KHÔNG tự đổi múi giờ, phải nói rõ
+      // Asia/Ho_Chi_Minh, nếu không giờ trong biên bản lệch 7 tiếng.
+      stamp = new Date(startMs + ts * 1000).toLocaleTimeString("vi-VN", {
+        timeZone: "Asia/Ho_Chi_Minh",
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    } else {
+      // Không có giờ đồng hồ: mốc là thời điểm tính từ đầu file, luôn đủ HH:MM:SS
+      // để AI không nhầm "05:12" (phút:giây) thành 5 giờ 12 phút.
+      const hh = String(Math.floor(ts / 3600)).padStart(2, "0");
+      stamp = `${hh}:${formatTs(ts % 3600)}`;
+    }
+    const speaker = speakerMap[seg.speaker] || seg.speaker;
+    return `[${stamp} | ts=${ts}] ${speaker}: ${seg.text}`;
+  }).join("\n");
+}
 
 export async function POST(req: NextRequest) {
   const auth = await requireApiAuth(req);
@@ -109,10 +154,11 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { meetingId, transcriptRaw } = body;
+    const { meetingId } = body;
+    const roster: string[] = Array.isArray(body.roster) ? body.roster.filter(Boolean) : [];
 
-    if (!meetingId || !transcriptRaw) {
-      return NextResponse.json({ error: "Thiếu meetingId hoặc transcriptRaw." }, { status: 400 });
+    if (!meetingId) {
+      return NextResponse.json({ error: "Thiếu meetingId." }, { status: 400 });
     }
 
     // RLS on meetings blocks the shared anon client: the UPDATE below would
@@ -127,56 +173,111 @@ export async function POST(req: NextRequest) {
         })
       : supabase;
 
-    // GATE GÓI DỊCH VỤ: Biên bản họp AI thuộc gói Enterprise (tenant_config.plan)
+    // GATE GÓI DỊCH VỤ: module Biên bản họp mở từ gói Basic (lib/planShared.ts)
     const { data: planRow } = await dbClient
       .from("tenant_config").select("value").eq("key", "plan").maybeSingle();
     if (!isFeatureAllowed(normalizePlan(planRow?.value), "meeting_ai")) {
       return NextResponse.json({
-        error: "Tính năng Biên bản họp AI thuộc gói Enterprise. Vui lòng liên hệ Quản trị viên để nâng cấp gói dịch vụ."
+        error: "Tính năng Biên bản họp AI chưa được mở cho gói dịch vụ hiện tại. Vui lòng liên hệ Quản trị viên để nâng cấp."
       }, { status: 403 });
     }
 
-    // 1. Call OpenAI
+    // 1. Lấy bản gỡ băng TỪ CSDL (không tin body của client) để biết đang ở chế
+    //    độ timeline nào — client không có quyền quyết định việc này.
+    const { data: meeting, error: readError } = await dbClient
+      .from("meetings")
+      .select("transcript_raw, transcript_segments, speaker_map, recording_started_at")
+      .eq("id", meetingId)
+      .single();
+
+    if (readError || !meeting) {
+      return NextResponse.json(
+        { error: `Không đọc được biên bản: ${readError?.message || "Không tìm thấy"}` },
+        { status: 404 }
+      );
+    }
+
+    const segments: DiarizedSegment[] = Array.isArray(meeting.transcript_segments)
+      ? meeting.transcript_segments
+      : [];
+    const speakerMap: Record<string, string> = (meeting.speaker_map && typeof meeting.speaker_map === "object")
+      ? meeting.speaker_map
+      : {};
+
+    let timelineMode: TimelineMode;
+    let transcriptForAI: string;
+
+    if (segments.length > 0) {
+      timelineMode = meeting.recording_started_at ? "clock" : "relative";
+      transcriptForAI = buildTimedTranscript(segments, speakerMap, meeting.recording_started_at);
+    } else {
+      timelineMode = "none";
+      transcriptForAI = meeting.transcript_raw || body.transcriptRaw || "";
+    }
+
+    if (!transcriptForAI.trim()) {
+      return NextResponse.json({ error: "Biên bản chưa có nội dung gỡ băng để phân tích." }, { status: 400 });
+    }
+
+    // 2. Gọi OpenAI
     const openai = new OpenAI({ apiKey });
-    const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o-mini";
+    const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || DEFAULT_ANALYSIS_MODEL;
 
-    // Tên công ty + người chủ trì mặc định lấy từ tenant_config (company_name, chairman_name)
     const tenantCfg = await getTenantConfigServer();
-    const SYSTEM_PROMPT = buildSystemPrompt(tenantCfg.company_name, tenantCfg.chairman_name);
+    const SYSTEM_PROMPT = buildSystemPrompt(
+      tenantCfg.company_name,
+      tenantCfg.chairman_name,
+      timelineMode,
+      roster,
+    );
 
+    // Dòng 5.6 là model suy luận: KHÔNG truyền temperature, dùng reasoning_effort.
     const completion = await openai.chat.completions.create({
-      model: model === "gpt-4o-mini" ? "gpt-4o-mini" : model,
+      model,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `Hãy chắt lọc các ý chính trọng tâm từ bản gỡ băng sau và trích xuất dữ liệu JSON:\n\n${transcriptRaw}` }
+        { role: "user", content: `Hãy chắt lọc các ý chính trọng tâm từ bản gỡ băng sau và trả về JSON theo đúng định dạng:\n\n${transcriptForAI}` }
       ],
-      temperature: 0.1, // Strict factual focus
-      response_format: { type: "json_object" }
-    });
+      reasoning_effort: ANALYSIS_REASONING_EFFORT,
+      response_format: { type: "json_object" },
+    } as any);
 
     const reply = completion.choices[0]?.message?.content || "{}";
     const ext = JSON.parse(reply);
 
-    // Format date if empty
-    const today = new Date().toISOString().split("T")[0];
-    const meetingDate = ext.meeting_date || today;
+    // 3. Chốt chặn phía server cho chế độ "relative": file tải lên không có giờ
+    //    đồng hồ, nên giờ họp dạng 00:01 / 0:37 chắc chắn là AI quy nhầm mốc
+    //    phút-của-file thành giờ họp.
+    if (timelineMode !== "clock") {
+      const looksLikeFileOffset = (v: any) => typeof v === "string" && /^0?0:\d{2}$/.test(v.trim());
+      if (looksLikeFileOffset(ext.start_time)) ext.start_time = "";
+      if (looksLikeFileOffset(ext.end_time)) ext.end_time = "";
+    }
 
-    // 2. Update meetings table with extracted AI details & metadata
+    // 4. Lưu kết quả. KHÔNG điền giá trị mặc định cho các ô AI để trống —
+    //    thà để người dùng tự điền còn hơn đưa số liệu phỏng đoán vào văn bản
+    //    chính thức. Riêng title/meeting_date phải có vì là cột NOT NULL.
+    const today = new Date().toISOString().split("T")[0];
+    // Người dự do người dùng chọn trước khi chạy đáng tin hơn danh sách AI nghe
+    // được, nên chỉ ghi đè khi AI thực sự trả về tên — AI trả mảng rỗng mà ghi
+    // đè là xoá mất danh sách đã chọn.
+    const aiAttendees = Array.isArray(ext.attendees) ? ext.attendees.filter(Boolean) : [];
     const { data: updatedRows, error: dbError } = await dbClient
       .from("meetings")
       .update({
-        title: ext.title || "Cuộc họp giao ban không tên",
-        meeting_date: meetingDate,
-        start_time: ext.start_time || "09:00",
-        end_time: ext.end_time || "10:30",
-        location: ext.location || "Văn phòng công ty",
+        title: ext.title || "Biên bản họp (chưa đặt tên)",
+        meeting_date: ext.meeting_date || today,
+        start_time: ext.start_time || "",
+        end_time: ext.end_time || "",
+        location: ext.location || "",
         secretary: ext.secretary || "",
-        attendees: ext.attendees || [],
+        ...(aiAttendees.length > 0 ? { attendees: aiAttendees } : {}),
         project_name: ext.project_name || "",
         package_name: ext.package_name || "",
         transcript_clean: ext.transcript_clean || "",
         summary: ext.summary || "",
-        action_items: ext.action_items || []
+        action_items: Array.isArray(ext.action_items) ? ext.action_items : [],
+        ai_model: model,
       })
       .eq("id", meetingId)
       .select("id");
@@ -193,7 +294,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: ext
+      data: ext,
+      model,
+      used_real_timeline: timelineMode === "clock",
+      timeline_mode: timelineMode,
     });
   } catch (err: any) {
     console.error("AI processing error:", err);

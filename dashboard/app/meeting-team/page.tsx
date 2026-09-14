@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { emailFieldMatches } from "@/lib/emailMatch";
 import { fetchTenantConfig } from "@/lib/tenantConfig";
 import { isResignedRow } from "@/lib/resigned";
+import { useCurrentUser } from "@/lib/useCurrentUser";
 import { DialogProvider, useDialog } from "@/components/DialogProvider";
 import MeetingRecorder, { type RecordedSegment } from "@/components/MeetingRecorder";
 import VoiceSampleManager from "@/components/VoiceSampleManager";
@@ -126,6 +127,11 @@ export default function MeetingTeamPage() {
 
 function MeetingTeamContent() {
   const dialog = useDialog();
+  // Cùng luật với hàm can_manage_employees_caller() bên CSDL (migration 007):
+  // Admin trong allowed_users HOẶC có cờ "Quản lý hồ sơ nhân sự". Chỉ dùng để
+  // dựng giao diện — quyền thật vẫn do CSDL quyết.
+  const account = useCurrentUser();
+  const canManageEmployees = account.isAdmin || account.perms.canManageEmployees;
 
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -2161,6 +2167,7 @@ function MeetingTeamContent() {
         <VoiceSampleManager
           employees={employees.map(e => ({ id: e.id, name: e.name, position: e.role, voice_sample_path: e.voice_sample_path }))}
           currentEmployeeId={currentUser?.employeeId || ""}
+          canManageOthers={canManageEmployees}
           onClose={() => setShowVoiceManager(false)}
           onChanged={fetchEmployees}
         />

@@ -42,12 +42,15 @@ export type VoiceEmployee = {
 export default function VoiceSampleManager({
   employees,
   currentEmployeeId,
+  canManageOthers,
   onClose,
   onChanged,
 }: {
   employees: VoiceEmployee[];
   /** Hồ sơ nhân sự của chính người đang đăng nhập — dòng của họ đi lối RPC. */
   currentEmployeeId?: string;
+  /** Admin hoặc có cờ "Quản lý hồ sơ nhân sự" — mới ghi hộ người khác được. */
+  canManageOthers?: boolean;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -94,6 +97,15 @@ export default function VoiceSampleManager({
     }, 1000);
     return () => clearInterval(timer);
   }, [recordingFor]);
+
+  /** Người đang đăng nhập có được sửa mẫu giọng của dòng này không.
+   *  Chỉ để dựng giao diện — quyền THẬT vẫn do CSDL quyết ở writeVoicePath. */
+  const canEdit = useCallback((employeeId: string) => {
+    if (currentEmployeeId && employeeId === currentEmployeeId) return true;
+    return !!canManageOthers;
+  }, [canManageOthers, currentEmployeeId]);
+
+  const denyMessage = "Bạn chỉ ghi được mẫu giọng của chính mình. Mẫu giọng của người khác do Phòng HCNS phụ trách.";
 
   /** Ghi cột voice_sample_path — tự chọn lối tuỳ là hồ sơ của mình hay người khác. */
   const writeVoicePath = useCallback(async (employeeId: string, path: string | null) => {
@@ -176,9 +188,14 @@ export default function VoiceSampleManager({
   const pickFileFor = useCallback((employeeId: string) => {
     setError("");
     setNotice("");
+    // Chặn trước khi mở hộp chọn file, cùng lý do với nút Ghi mẫu.
+    if (!canEdit(employeeId)) {
+      setError(denyMessage);
+      return;
+    }
     uploadTargetRef.current = employeeId;
     fileInputRef.current?.click();
-  }, []);
+  }, [canEdit]);
 
   const handleFileChosen = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -202,6 +219,12 @@ export default function VoiceSampleManager({
 
   const startRecording = useCallback(async (employeeId: string) => {
     setError("");
+    // Chặn TRƯỚC KHI mở micro: để người dùng đọc 10 giây rồi mới báo không có
+    // quyền là vừa phí công vừa khó hiểu.
+    if (!canEdit(employeeId)) {
+      setError(denyMessage);
+      return;
+    }
     if (typeof window !== "undefined" && !window.isSecureContext) {
       setError("Trình duyệt chỉ cho phép thu micro trên HTTPS hoặc localhost.");
       return;
@@ -239,7 +262,7 @@ export default function VoiceSampleManager({
     } catch (err: any) {
       setError(`Không mở được micro: ${err?.message || "lỗi không xác định"}`);
     }
-  }, [saveSample, stopStream]);
+  }, [canEdit, saveSample, stopStream]);
 
   const stopRecording = useCallback(() => {
     if (recorderRef.current && recorderRef.current.state !== "inactive") {
@@ -363,6 +386,7 @@ export default function VoiceSampleManager({
           {rows.map(emp => {
             const isRecording = recordingFor === emp.id;
             const isBusy = busyId === emp.id;
+            const editable = canEdit(emp.id);
             return (
               <div key={emp.id} className="flex items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5">
                 <div className="min-w-0">
@@ -391,25 +415,33 @@ export default function VoiceSampleManager({
                       <Square size={12} /> Dừng ({seconds}s)
                     </button>
                   ) : (
-                    <>
-                      <button
-                        type="button"
-                        disabled={!!recordingFor || isBusy}
-                        onClick={() => startRecording(emp.id)}
-                        className="bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 text-[11px] font-bold px-3 py-2 rounded-lg transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
-                      >
-                        <Mic size={12} /> {emp.voice_sample_path ? "Ghi lại" : "Ghi mẫu"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!!recordingFor || isBusy}
-                        onClick={() => pickFileFor(emp.id)}
-                        title="Tải file ghi âm có sẵn làm mẫu giọng"
-                        className="bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 text-[11px] font-bold px-3 py-2 rounded-lg transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
-                      >
-                        <Upload size={12} /> Tải file
-                      </button>
-                    </>
+                    editable ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={!!recordingFor || isBusy}
+                          onClick={() => startRecording(emp.id)}
+                          className="bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 text-[11px] font-bold px-3 py-2 rounded-lg transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                        >
+                          <Mic size={12} /> {emp.voice_sample_path ? "Ghi lại" : "Ghi mẫu"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!!recordingFor || isBusy}
+                          onClick={() => pickFileFor(emp.id)}
+                          title="Tải file ghi âm có sẵn làm mẫu giọng"
+                          className="bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 text-[11px] font-bold px-3 py-2 rounded-lg transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                        >
+                          <Upload size={12} /> Tải file
+                        </button>
+                      </>
+                    ) : (
+                      // Không đủ quyền thì KHÔNG bày nút ra: bấm được rồi mới báo
+                      // "chưa cấp phép" là mời người ta làm việc vô ích.
+                      <span className="text-[10px] font-semibold text-slate-400 italic px-1">
+                        Phòng HCNS phụ trách
+                      </span>
+                    )
                   )}
 
                   {emp.voice_sample_path && !isRecording && (
@@ -426,15 +458,17 @@ export default function VoiceSampleManager({
                       >
                         {playingId === emp.id ? <Square size={12} /> : <Play size={12} />}
                       </button>
-                      <button
-                        type="button"
-                        disabled={isBusy}
-                        onClick={() => deleteSample(emp.id, emp.voice_sample_path!)}
-                        className="bg-rose-50 hover:bg-rose-100 text-rose-600 p-2 rounded-lg transition-all active:scale-95 cursor-pointer"
-                        title="Xoá mẫu giọng"
-                      >
-                        <Trash2 size={12} />
-                      </button>
+                      {editable && (
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => deleteSample(emp.id, emp.voice_sample_path!)}
+                          className="bg-rose-50 hover:bg-rose-100 text-rose-600 p-2 rounded-lg transition-all active:scale-95 cursor-pointer"
+                          title="Xoá mẫu giọng"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
                     </>
                   )}
                 </div>

@@ -182,6 +182,9 @@ function MeetingTeamContent() {
   const [editableSummary, setEditableSummary] = useState("");
   const [editableActionItems, setEditableActionItems] = useState<ActionItem[]>([]);
   const [speakerMapDraft, setSpeakerMapDraft] = useState<Record<string, string>>({});
+  const [openSpeakerLabel, setOpenSpeakerLabel] = useState<string | null>(null);
+  const [speakerSearch, setSpeakerSearch] = useState("");
+  const speakerPickerRef = useRef<HTMLDivElement>(null);
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [isRetranscribing, setIsRetranscribing] = useState(false);
   const [isDeletingAudio, setIsDeletingAudio] = useState(false);
@@ -281,6 +284,9 @@ function MeetingTeamContent() {
       }
       if (chairPickerRef.current && !chairPickerRef.current.contains(e.target as Node)) {
         setShowChairDropdown(false);
+      }
+      if (speakerPickerRef.current && !speakerPickerRef.current.contains(e.target as Node)) {
+        setOpenSpeakerLabel(null);
       }
     };
     document.addEventListener("mousedown", onClickOutside);
@@ -999,6 +1005,22 @@ function MeetingTeamContent() {
       void audioRef.current.play();
       pendingSeekRef.current = null;
     }
+  };
+
+  // ─── Gợi ý tên cho ô gán người nói ───
+  const speakerQuery = speakerSearch.trim().toLowerCase();
+  const speakerOptions = employees.filter(e => {
+    if (!speakerQuery) return true;
+    return (e.name || "").toLowerCase().includes(speakerQuery)
+      || (e.department || "").toLowerCase().includes(speakerQuery)
+      || (e.role || "").toLowerCase().includes(speakerQuery);
+  });
+
+  /** Gán một nhãn máy ("Speaker 1") sang tên người thật. */
+  const assignSpeaker = (label: string, name: string) => {
+    setSpeakerMapDraft(prev => ({ ...prev, [label]: name }));
+    setOpenSpeakerLabel(null);
+    setSpeakerSearch("");
   };
 
   // ─── Danh sách người nói chưa gán tên ───
@@ -1794,20 +1816,104 @@ function MeetingTeamContent() {
                         Nhãn nào còn là &quot;Speaker N&quot; nghĩa là người đó chưa có mẫu giọng. Điền tên vào đây rồi bấm
                         &quot;Phân tích lại bằng AI&quot; để biên bản gọi đúng tên.
                       </p>
-                      {speakerLabels.map(label => (
-                        <div key={`spk_${label}`} className="flex items-center gap-2">
-                          <span className="text-[11px] font-bold text-slate-600 w-24 shrink-0 truncate">{label}</span>
-                          <input
-                            type="text"
-                            value={speakerMapDraft[label] || ""}
-                            disabled={selectedMeeting.status !== "draft"}
-                            onChange={(e) => setSpeakerMapDraft({ ...speakerMapDraft, [label]: e.target.value })}
-                            list="meeting_people"
-                            placeholder="Tên thật…"
-                            className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-blue-500 focus:outline-none text-slate-800 text-[11px] disabled:opacity-60"
-                          />
-                        </div>
-                      ))}
+                      {/* Ô tìm kiếm tự dựng chứ không dùng <datalist>: danh sách gợi ý
+                          của trình duyệt trôi ra ngoài khung, không theo giao diện chung
+                          và không hiện được phòng ban để phân biệt người trùng tên. */}
+                      <div ref={speakerPickerRef} className="space-y-2">
+                        {speakerLabels.map(label => {
+                          const assigned = speakerMapDraft[label] || "";
+                          const emp = employees.find(e => e.name === assigned);
+                          const editable = selectedMeeting.status === "draft";
+                          const isOpen = openSpeakerLabel === label;
+                          return (
+                            <div key={`spk_${label}`} className="flex items-start gap-2">
+                              <span className="mt-2 text-[11px] font-extrabold text-slate-500 bg-slate-100 rounded-lg px-2 py-1 shrink-0 max-w-[88px] truncate" title={label}>
+                                {label}
+                              </span>
+
+                              <div className="relative flex-1 min-w-0">
+                                {assigned ? (
+                                  <div className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-2">
+                                    <span className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 text-white text-[8px] font-bold flex items-center justify-center shrink-0">
+                                      {emp ? initialsOf(emp) : assigned.slice(0, 2).toUpperCase()}
+                                    </span>
+                                    <span className="flex-1 min-w-0">
+                                      <span className="block text-[11px] font-bold text-slate-700 truncate">{assigned}</span>
+                                      {emp && (
+                                        <span className="block text-[10px] text-slate-400 font-semibold truncate">
+                                          {emp.department || "Chưa xếp phòng"}{emp.role ? ` • ${emp.role}` : ""}
+                                        </span>
+                                      )}
+                                    </span>
+                                    {editable && (
+                                      <button
+                                        type="button"
+                                        onClick={() => { assignSpeaker(label, ""); setOpenSpeakerLabel(label); }}
+                                        title="Gán người khác"
+                                        className="text-slate-400 hover:text-rose-500 transition-colors cursor-pointer shrink-0"
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-1.5 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/40">
+                                    <Search size={11} className="text-slate-400 shrink-0" />
+                                    <input
+                                      type="text"
+                                      value={isOpen ? speakerSearch : ""}
+                                      disabled={!editable}
+                                      onChange={(e) => { setSpeakerSearch(e.target.value); setOpenSpeakerLabel(label); }}
+                                      onFocus={() => { setOpenSpeakerLabel(label); setSpeakerSearch(""); }}
+                                      placeholder="Tìm tên người nói…"
+                                      className="flex-1 min-w-0 py-0.5 outline-none text-[11px] font-semibold placeholder:font-normal bg-transparent text-slate-800 disabled:opacity-60"
+                                    />
+                                  </div>
+                                )}
+
+                                {isOpen && !assigned && editable && (
+                                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-40 max-h-56 overflow-y-auto animate-in fade-in duration-150">
+                                    {/* Cho phép ghi theo bộ phận khi không rõ là ai —
+                                        đúng luật "không chắc thì đừng nêu tên riêng". */}
+                                    {speakerSearch.trim() && !speakerOptions.some(e => e.name === speakerSearch.trim()) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => assignSpeaker(label, speakerSearch.trim())}
+                                        className="w-full text-left px-3 py-2 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100"
+                                      >
+                                        <span className="block text-[11px] font-bold text-[#005BAC] truncate">Dùng nguyên chữ: &quot;{speakerSearch.trim()}&quot;</span>
+                                        <span className="block text-[10px] text-slate-400 font-semibold">Khi không rõ là ai, ghi theo bộ phận</span>
+                                      </button>
+                                    )}
+                                    {speakerOptions.length === 0 ? (
+                                      <p className="text-center text-slate-400 text-[11px] italic py-4">Không tìm thấy nhân sự phù hợp.</p>
+                                    ) : (
+                                      speakerOptions.map(opt => (
+                                        <button
+                                          key={`spk_${label}_${opt.id}`}
+                                          type="button"
+                                          onClick={() => assignSpeaker(label, opt.name)}
+                                          className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 transition-colors text-left cursor-pointer"
+                                        >
+                                          <span className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 text-white text-[8px] font-bold flex items-center justify-center shrink-0">
+                                            {initialsOf(opt)}
+                                          </span>
+                                          <span className="flex-1 min-w-0">
+                                            <span className="block text-[11px] font-bold text-slate-700 truncate">{opt.name}</span>
+                                            <span className="block text-[10px] text-slate-400 font-semibold truncate">
+                                              {opt.department || "Chưa xếp phòng"}{opt.role ? ` • ${opt.role}` : ""}
+                                            </span>
+                                          </span>
+                                        </button>
+                                      ))
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
 

@@ -11,6 +11,7 @@ import { isResignedRow } from "@/lib/resigned";
 import { DialogProvider, useDialog } from "@/components/DialogProvider";
 import MeetingRecorder, { type RecordedSegment } from "@/components/MeetingRecorder";
 import VoiceSampleManager from "@/components/VoiceSampleManager";
+import PersonSearchCell, { type PersonOption } from "@/components/PersonSearchCell";
 import {
   ANALYSIS_MODELS,
   DEFAULT_ANALYSIS_MODEL,
@@ -1008,6 +1009,20 @@ function MeetingTeamContent() {
   });
 
   const voiceSampleCount = employees.filter(e => e.voice_sample_path).length;
+
+  // Lựa chọn cho ô "Phối hợp" trong bảng phân công: nhân sự trong danh bạ + các
+  // bộ phận hay được giao việc.
+  const assigneeOptions: PersonOption[] = [
+    ...["BĐH", "P. QLDA", "P. KHĐT", "P. VTTB", "P. HCNS", "Tất cả"].map(v => ({
+      id: `dept_${v}`, name: v, sub: "Bộ phận", initials: v.replace("P. ", "").slice(0, 2).toUpperCase(),
+    })),
+    ...employees.map(e => ({
+      id: e.id,
+      name: e.name,
+      sub: `${e.department || "Chưa xếp phòng"}${e.role ? ` • ${e.role}` : ""}`,
+      initials: initialsOf(e),
+    })),
+  ];
 
   // ─── Ô chọn người chủ trì (chọn MỘT người) ───
   const selectedChair = employees.find(e => e.name === chairperson);
@@ -2009,12 +2024,11 @@ function MeetingTeamContent() {
                                           </td>
                                           <td className="px-4 py-2.5">
                                             {selectedMeeting.status === "draft" ? (
-                                              <input
-                                                type="text"
+                                              <PersonSearchCell
                                                 value={item.coop}
-                                                list="meeting_assignees"
-                                                onChange={(e) => handleUpdateActionItemField(index, "coop", e.target.value)}
-                                                className="w-full bg-transparent border-b border-slate-200 focus:border-blue-500 focus:outline-none text-slate-800"
+                                                options={assigneeOptions}
+                                                onChange={(v) => handleUpdateActionItemField(index, "coop", v)}
+                                                placeholder="Tìm người/bộ phận…"
                                               />
                                             ) : (
                                               <span className="text-slate-500">{item.coop || "-"}</span>

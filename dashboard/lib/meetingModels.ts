@@ -41,6 +41,25 @@ export const MAX_KNOWN_SPEAKERS = 4;
 export const VOICE_SAMPLE_MIN_SEC = 2;
 export const VOICE_SAMPLE_MAX_SEC = 10;
 
+// Mẫu giọng có thể là file ghi trong app (.webm) hoặc file sẵn người dùng tải
+// lên (.mp3/.m4a/.wav...). Phải gửi ĐÚNG mime cho OpenAI trong data URL, đoán
+// sai thì API từ chối file dù nội dung hợp lệ.
+export const VOICE_SAMPLE_MIME: Record<string, string> = {
+  webm: "audio/webm",
+  ogg: "audio/ogg",
+  wav: "audio/wav",
+  mp3: "audio/mpeg",
+  mpeg: "audio/mpeg",
+  m4a: "audio/m4a",
+  mp4: "audio/mp4",
+};
+
+/** Suy mime từ đuôi file mẫu giọng; không nhận ra thì coi như mp3. */
+export function voiceSampleMime(path: string): string {
+  const ext = (path.split(".").pop() || "").toLowerCase();
+  return VOICE_SAMPLE_MIME[ext] || "audio/mpeg";
+}
+
 // ─── Tham số ghi âm trong app ───
 // opus mono 32kbps ≈ 240KB/phút -> chạm trần 25MB ở khoảng phút thứ 87.
 // Cắt mỗi 20 phút (≈ 4.8MB) để còn dư rất xa kể cả khi nói liên tục.

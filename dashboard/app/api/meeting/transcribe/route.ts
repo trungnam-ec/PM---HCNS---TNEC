@@ -12,6 +12,7 @@ import {
   MAX_TRANSCRIBE_BYTES,
   MAX_KNOWN_SPEAKERS,
   MEETINGS_BUCKET,
+  voiceSampleMime,
 } from "@/lib/meetingModels";
 
 // Gỡ băng một đoạn 20 phút mất vài phút; mặc định Vercel cắt function sớm hơn
@@ -207,7 +208,7 @@ export async function POST(req: NextRequest) {
           .download(row.voice_sample_path);
         if (!sampleBlob) continue;
         const sampleBuffer = Buffer.from(await sampleBlob.arrayBuffer());
-        const mime = row.voice_sample_path.endsWith(".webm") ? "audio/webm" : "audio/mpeg";
+        const mime = voiceSampleMime(row.voice_sample_path);
         knownSpeakerNames.push(row.name);
         knownSpeakerReferences.push(`data:${mime};base64,${sampleBuffer.toString("base64")}`);
       }

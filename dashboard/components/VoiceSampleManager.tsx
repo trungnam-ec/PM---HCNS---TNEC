@@ -24,7 +24,8 @@ import {
   VOICE_SAMPLE_MIN_SEC,
   VOICE_SAMPLE_MAX_SEC,
 } from "@/lib/meetingModels";
-import { Mic, Square, Play, Trash2, Loader2, CheckCircle2, AlertCircle, X } from "lucide-react";
+import { prepareVoiceSample } from "@/lib/voiceSamplePrepare";
+import { Mic, Square, Play, Trash2, Loader2, CheckCircle2, AlertCircle, X, Upload, Info } from "lucide-react";
 
 export type VoiceEmployee = {
   id: string;
@@ -47,12 +48,15 @@ export default function VoiceSampleManager({
   const [seconds, setSeconds] = useState(0);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const secondsRef = useRef(0);
   const targetIdRef = useRef<string>("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetRef = useRef<string>("");
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach(t => t.stop());
@@ -74,14 +78,26 @@ export default function VoiceSampleManager({
     return () => clearInterval(timer);
   }, [recordingFor]);
 
-  const saveSample = useCallback(async (employeeId: string, blob: Blob) => {
+  const saveSample = useCallback(async (
+    employeeId: string,
+    blob: Blob,
+    ext: string,
+    contentType: string,
+  ) => {
     setBusyId(employeeId);
     try {
-      const path = `voice_samples/${employeeId}.webm`;
+      const path = `voice_samples/${employeeId}.${ext}`;
       const { error: upErr } = await supabase.storage
         .from(MEETINGS_BUCKET)
-        .upload(path, blob, { contentType: "audio/webm", upsert: true });
+        .upload(path, blob, { contentType, upsert: true });
       if (upErr) throw upErr;
+
+      // Mẫu cũ khác đuôi file thì upsert KHÔNG đè lên được, phải xoá tay —
+      // không xoá là để lại rác vĩnh viễn trong kho.
+      const oldPath = employees.find(e => e.id === employeeId)?.voice_sample_path;
+      if (oldPath && oldPath !== path) {
+        await supabase.storage.from(MEETINGS_BUCKET).remove([oldPath]);
+      }
 
       const { data: rows, error: dbErr } = await supabase
         .from("employees")
@@ -98,7 +114,35 @@ export default function VoiceSampleManager({
     } finally {
       setBusyId(null);
     }
-  }, [onChanged]);
+  }, [employees, onChanged]);
+
+  // ─── Tải file mẫu giọng có sẵn ───
+  const pickFileFor = useCallback((employeeId: string) => {
+    setError("");
+    setNotice("");
+    uploadTargetRef.current = employeeId;
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChosen = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // cho phép chọn lại đúng file đó lần sau
+    const employeeId = uploadTargetRef.current;
+    if (!file || !employeeId) return;
+
+    setBusyId(employeeId);
+    setError("");
+    setNotice("");
+    try {
+      const prepared = await prepareVoiceSample(file);
+      setBusyId(null);
+      await saveSample(employeeId, prepared.blob, prepared.ext, prepared.contentType);
+      if (prepared.note) setNotice(prepared.note);
+    } catch (err: any) {
+      setBusyId(null);
+      setError(err?.message || "Không xử lý được file mẫu giọng.");
+    }
+  }, [saveSample]);
 
   const startRecording = useCallback(async (employeeId: string) => {
     setError("");
@@ -131,7 +175,7 @@ export default function VoiceSampleManager({
           setError(`Mẫu giọng phải dài ít nhất ${VOICE_SAMPLE_MIN_SEC} giây. Hãy đọc một câu trọn vẹn rồi mới bấm dừng.`);
           return;
         }
-        void saveSample(targetIdRef.current, blob);
+        void saveSample(targetIdRef.current, blob, "webm", "audio/webm");
       };
       rec.start();
       recorderRef.current = rec;
@@ -190,8 +234,9 @@ export default function VoiceSampleManager({
           <div>
             <h3 className="font-heading font-extrabold text-sm text-slate-800">Mẫu giọng nhân sự</h3>
             <p className="text-[11px] font-semibold text-slate-500 mt-1 leading-relaxed">
-              Ghi {VOICE_SAMPLE_MIN_SEC}–{VOICE_SAMPLE_MAX_SEC} giây mỗi người. Khi gỡ băng, AI sẽ gọi thẳng tên thật thay vì
-              &quot;Speaker 1/2/3&quot;. Nên ghi cho người chủ trì và 3 người phát biểu nhiều nhất.
+              Ghi trực tiếp {VOICE_SAMPLE_MIN_SEC}–{VOICE_SAMPLE_MAX_SEC} giây, hoặc tải file ghi âm có sẵn (MP3, M4A, WAV, OGG, WEBM) —
+              file dài hơn {VOICE_SAMPLE_MAX_SEC} giây sẽ tự cắt lấy {VOICE_SAMPLE_MAX_SEC} giây kể từ chỗ bắt đầu có tiếng.
+              Khi gỡ băng, AI sẽ gọi thẳng tên thật thay vì &quot;Speaker 1/2/3&quot;. Nên làm cho người chủ trì và 3 người phát biểu nhiều nhất.
               <span className="text-slate-400"> Đã có {withSample}/{employees.length} người.</span>
             </p>
           </div>
@@ -199,6 +244,16 @@ export default function VoiceSampleManager({
             <X size={18} />
           </button>
         </div>
+
+        {/* Một ô chọn file dùng chung cho cả danh sách; người nào đang chọn thì
+            ghi vào uploadTargetRef trước khi mở hộp thoại của trình duyệt. */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChosen}
+          accept="audio/*,.m4a,.webm,.ogg"
+          className="hidden"
+        />
 
         <div className="px-6 pt-4">
           <input
@@ -211,6 +266,12 @@ export default function VoiceSampleManager({
             <div className="mt-3 bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-start gap-2">
               <AlertCircle size={14} className="text-rose-500 shrink-0 mt-0.5" />
               <p className="text-[11px] font-semibold text-rose-700 leading-relaxed">{error}</p>
+            </div>
+          )}
+          {notice && (
+            <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
+              <Info size={14} className="text-[#005BAC] shrink-0 mt-0.5" />
+              <p className="text-[11px] font-semibold text-slate-600 leading-relaxed">{notice}</p>
             </div>
           )}
         </div>
@@ -242,14 +303,25 @@ export default function VoiceSampleManager({
                       <Square size={12} /> Dừng ({seconds}s)
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      disabled={!!recordingFor || isBusy}
-                      onClick={() => startRecording(emp.id)}
-                      className="bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 text-[11px] font-bold px-3 py-2 rounded-lg transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Mic size={12} /> {emp.voice_sample_path ? "Ghi lại" : "Ghi mẫu"}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        disabled={!!recordingFor || isBusy}
+                        onClick={() => startRecording(emp.id)}
+                        className="bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 text-[11px] font-bold px-3 py-2 rounded-lg transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Mic size={12} /> {emp.voice_sample_path ? "Ghi lại" : "Ghi mẫu"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!recordingFor || isBusy}
+                        onClick={() => pickFileFor(emp.id)}
+                        title="Tải file ghi âm có sẵn làm mẫu giọng"
+                        className="bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 text-[11px] font-bold px-3 py-2 rounded-lg transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Upload size={12} /> Tải file
+                      </button>
+                    </>
                   )}
 
                   {emp.voice_sample_path && !isRecording && (

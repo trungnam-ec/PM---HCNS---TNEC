@@ -49,6 +49,7 @@ export default function VoiceSampleManager({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [playingId, setPlayingId] = useState<string | null>(null);
 
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -57,13 +58,21 @@ export default function VoiceSampleManager({
   const targetIdRef = useRef<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTargetRef = useRef<string>("");
+  // PHẢI giữ tham chiếu tới phần tử audio: biến cục bộ trong hàm phát sẽ bị
+  // trình duyệt thu hồi ngay trong lúc đang tải file, làm play() đứt giữa chừng
+  // và báo lỗi dù file hoàn toàn bình thường.
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
   }, []);
 
-  useEffect(() => () => stopStream(), [stopStream]);
+  useEffect(() => () => {
+    stopStream();
+    audioRef.current?.pause();
+    audioRef.current = null;
+  }, [stopStream]);
 
   // ─── Đồng hồ: tự dừng ở 10 giây ───
   useEffect(() => {
@@ -85,19 +94,19 @@ export default function VoiceSampleManager({
     contentType: string,
   ) => {
     setBusyId(employeeId);
+    const path = `voice_samples/${employeeId}.${ext}`;
+    const oldPath = employees.find(e => e.id === employeeId)?.voice_sample_path;
     try {
-      const path = `voice_samples/${employeeId}.${ext}`;
+      // THỨ TỰ Ở ĐÂY LÀ CỐ Ý, ĐỪNG ĐỔI:
+      //   1. tải file mới lên  2. ghi CSDL  3. MỚI xoá file cũ
+      // Kho lưu trữ cho phép MỌI người ghi/xoá, chỉ bảng `employees` là bị khoá
+      // sau quyền nhân sự. Làm ngược (xoá file cũ trước rồi mới ghi CSDL) thì
+      // người không đủ quyền sẽ xoá mất mẫu giọng đang dùng tốt, còn CSDL vẫn
+      // trỏ vào file vừa bị xoá — đúng sự cố đã xảy ra thật ngày 14/09/2026.
       const { error: upErr } = await supabase.storage
         .from(MEETINGS_BUCKET)
         .upload(path, blob, { contentType, upsert: true });
       if (upErr) throw upErr;
-
-      // Mẫu cũ khác đuôi file thì upsert KHÔNG đè lên được, phải xoá tay —
-      // không xoá là để lại rác vĩnh viễn trong kho.
-      const oldPath = employees.find(e => e.id === employeeId)?.voice_sample_path;
-      if (oldPath && oldPath !== path) {
-        await supabase.storage.from(MEETINGS_BUCKET).remove([oldPath]);
-      }
 
       const { data: rows, error: dbErr } = await supabase
         .from("employees")
@@ -106,7 +115,18 @@ export default function VoiceSampleManager({
         .select("id");
       if (dbErr) throw dbErr;
       if (!rows || rows.length === 0) {
+        // Ghi CSDL hỏng -> dọn file vừa tải lên, trả mọi thứ về đúng như trước
+        // khi bấm. Mẫu giọng cũ (nếu có) KHÔNG bị đụng tới.
+        if (path !== oldPath) {
+          await supabase.storage.from(MEETINGS_BUCKET).remove([path]).catch(() => {});
+        }
         throw new Error("Tài khoản của bạn chưa được cấp phép sửa xóa.");
+      }
+
+      // Chỉ tới đây mới an toàn để dọn mẫu cũ. Khác đuôi file thì `upsert`
+      // không đè lên được, phải xoá tay kẻo để lại rác vĩnh viễn trong kho.
+      if (oldPath && oldPath !== path) {
+        await supabase.storage.from(MEETINGS_BUCKET).remove([oldPath]);
       }
       onChanged();
     } catch (err: any) {
@@ -191,17 +211,53 @@ export default function VoiceSampleManager({
     }
   }, []);
 
-  const playSample = useCallback(async (path: string) => {
-    const { data } = supabase.storage.from(MEETINGS_BUCKET).getPublicUrl(path);
-    const audio = new Audio(`${data.publicUrl}?v=${Date.now()}`);
-    void audio.play().catch(() => setError("Không phát được mẫu giọng."));
+  const stopPlaying = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setPlayingId(null);
   }, []);
+
+  const playSample = useCallback(async (employeeId: string, path: string) => {
+    setError("");
+    stopPlaying();
+
+    const { data } = supabase.storage.from(MEETINGS_BUCKET).getPublicUrl(path);
+    const url = `${data.publicUrl}?v=${Date.now()}`;
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    audio.onended = () => { audioRef.current = null; setPlayingId(null); };
+    setPlayingId(employeeId);
+
+    try {
+      await audio.play();
+    } catch (err: any) {
+      audioRef.current = null;
+      setPlayingId(null);
+      // Nói RÕ hỏng ở đâu thay vì một câu chung chung không sửa được: thử tải
+      // đầu file để tách hai trường hợp hoàn toàn khác nhau — mẫu giọng đã mất
+      // khỏi kho (phải ghi lại) và trình duyệt chặn phát (bấm lại là xong).
+      let reason = `${err?.name || "Lỗi"}${err?.message ? ": " + err.message : ""}`;
+      try {
+        const probe = await fetch(url, { method: "HEAD" });
+        if (!probe.ok) {
+          reason = `không tìm thấy file trên kho (HTTP ${probe.status}) — hãy ghi hoặc tải lại mẫu giọng cho người này`;
+        }
+      } catch {
+        reason = "không tải được file (mất kết nối tới kho lưu trữ)";
+      }
+      setError(`Không phát được mẫu giọng — ${reason}.`);
+    }
+  }, [stopPlaying]);
 
   const deleteSample = useCallback(async (employeeId: string, path: string) => {
     setBusyId(employeeId);
     setError("");
     try {
-      await supabase.storage.from(MEETINGS_BUCKET).remove([path]);
+      // Ghi CSDL TRƯỚC, xoá file SAU — xem ghi chú thứ tự ở saveSample. Làm
+      // ngược thì người không đủ quyền vẫn xoá được file, để lại hồ sơ trỏ vào
+      // một mẫu giọng không còn tồn tại.
       const { data: rows, error: dbErr } = await supabase
         .from("employees")
         .update({ voice_sample_path: null })
@@ -211,6 +267,7 @@ export default function VoiceSampleManager({
       if (!rows || rows.length === 0) {
         throw new Error("Tài khoản của bạn chưa được cấp phép sửa xóa.");
       }
+      await supabase.storage.from(MEETINGS_BUCKET).remove([path]);
       onChanged();
     } catch (err: any) {
       setError(err?.message || "Lỗi xoá mẫu giọng");
@@ -223,7 +280,6 @@ export default function VoiceSampleManager({
   const rows = keyword
     ? employees.filter(e => (e.name || "").toLowerCase().includes(keyword))
     : employees;
-  const withSample = employees.filter(e => e.voice_sample_path).length;
 
   // createPortal xuống document.body: phần tử `fixed` nằm trong một khối có
   // backdrop-filter sẽ bị nhốt trong khối đó chứ không căn theo màn hình nữa.
@@ -233,12 +289,6 @@ export default function VoiceSampleManager({
         <div className="flex items-start justify-between p-6 pb-4 border-b border-slate-100">
           <div>
             <h3 className="font-heading font-extrabold text-sm text-slate-800">Mẫu giọng nhân sự</h3>
-            <p className="text-[11px] font-semibold text-slate-500 mt-1 leading-relaxed">
-              Ghi trực tiếp {VOICE_SAMPLE_MIN_SEC}–{VOICE_SAMPLE_MAX_SEC} giây, hoặc tải file ghi âm có sẵn (MP3, M4A, WAV, OGG, WEBM) —
-              file dài hơn {VOICE_SAMPLE_MAX_SEC} giây sẽ tự cắt lấy {VOICE_SAMPLE_MAX_SEC} giây kể từ chỗ bắt đầu có tiếng.
-              Khi gỡ băng, AI sẽ gọi thẳng tên thật thay vì &quot;Speaker 1/2/3&quot;.
-              <span className="text-slate-400"> Đã có {withSample}/{employees.length} người.</span>
-            </p>
           </div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer shrink-0">
             <X size={18} />
@@ -328,11 +378,15 @@ export default function VoiceSampleManager({
                     <>
                       <button
                         type="button"
-                        onClick={() => playSample(emp.voice_sample_path!)}
-                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-lg transition-all active:scale-95 cursor-pointer"
-                        title="Nghe thử"
+                        onClick={() => playingId === emp.id ? stopPlaying() : playSample(emp.id, emp.voice_sample_path!)}
+                        className={`p-2 rounded-lg transition-all active:scale-95 cursor-pointer ${
+                          playingId === emp.id
+                            ? "bg-emerald-50 text-emerald-600"
+                            : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                        }`}
+                        title={playingId === emp.id ? "Dừng" : "Nghe thử"}
                       >
-                        <Play size={12} />
+                        {playingId === emp.id ? <Square size={12} /> : <Play size={12} />}
                       </button>
                       <button
                         type="button"

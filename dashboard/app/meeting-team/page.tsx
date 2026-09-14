@@ -148,6 +148,9 @@ function MeetingTeamContent() {
   const [inputMode, setInputMode] = useState<"record" | "upload">("record");
   const [chairperson, setChairperson] = useState("");
   const [selectedAttendeeIds, setSelectedAttendeeIds] = useState<string[]>([]);
+  const [chairSearch, setChairSearch] = useState("");
+  const [showChairDropdown, setShowChairDropdown] = useState(false);
+  const chairPickerRef = useRef<HTMLDivElement>(null);
   const [attendeeSearch, setAttendeeSearch] = useState("");
   const [showAttendeeDropdown, setShowAttendeeDropdown] = useState(false);
   const attendeePickerRef = useRef<HTMLDivElement>(null);
@@ -275,6 +278,9 @@ function MeetingTeamContent() {
     const onClickOutside = (e: MouseEvent) => {
       if (attendeePickerRef.current && !attendeePickerRef.current.contains(e.target as Node)) {
         setShowAttendeeDropdown(false);
+      }
+      if (chairPickerRef.current && !chairPickerRef.current.contains(e.target as Node)) {
+        setShowChairDropdown(false);
       }
     };
     document.addEventListener("mousedown", onClickOutside);
@@ -1014,6 +1020,16 @@ function MeetingTeamContent() {
 
   const voiceSampleCount = employees.filter(e => e.voice_sample_path).length;
 
+  // ─── Ô chọn người chủ trì (chọn MỘT người) ───
+  const selectedChair = employees.find(e => e.name === chairperson);
+  const chairQuery = chairSearch.trim().toLowerCase();
+  const chairOptions = employees.filter(e => {
+    if (!chairQuery) return true;
+    return (e.name || "").toLowerCase().includes(chairQuery)
+      || (e.department || "").toLowerCase().includes(chairQuery)
+      || (e.role || "").toLowerCase().includes(chairQuery);
+  });
+
   // ─── Ô chọn người dự ───
   const selectedAttendees = employees.filter(e => selectedAttendeeIds.includes(e.id));
   const voiceReadyCount = selectedAttendees.filter(e => e.voice_sample_path).length;
@@ -1247,17 +1263,76 @@ function MeetingTeamContent() {
                     <div className="md:col-span-1 space-y-4">
                       <div className="space-y-1.5">
                         <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">Người chủ trì (bắt buộc)</label>
-                        <select
-                          value={chairperson}
-                          onChange={(e) => setChairperson(e.target.value)}
-                          disabled={isBusy}
-                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:outline-none text-slate-800 text-xs font-semibold"
-                        >
-                          <option value="">-- Chọn nhân sự chủ trì --</option>
-                          {employees.map(emp => (
-                            <option key={`ai_chair_${emp.id}`} value={emp.name}>{emp.name}{emp.role ? ` (${emp.role})` : ""}</option>
-                          ))}
-                        </select>
+                        {/* Chọn MỘT người, có ô tìm kiếm: danh bạ hơn 120 người, cuộn
+                            tay trong thẻ <select> quá chậm. */}
+                        <div className="relative" ref={chairPickerRef}>
+                          {chairperson ? (
+                            <div className="w-full min-h-[42px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-2.5">
+                              <span className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 text-white text-[9px] font-bold flex items-center justify-center shrink-0">
+                                {selectedChair ? initialsOf(selectedChair) : chairperson.slice(0, 2).toUpperCase()}
+                              </span>
+                              <span className="flex-1 min-w-0">
+                                <span className="block text-xs font-bold text-slate-700 truncate">{chairperson}</span>
+                                {selectedChair && (
+                                  <span className="block text-[10px] text-slate-400 font-semibold truncate">
+                                    {selectedChair.department || "Chưa xếp phòng"}{selectedChair.role ? ` • ${selectedChair.role}` : ""}
+                                  </span>
+                                )}
+                              </span>
+                              {selectedChair?.voice_sample_path && <Volume2 size={12} className="text-emerald-600 shrink-0" />}
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => { setChairperson(""); setChairSearch(""); setShowChairDropdown(true); }}
+                                title="Chọn người khác"
+                                className="text-slate-400 hover:text-rose-500 transition-colors cursor-pointer shrink-0"
+                              >
+                                <X size={13} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="w-full min-h-[42px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-1.5 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/40">
+                              <Search size={12} className="text-slate-400 shrink-0" />
+                              <input
+                                type="text"
+                                value={chairSearch}
+                                disabled={isBusy}
+                                onChange={(e) => { setChairSearch(e.target.value); setShowChairDropdown(true); }}
+                                onFocus={() => setShowChairDropdown(true)}
+                                placeholder="Tìm tên hoặc phòng ban..."
+                                className="flex-1 min-w-0 py-1 outline-none text-xs font-semibold placeholder:font-normal bg-transparent text-slate-800"
+                              />
+                            </div>
+                          )}
+
+                          {showChairDropdown && !chairperson && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-40 max-h-64 overflow-y-auto animate-in fade-in duration-150">
+                              {chairOptions.length === 0 ? (
+                                <p className="text-center text-slate-400 text-[11px] italic py-4">Không tìm thấy nhân sự phù hợp.</p>
+                              ) : (
+                                chairOptions.map(emp => (
+                                  <button
+                                    key={`ai_chair_${emp.id}`}
+                                    type="button"
+                                    onClick={() => { setChairperson(emp.name); setChairSearch(""); setShowChairDropdown(false); }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 transition-colors text-left cursor-pointer"
+                                  >
+                                    <span className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 text-white text-[9px] font-bold flex items-center justify-center shrink-0">
+                                      {initialsOf(emp)}
+                                    </span>
+                                    <span className="flex-1 min-w-0">
+                                      <span className="block text-xs font-bold text-slate-700 truncate">{emp.name}</span>
+                                      <span className="block text-[10px] text-slate-400 font-semibold truncate">
+                                        {emp.department || "Chưa xếp phòng"}{emp.role ? ` • ${emp.role}` : ""}
+                                      </span>
+                                    </span>
+                                    {emp.voice_sample_path && <Volume2 size={12} className="text-emerald-600 shrink-0" />}
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <div className="space-y-1.5">
@@ -1440,7 +1515,7 @@ function MeetingTeamContent() {
                             disabled={isBusy || audioFiles.length === 0}
                             className="w-full bg-gradient-to-r from-[#005BAC] to-[#00AEEF] text-white text-sm font-extrabold py-3.5 rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:brightness-110 transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2 disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed disabled:hover:brightness-100"
                           >
-                            {isBusy ? <><Loader2 size={15} className="animate-spin" /> Đang xử lý…</> : <><Sparkles size={15} /> Bắt đầu gỡ băng &amp; dựng biên bản</>}
+                            {isBusy ? <><Loader2 size={15} className="animate-spin" /> Đang xử lý…</> : <><Sparkles size={15} /> Phân tích cuộc họp</>}
                           </button>
                         </div>
                       )}

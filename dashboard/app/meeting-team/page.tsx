@@ -45,6 +45,7 @@ import {
   Users,
   Volume2,
   Eraser,
+  RotateCcw,
   X,
   Check,
 } from "lucide-react";
@@ -185,6 +186,7 @@ function MeetingTeamContent() {
   const [speakerSearch, setSpeakerSearch] = useState("");
   const speakerPickerRef = useRef<HTMLDivElement>(null);
   const [isReprocessing, setIsReprocessing] = useState(false);
+  const [isRetranscribing, setIsRetranscribing] = useState(false);
   const [isDeletingAudio, setIsDeletingAudio] = useState(false);
 
   // Trình phát: tự chọn đúng đoạn chứa mốc ts rồi tua tới giây cần nghe
@@ -649,6 +651,70 @@ function MeetingTeamContent() {
       fetchMeetings();
     } catch (err: any) {
       await dialog.alert("Lỗi khi lưu bản nháp: " + err.message, { title: "Lỗi", tone: "danger" });
+    }
+  };
+
+  /** Gỡ lại bản record từ các đoạn ghi âm còn lưu (dọn sạch trước để không nhân đôi).
+   *  Lối cứu khi tiến trình gỡ băng chết giữa chừng (đóng tab, rớt mạng, API lỗi)
+   *  — lúc đó biên bản chỉ có bản gỡ của vài đoạn đầu. */
+  const handleReTranscribe = async () => {
+    if (!selectedMeeting) return;
+    const segs: AudioSegment[] = Array.isArray(selectedMeeting.audio_segments) ? selectedMeeting.audio_segments : [];
+    if (segs.length === 0) {
+      await dialog.alert(
+        selectedMeeting.audio_deleted_at
+          ? "File ghi âm của biên bản này đã được dọn nên không gỡ lại được."
+          : "Biên bản này không còn đoạn ghi âm nào được lưu lại.",
+        { title: "Không gỡ lại được", tone: "warning" },
+      );
+      return;
+    }
+    if (!openaiKey) {
+      await dialog.alert("Vui lòng nhập OpenAI API Key trước khi gỡ record.", { title: "Thiếu API Key", tone: "warning" });
+      return;
+    }
+    const ok = await dialog.confirm(
+      `Gỡ lại toàn bộ ${segs.length} đoạn ghi âm? Bản gỡ hiện tại sẽ bị thay thế và thao tác này TỐN PHÍ API.`,
+      { title: "Gỡ record", tone: "warning", confirmText: "Gỡ lại" },
+    );
+    if (!ok) return;
+
+    setIsRetranscribing(true);
+    try {
+      // Dọn sạch trước: server luôn NỐI THÊM, không dọn là nội dung nhân đôi.
+      await supabase.from("meetings")
+        .update({ transcript_raw: "", transcript_segments: [] })
+        .eq("id", selectedMeeting.id);
+
+      const rosterRows = employees.filter(e => (selectedMeeting.attendees || []).includes(e.name));
+      const knownSpeakerIds = rosterRows.filter(r => r.voice_sample_path).slice(0, MAX_KNOWN_SPEAKERS).map(r => r.id);
+
+      for (let i = 0; i < segs.length; i++) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await apiFetch("/api/meeting/transcribe", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${openaiKey}`,
+            "x-supabase-auth": session?.access_token || "",
+          },
+          body: JSON.stringify({
+            meetingId: selectedMeeting.id,
+            audioPath: segs[i].path,
+            offsetSec: segs[i].offsetSec,
+            knownSpeakerIds,
+          }),
+        });
+        const data = await readJsonSafe(res, `Lỗi gỡ đoạn ${i + 1}`);
+        if (!res.ok) throw new Error(data.error || `Lỗi gỡ đoạn ${i + 1}`);
+      }
+
+      await refreshSelected(selectedMeeting.id);
+      await dialog.alert("Đã gỡ lại xong. Bấm \"Phân tích lại bằng AI\" để dựng lại biên bản.", { title: "Xong", tone: "success" });
+    } catch (err: any) {
+      await dialog.alert("Lỗi gỡ record: " + err.message, { title: "Lỗi", tone: "danger" });
+    } finally {
+      setIsRetranscribing(false);
     }
   };
 
@@ -1483,6 +1549,18 @@ function MeetingTeamContent() {
 
                   {selectedMeeting.status === "draft" && (
                     <>
+                      {/* Chỉ hiện khi còn file ghi âm để gỡ lại — nút này tốn tiền
+                          API nên không bày ra lúc không dùng được. */}
+                      {(selectedMeeting.audio_segments?.length || 0) > 0 && !selectedMeeting.audio_deleted_at && (
+                        <button
+                          onClick={handleReTranscribe}
+                          disabled={isRetranscribing}
+                          title="Gỡ lại bản record từ file ghi âm — dùng khi tiến trình gỡ bị đứt giữa chừng"
+                          className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 active:scale-[0.97] disabled:opacity-50"
+                        >
+                          {isRetranscribing ? <><Loader2 className="animate-spin" size={14} /> Đang gỡ...</> : <><RotateCcw size={14} /> Gỡ record</>}
+                        </button>
+                      )}
                       <button
                         onClick={handleReAnalyze}
                         disabled={isReprocessing}

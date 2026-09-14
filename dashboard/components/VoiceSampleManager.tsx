@@ -236,7 +236,7 @@ export default function VoiceSampleManager({
             <p className="text-[11px] font-semibold text-slate-500 mt-1 leading-relaxed">
               Ghi trực tiếp {VOICE_SAMPLE_MIN_SEC}–{VOICE_SAMPLE_MAX_SEC} giây, hoặc tải file ghi âm có sẵn (MP3, M4A, WAV, OGG, WEBM) —
               file dài hơn {VOICE_SAMPLE_MAX_SEC} giây sẽ tự cắt lấy {VOICE_SAMPLE_MAX_SEC} giây kể từ chỗ bắt đầu có tiếng.
-              Khi gỡ băng, AI sẽ gọi thẳng tên thật thay vì &quot;Speaker 1/2/3&quot;. Chỉ hỗ trợ tối đa 4 giọng trong phiên họp.
+              Khi gỡ băng, AI sẽ gọi thẳng tên thật thay vì &quot;Speaker 1/2/3&quot;.
               <span className="text-slate-400"> Đã có {withSample}/{employees.length} người.</span>
             </p>
           </div>

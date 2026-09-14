@@ -62,9 +62,17 @@ export function voiceSampleMime(path: string): string {
 
 // ─── Tham số ghi âm trong app ───
 // opus mono 32kbps ≈ 240KB/phút -> chạm trần 25MB ở khoảng phút thứ 87.
-// Cắt mỗi 20 phút (≈ 4.8MB) để còn dư rất xa kể cả khi nói liên tục.
+//
+// ĐỘ DÀI ĐOẠN KHÔNG DO DUNG LƯỢNG QUYẾT ĐỊNH, MÀ DO THỜI GIAN CHẠY:
+// đo thật ngày 14/09/2026 — 80 giây tiếng mất 49 giây gỡ băng (≈ 0,61× thời
+// lượng). Nền tảng serverless cắt hàm ở 300 giây, nên một đoạn 20 phút cần
+// khoảng 570 giây là chết chắc: cổng cắt kết nối trước khi có phản hồi, trình
+// duyệt báo "Failed to fetch" (đã xảy ra thật với đoạn 15:31).
+//
+// 5 phút tiếng ≈ 185 giây gỡ băng, cộng tải file lên xuống vẫn còn dư xa 300s.
+// Nếu đổi model gỡ băng hoặc nâng trần thời gian chạy thì tính lại số này.
 export const RECORD_AUDIO_BITRATE = 32000;
-export const RECORD_SEGMENT_SEC = 20 * 60;
+export const RECORD_SEGMENT_SEC = 5 * 60;
 
 // ─── Bucket ───
 export const MEETINGS_BUCKET = "meetings";

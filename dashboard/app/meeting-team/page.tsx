@@ -376,41 +376,55 @@ function MeetingTeamContent() {
 
       for (let i = 0; i < segs.length; i++) {
         log(`  🎙️ Đang gỡ băng đoạn ${i + 1}/${segs.length} (từ phút ${Math.round(segs[i].offsetSec / 60)})…`);
-        const { data: { session } } = await supabase.auth.getSession();
-        const res = await apiFetch("/api/meeting/transcribe", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${openaiKey}`,
-            "x-supabase-auth": session?.access_token || "",
-          },
-          body: JSON.stringify({
-            meetingId: draftId,
-            audioPath: segs[i].path,
-            offsetSec: segs[i].offsetSec,
-            knownSpeakerIds,
-          }),
-        });
 
-        const data = await readJsonSafe(res, `Lỗi gỡ băng đoạn ${i + 1}`);
-        if (!res.ok) {
-          // Một đoạn hỏng KHÔNG được làm sập cả cuộc họp: ghi nhận rồi chạy tiếp.
-          warnings.push(`Đoạn ${i + 1}: ${data.error || "lỗi không xác định"}`);
-          log(`  ❌ Đoạn ${i + 1} lỗi: ${data.error || "không xác định"} — bỏ qua, chạy tiếp.`);
+        // Một đoạn hỏng KHÔNG được làm sập cả cuộc họp. Phải bọc try/catch:
+        // `fetch` NÉM LỖI khi đứt kết nối ("Failed to fetch") chứ không trả về
+        // response — không bắt ở đây thì họp 2 tiếng chỉ cần một lần rớt mạng
+        // là mất luôn các đoạn phía sau.
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const res = await apiFetch("/api/meeting/transcribe", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${openaiKey}`,
+              "x-supabase-auth": session?.access_token || "",
+            },
+            body: JSON.stringify({
+              meetingId: draftId,
+              audioPath: segs[i].path,
+              offsetSec: segs[i].offsetSec,
+              knownSpeakerIds,
+            }),
+          });
+
+          const data = await readJsonSafe(res, `Lỗi gỡ băng đoạn ${i + 1}`);
+          if (!res.ok) {
+            warnings.push(`Đoạn ${i + 1}: ${data.error || "lỗi không xác định"}`);
+            log(`  ❌ Đoạn ${i + 1} lỗi: ${data.error || "không xác định"} — bỏ qua, chạy tiếp.`);
+            continue;
+          }
+
+          okCount++;
+          const names = (data.known_speakers_used || []).length;
+          log(`  ✅ Đoạn ${i + 1}: ${(data.text || "").length} ký tự · ${(data.speakers || []).length} người nói${names > 0 ? ` (nhận ra ${names} tên thật)` : ""}`);
+          if (data.is_hallucination) {
+            warnings.push(`Đoạn ${i + 1}: ${data.hallucination_warning}`);
+            log(`  ⚠️ Đoạn ${i + 1}: ${data.hallucination_warning}`);
+          }
+        } catch (segErr: any) {
+          const msg = String(segErr?.message || segErr);
+          const friendly = msg.includes("Failed to fetch") || msg.includes("NetworkError")
+            ? "mất kết nối tới máy chủ giữa chừng (đoạn quá dài hoặc mạng đứt)"
+            : msg;
+          warnings.push(`Đoạn ${i + 1}: ${friendly}`);
+          log(`  ❌ Đoạn ${i + 1} lỗi: ${friendly} — bỏ qua, chạy tiếp.`);
           continue;
-        }
-
-        okCount++;
-        const names = (data.known_speakers_used || []).length;
-        log(`  ✅ Đoạn ${i + 1}: ${(data.text || "").length} ký tự · ${(data.speakers || []).length} người nói${names > 0 ? ` (nhận ra ${names} tên thật)` : ""}`);
-        if (data.is_hallucination) {
-          warnings.push(`Đoạn ${i + 1}: ${data.hallucination_warning}`);
-          log(`  ⚠️ Đoạn ${i + 1}: ${data.hallucination_warning}`);
         }
       }
 
       if (okCount === 0) {
-        throw new Error(`Không đoạn nào gỡ băng được.\n\n${warnings.join("\n")}\n\nBiên bản nháp VẪN được giữ lại — vào "Hồ sơ biên bản họp" và bấm "Gỡ băng lại" sau khi khắc phục.`);
+        throw new Error(`Không đoạn nào gỡ băng được.\n\n${warnings.join("\n")}\n\nFile ghi âm và biên bản nháp VẪN được giữ nguyên — vào "Hồ sơ biên bản họp", mở bản nháp này rồi bấm "Gỡ record" để chạy lại.`);
       }
 
       log(`[3/4] Gỡ băng xong ${okCount}/${segs.length} đoạn. Bắt đầu dựng biên bản bằng ${analysisModel}…`);

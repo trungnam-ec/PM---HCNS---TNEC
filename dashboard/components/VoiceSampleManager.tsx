@@ -130,11 +130,19 @@ export default function VoiceSampleManager({
     const oldPath = employees.find(e => e.id === employeeId)?.voice_sample_path;
     try {
       // THỨ TỰ Ở ĐÂY LÀ CỐ Ý, ĐỪNG ĐỔI:
-      //   1. tải file mới lên  2. ghi CSDL  3. MỚI xoá file cũ
-      // Kho lưu trữ cho phép MỌI người ghi/xoá, chỉ bảng `employees` là bị khoá
-      // sau quyền nhân sự. Làm ngược (xoá file cũ trước rồi mới ghi CSDL) thì
-      // người không đủ quyền sẽ xoá mất mẫu giọng đang dùng tốt, còn CSDL vẫn
-      // trỏ vào file vừa bị xoá — đúng sự cố đã xảy ra thật ngày 14/09/2026.
+      //   0. XIN PHÉP  1. tải file mới lên  2. ghi CSDL  3. MỚI xoá file cũ
+      //
+      // Kho lưu trữ cho phép MỌI người ghi/xoá, chỉ bảng `employees` mới bị khoá
+      // sau quyền nhân sự. Hai sự cố thật ngày 14/09/2026:
+      //   - xoá file cũ trước khi ghi CSDL  -> mất trắng mẫu giọng đang dùng tốt;
+      //   - tải file lên trước khi kiểm quyền -> đường dẫn cố định theo id + upsert
+      //     nên người KHÔNG đủ quyền vẫn ghi đè được nội dung mẫu giọng của người
+      //     khác, hồ sơ vẫn đề tên người cũ mà tiếng bên trong là của người khác.
+      //
+      // Bước 0 ghi lại CHÍNH giá trị đang có (thao tác rỗng) chỉ để hỏi CSDL xem
+      // người này có quyền hay không, TRƯỚC khi đụng một byte nào trong kho.
+      await writeVoicePath(employeeId, oldPath ?? null);
+
       const { error: upErr } = await supabase.storage
         .from(MEETINGS_BUCKET)
         .upload(path, blob, { contentType, upsert: true });

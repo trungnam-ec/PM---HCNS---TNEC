@@ -46,6 +46,8 @@ import {
   Volume2,
   Eraser,
   RotateCcw,
+  X,
+  Check,
 } from "lucide-react";
 
 const DEFAULT_DISTRIBUTION = "P. KHĐT, P. QLDA, P. VTTB; Lưu: HCNS.";
@@ -136,6 +138,9 @@ function MeetingTeamContent() {
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
+  // Khoá lưu trong localStorage tách khỏi ô đang gõ, để có nút xác nhận rõ ràng
+  // thay vì lưu lén sau mỗi ký tự — người dùng không có cách nào biết đã lưu chưa.
+  const [savedKey, setSavedKey] = useState("");
   const [analysisModel, setAnalysisModel] = useState<string>(DEFAULT_ANALYSIS_MODEL);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -143,6 +148,9 @@ function MeetingTeamContent() {
   const [inputMode, setInputMode] = useState<"record" | "upload">("record");
   const [chairperson, setChairperson] = useState("");
   const [selectedAttendeeIds, setSelectedAttendeeIds] = useState<string[]>([]);
+  const [attendeeSearch, setAttendeeSearch] = useState("");
+  const [showAttendeeDropdown, setShowAttendeeDropdown] = useState(false);
+  const attendeePickerRef = useRef<HTMLDivElement>(null);
   const [showVoiceManager, setShowVoiceManager] = useState(false);
   const [audioFiles, setAudioFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -185,8 +193,8 @@ function MeetingTeamContent() {
     fetchMeetings();
     fetchEmployees();
     fetchUserSession();
-    const savedKey = localStorage.getItem("openai_api_key_hanh_chinh");
-    if (savedKey) setOpenaiKey(savedKey);
+    const stored = localStorage.getItem("openai_api_key_hanh_chinh");
+    if (stored) { setOpenaiKey(stored); setSavedKey(stored); }
     const savedModel = localStorage.getItem("meeting_analysis_model");
     if (savedModel) setAnalysisModel(savedModel);
   }, []);
@@ -261,7 +269,29 @@ function MeetingTeamContent() {
     }
   };
 
+  // Bấm ra ngoài thì đóng danh sách gợi ý người dự (cùng lối với ô chọn người đi
+  // ở form công tác).
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (attendeePickerRef.current && !attendeePickerRef.current.contains(e.target as Node)) {
+        setShowAttendeeDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
   const log = useCallback((line: string) => setProcessingLog(prev => [...prev, line]), []);
+
+  /** Lưu khoá OpenAI vào máy (localStorage) khi người dùng bấm xác nhận. */
+  const saveOpenAiKey = () => {
+    localStorage.setItem("openai_api_key_hanh_chinh", openaiKey);
+    setSavedKey(openaiKey);
+  };
+
+  /** Hai chữ cái đầu để làm ảnh tròn — dùng cột avatar nếu hồ sơ đã có. */
+  const initialsOf = (emp: any) =>
+    emp.avatar || (emp.name || "").split(" ").filter(Boolean).map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
 
   // ════════════════════════════════════════════════════════════
   // PIPELINE DÙNG CHUNG CHO CẢ HAI ĐƯỜNG VÀO
@@ -983,6 +1013,18 @@ function MeetingTeamContent() {
   });
 
   const voiceSampleCount = employees.filter(e => e.voice_sample_path).length;
+
+  // ─── Ô chọn người dự ───
+  const selectedAttendees = employees.filter(e => selectedAttendeeIds.includes(e.id));
+  const voiceReadyCount = selectedAttendees.filter(e => e.voice_sample_path).length;
+  const attendeeQuery = attendeeSearch.trim().toLowerCase();
+  const attendeeOptions = employees.filter(e => {
+    if (selectedAttendeeIds.includes(e.id)) return false;
+    if (!attendeeQuery) return true;
+    return (e.name || "").toLowerCase().includes(attendeeQuery)
+      || (e.department || "").toLowerCase().includes(attendeeQuery)
+      || (e.role || "").toLowerCase().includes(attendeeQuery);
+  });
   const isBusy = isUploading || processingStep !== "idle";
 
   return (
@@ -1038,13 +1080,34 @@ function MeetingTeamContent() {
               </div>
               <div className="flex flex-col items-end">
                 <span className="text-[10px] text-slate-400 uppercase font-extrabold tracking-wider">OpenAI API Key</span>
-                <input
-                  type="password"
-                  placeholder="Nhập mã OpenAI API Key..."
-                  value={openaiKey}
-                  onChange={(e) => { setOpenaiKey(e.target.value); localStorage.setItem("openai_api_key_hanh_chinh", e.target.value); }}
-                  className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:outline-none text-slate-800 w-56 placeholder-slate-400 shadow-inner"
-                />
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="password"
+                    placeholder="Nhập mã OpenAI API Key..."
+                    value={openaiKey}
+                    onChange={(e) => setOpenaiKey(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") saveOpenAiKey(); }}
+                    className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:outline-none text-slate-800 w-56 placeholder-slate-400 shadow-inner"
+                  />
+                  {/* Nút xác nhận: khoá chỉ được ghi vào máy khi bấm, và dấu tích
+                      xanh cho biết ô đang gõ đã trùng với khoá đã lưu hay chưa. */}
+                  <button
+                    type="button"
+                    onClick={saveOpenAiKey}
+                    disabled={!openaiKey || openaiKey === savedKey}
+                    title={openaiKey && openaiKey === savedKey ? "Khoá đã được lưu trên máy này" : "Lưu khoá vào máy này"}
+                    className={`shrink-0 h-[30px] px-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 flex items-center gap-1 ${
+                      openaiKey && openaiKey === savedKey
+                        ? "bg-emerald-50 text-emerald-600 border border-emerald-200 cursor-default"
+                        : openaiKey
+                          ? "bg-[#005BAC] hover:bg-blue-700 text-white shadow-sm shadow-blue-500/20 cursor-pointer"
+                          : "bg-slate-100 text-slate-300 border border-slate-200 cursor-not-allowed"
+                    }`}
+                  >
+                    <Check size={13} strokeWidth={3} />
+                    {openaiKey && openaiKey === savedKey ? "Đã lưu" : "Lưu"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1208,30 +1271,74 @@ function MeetingTeamContent() {
                             <Volume2 size={12} /> Mẫu giọng ({voiceSampleCount})
                           </button>
                         </div>
-                        <p className="text-[11px] font-semibold text-slate-500 leading-relaxed">
-                          Chọn ai có mặt để AI chỉ được dùng đúng những tên này, không tự nghĩ ra tên khác.
-                          Người có dấu <Volume2 size={10} className="inline text-emerald-600" /> đã có mẫu giọng — AI gọi được thẳng tên thật (tối đa {MAX_KNOWN_SPEAKERS} người mỗi lần gỡ băng).
-                        </p>
-                        <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100">
-                          {employees.map(emp => (
-                            <label key={`att_${emp.id}`} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer">
+                        {/* Picker chọn nhiều người — dựng theo đúng ô "Họ và tên người
+                            đi" ở form công tác: chọn xong hiện thẻ tên, bấm X để bỏ,
+                            dropdown không tự đóng để chọn liền tay nhiều người. */}
+                        <div className="relative" ref={attendeePickerRef}>
+                          <div className="w-full min-h-[42px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center gap-1.5 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/40">
+                            {selectedAttendees.map(emp => (
+                              <span key={`chip_${emp.id}`} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2.5 py-1 text-[10px] font-bold">
+                                {emp.voice_sample_path && <Volume2 size={9} className="text-emerald-600" />}
+                                {emp.name}
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => setSelectedAttendeeIds(prev => prev.filter(id => id !== emp.id))}
+                                  className="hover:text-rose-500 transition-colors cursor-pointer"
+                                >
+                                  <X size={10} />
+                                </button>
+                              </span>
+                            ))}
+                            <div className="flex items-center gap-1.5 flex-1 min-w-[140px]">
+                              <Search size={12} className="text-slate-400 shrink-0" />
                               <input
-                                type="checkbox"
-                                checked={selectedAttendeeIds.includes(emp.id)}
+                                type="text"
+                                value={attendeeSearch}
                                 disabled={isBusy}
-                                onChange={(e) => {
-                                  setSelectedAttendeeIds(prev => e.target.checked
-                                    ? [...prev, emp.id]
-                                    : prev.filter(id => id !== emp.id));
-                                }}
-                                className="accent-[#005BAC]"
+                                onChange={(e) => { setAttendeeSearch(e.target.value); setShowAttendeeDropdown(true); }}
+                                onFocus={() => setShowAttendeeDropdown(true)}
+                                placeholder={selectedAttendeeIds.length > 0 ? "Thêm người nữa..." : "Tìm tên hoặc phòng ban..."}
+                                className="flex-1 min-w-0 py-1 outline-none text-xs font-semibold placeholder:font-normal bg-transparent text-slate-800"
                               />
-                              <span className="text-[11px] font-semibold text-slate-700 truncate flex-1">{emp.name}</span>
-                              {emp.voice_sample_path && <Volume2 size={12} className="text-emerald-600 shrink-0" />}
-                            </label>
-                          ))}
+                            </div>
+                          </div>
+
+                          {showAttendeeDropdown && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-64 overflow-y-auto animate-in fade-in duration-150">
+                              {attendeeOptions.length === 0 ? (
+                                <p className="text-center text-slate-400 text-[11px] italic py-4">Không tìm thấy nhân sự phù hợp.</p>
+                              ) : (
+                                attendeeOptions.map(emp => (
+                                  <button
+                                    key={`att_${emp.id}`}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedAttendeeIds(prev => prev.includes(emp.id) ? prev : [...prev, emp.id]);
+                                      setAttendeeSearch("");
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 transition-colors text-left cursor-pointer"
+                                  >
+                                    <span className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 text-white text-[9px] font-bold flex items-center justify-center shrink-0">
+                                      {initialsOf(emp)}
+                                    </span>
+                                    <span className="flex-1 min-w-0">
+                                      <span className="block text-xs font-bold text-slate-700 truncate">{emp.name}</span>
+                                      <span className="block text-[10px] text-slate-400 font-semibold truncate">
+                                        {emp.department || "Chưa xếp phòng"}{emp.role ? ` • ${emp.role}` : ""}
+                                      </span>
+                                    </span>
+                                    {emp.voice_sample_path && <Volume2 size={12} className="text-emerald-600 shrink-0" />}
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          )}
                         </div>
-                        <p className="text-[11px] font-bold text-slate-400">Đã chọn {selectedAttendeeIds.length} người.</p>
+                        <p className="text-[11px] font-bold text-slate-400">
+                          Đã chọn {selectedAttendeeIds.length} người
+                          {voiceReadyCount > 0 ? ` · ${voiceReadyCount} người có mẫu giọng` : ""}.
+                        </p>
                       </div>
 
                       <div className="bg-slate-50 border border-slate-200/80 p-4 rounded-xl text-xs text-slate-600 space-y-2">
@@ -1331,7 +1438,7 @@ function MeetingTeamContent() {
                             type="button"
                             onClick={handleUploadAndProcess}
                             disabled={isBusy || audioFiles.length === 0}
-                            className="w-full bg-gradient-to-r from-[#005BAC] to-[#00AEEF] disabled:from-slate-300 disabled:to-slate-300 text-white text-xs font-bold py-3 rounded-xl shadow-md shadow-blue-500/15 transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2"
+                            className="w-full bg-gradient-to-r from-[#005BAC] to-[#00AEEF] text-white text-sm font-extrabold py-3.5 rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:brightness-110 transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2 disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed disabled:hover:brightness-100"
                           >
                             {isBusy ? <><Loader2 size={15} className="animate-spin" /> Đang xử lý…</> : <><Sparkles size={15} /> Bắt đầu gỡ băng &amp; dựng biên bản</>}
                           </button>

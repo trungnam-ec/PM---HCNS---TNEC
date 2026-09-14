@@ -2009,15 +2009,12 @@ function MeetingTeamContent() {
                                         <>
                                           <td className="px-4 py-2.5">
                                             {selectedMeeting.status === "draft" ? (
-                                              <>
-                                                <input
-                                                  type="text"
-                                                  value={item.assignee}
-                                                  list="meeting_assignees"
-                                                  onChange={(e) => handleUpdateActionItemField(index, "assignee", e.target.value)}
-                                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-blue-500 text-slate-800 text-xs"
-                                                />
-                                              </>
+                                              <PersonSearchCell
+                                                value={item.assignee}
+                                                options={assigneeOptions}
+                                                onChange={(v) => handleUpdateActionItemField(index, "assignee", v)}
+                                                placeholder="Tìm người/bộ phận…"
+                                              />
                                             ) : (
                                               <span className="font-bold text-[#005BAC]">{item.assignee}</span>
                                             )}
@@ -2078,12 +2075,6 @@ function MeetingTeamContent() {
                                 })}
                               </tbody>
                             </table>
-                            <datalist id="meeting_assignees">
-                              {employees.map(emp => <option key={`dla_${emp.id}`} value={emp.name} />)}
-                              {["BĐH", "P. QLDA", "P. KHĐT", "P. VTTB", "P. HCNS", "Tất cả"].map(v => (
-                                <option key={`dlb_${v}`} value={v} />
-                              ))}
-                            </datalist>
                           </div>
                         )}
                       </div>

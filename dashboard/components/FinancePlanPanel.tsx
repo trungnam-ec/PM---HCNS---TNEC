@@ -1261,7 +1261,12 @@ function PlanRowModal({ row, onSave, onReload, onClose }: {
       {showSigning && (
         <SigningFormModal
           existing={null}
-          loai="ho_so"
+          // Dòng kế hoạch thu chi là một KHOẢN CHI phải chuyển tiền, không phải
+          // một đợt thanh toán hợp đồng — nên mở tờ HC-BM021/ĐNCT (migration
+          // 079), không phải TL/BM/011. Trước 15/09/2026 chỗ này để "ho_so" nên
+          // bấm Trình ký là nhảy thẳng vào form trình ký văn bản, bắt nhập cả
+          // Số hợp đồng lẫn Đợt số mà dòng kế hoạch không hề có.
+          loai="chuyen_tien"
           currentEmail={me.email}
           currentName={me.name}
           currentDepartment={me.department}
@@ -1273,9 +1278,15 @@ function PlanRowModal({ row, onSave, onReload, onClose }: {
             ve_viec: d.content,
             noi_dung_trinh: d.content,
             de_nghi_thanh_toan: d.amount ? new Intl.NumberFormat("vi-VN").format(d.amount) : "",
+            // Tài khoản nhận tiền lấy thẳng từ ô đang hiện trên form này — cùng
+            // một nguồn với giấy đề nghị chuyển tiền bản Word, để hai đường
+            // (xuất Word / trình ký online) không ra hai số tài khoản khác nhau.
+            so_tai_khoan: payAccount?.bank_account || "",
+            ngan_hang: [payAccount?.bank_name, payAccount?.bank_branch].filter(Boolean).join(" - "),
           }}
           onClose={() => setShowSigning(false)}
           onSaved={() => {}}
+          onMailWarn={setSignErr}
           onCreated={async (signingId) => {
             // Khoá dòng kế hoạch vào đúng phiếu vừa tạo (mỗi dòng trình 1 lần).
             const { error } = await supabase

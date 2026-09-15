@@ -17,6 +17,7 @@ import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabase";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import SigningFormModal from "./SigningFormModal";
+import { exportTransferRequestDocx } from "./TransferRequestPreview";
 import { apiFetch } from "@/lib/apiClient";
 import { crumpleToss } from "@/lib/crumpleToss";
 import { useConfirmBox } from "@/components/ConfirmDialog";
@@ -51,7 +52,7 @@ const inputCls =
 // MỘT bộ lọc duy nhất thay cho hai nhóm nút (trạng thái + loại) trước đây.
 // Hai nhóm nằm cạnh nhau trông như hai thứ độc lập nhưng thực tế người dùng chỉ
 // bấm một cái mỗi lần, và tổng 6 nút chiếm gần nửa chiều ngang thanh công cụ.
-type Filter = "tat_ca" | "ho_so" | "hop_dong" | "cua_toi";
+type Filter = "tat_ca" | "ho_so" | "hop_dong" | "chuyen_tien" | "cua_toi";
 
 // `created_at` là timestamptz — cắt 10 ký tự đầu là lấy ngày theo giờ UTC, nên
 // phiếu lập sau 7 giờ tối giờ VN sẽ bị tính sang ngày hôm sau và rơi ra ngoài
@@ -232,6 +233,7 @@ export default function SigningPanel() {
       filter === "cua_toi" ? cuaToi
       : filter === "ho_so" ? rows.filter((r) => r.loai === "ho_so")
       : filter === "hop_dong" ? rows.filter((r) => r.loai === "hop_dong")
+      : filter === "chuyen_tien" ? rows.filter((r) => r.loai === "chuyen_tien")
       : rows;
     const q = search.trim().toLowerCase();
     const list = !q ? base : base.filter((r) =>
@@ -380,7 +382,7 @@ export default function SigningPanel() {
           )}
         </div>
 
-        {/* Hai nút riêng thay vì một nút rồi hỏi loại: hai tờ này khác hẳn nhau
+        {/* Ba nút riêng thay vì một nút rồi hỏi loại: ba tờ này khác hẳn nhau
             về mục đích, chọn ngay từ đây đỡ một bước bấm. */}
         {canCreate && (
           <div className="flex items-center gap-2 flex-wrap">
@@ -394,6 +396,13 @@ export default function SigningPanel() {
               className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-violet-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
               <Plus size={14} /> Phiếu hợp đồng
             </button>
+            {/* Đề nghị chuyển tiền — cũng chính là tờ mà nút "Trình ký online"
+                bên Kế hoạch thu chi mở ra. Cùng một loại phiếu, hai lối vào. */}
+            <button type="button" onClick={() => setCreating("chuyen_tien")}
+              title="Đề nghị chuyển tiền cho một khoản chi (HC-BM021/ĐNCT)"
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-emerald-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
+              <Plus size={14} /> Đề nghị chuyển tiền
+            </button>
           </div>
         )}
 
@@ -403,6 +412,7 @@ export default function SigningPanel() {
             ["tat_ca", `Tất cả (${rows.length})`],
             ["ho_so", `Hồ sơ (${rows.filter((r) => r.loai === "ho_so").length})`],
             ["hop_dong", `Hợp đồng (${rows.filter((r) => r.loai === "hop_dong").length})`],
+            ["chuyen_tien", `Chuyển tiền (${rows.filter((r) => r.loai === "chuyen_tien").length})`],
             ["cua_toi", `Phiếu của tôi (${cuaToi.length})`],
           ] as [Filter, string][]).map(([k, lb]) => (
             <button key={k} type="button" onClick={() => setFilter(k)}
@@ -484,7 +494,12 @@ export default function SigningPanel() {
                     </span>
                     <span className="flex-1 min-w-0">
                       <span className="block font-semibold text-slate-800 text-xs truncate leading-tight">
-                        {r.hop_dong_so || "(chưa có số HĐ)"}
+                        {/* Phiếu chuyển tiền không gắn hợp đồng — "(chưa có số HĐ)"
+                            ở đây đọc như phiếu nhập thiếu, trong khi đúng ra là
+                            không có khái niệm đó. Hiện nội dung chi thay vào. */}
+                        {r.loai === "chuyen_tien"
+                          ? (r.ve_viec || r.noi_dung_trinh || "(chưa ghi nội dung)")
+                          : (r.hop_dong_so || "(chưa có số HĐ)")}
                       </span>
                       <span className="flex items-center gap-1.5 mt-0.5 min-w-0">
                         <span className={`shrink-0 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${LOAI_META[r.loai].chip}`}>
@@ -500,7 +515,9 @@ export default function SigningPanel() {
                       </span>
                     </span>
                     <span className="w-14 shrink-0 text-center text-[11px] font-bold text-slate-500 hidden sm:block">
-                      {r.loai === "hop_dong" ? <span className="text-slate-300">—</span> : (r.dot_so ?? "—")}
+                      {r.loai === "hop_dong" || r.loai === "chuyen_tien"
+                        ? <span className="text-slate-300">—</span>
+                        : (r.dot_so ?? "—")}
                     </span>
                     <span className="w-36 shrink-0 text-right pr-6 font-mono font-bold text-[11px] text-slate-700 hidden md:block">
                       {fmtMoney(r.de_nghi_thanh_toan ?? tinhDeNghi(r))}
@@ -610,6 +627,7 @@ export default function SigningPanel() {
           currentDepartment={user.department}
           onClose={() => { setCreating(null); setEditing(null); }}
           onSaved={load}
+          onMailWarn={setMailWarn}
         />
       )}
 
@@ -857,6 +875,21 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
   const exportDocx = async () => {
     setExporting(true); setErr("");
     try {
+      // Phiếu chuyển tiền in ra tờ HC-BM021/ĐNCT qua route đã có sẵn, KHÔNG đi
+      // downloadSigningForm (route đó chỉ biết hai mẫu TL/BM/011 và KHKT/BM/001).
+      if (row.loai === "chuyen_tien") {
+        await exportTransferRequestDocx({
+          employeeName: row.created_by_name || row.created_by,
+          employeeDept: row.don_vi || "",
+          reason: row.noi_dung_trinh || row.ve_viec || "",
+          projectName: row.du_an || "",
+          supplierName: row.chu_dau_tu || "",
+          bankAccount: row.so_tai_khoan || "",
+          bankNameBranch: row.ngan_hang || "",
+          amount: row.de_nghi_thanh_toan || 0,
+        });
+        return;
+      }
       await downloadSigningForm(docxPayloadFromRow(row), docxFileName(row));
     } catch (e) {
       setErr(errText(e));
@@ -1066,11 +1099,22 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
 
   const meta = STATUS_META[row.status];
   const laHopDong = row.loai === "hop_dong";
+  const laChuyenTien = row.loai === "chuyen_tien";
 
-  // Hai bộ dòng khác hẳn nhau. Trước đây phiếu hợp đồng cũng đổ ra bộ của phiếu
+  // Ba bộ dòng khác hẳn nhau. Trước đây phiếu hợp đồng cũng đổ ra bộ của phiếu
   // thanh toán: 7 dòng "— đồng (A)/(B)/(C)/(D)" và một dòng "Đề nghị thanh toán
   // 0 đồng" — vừa vô nghĩa vừa dễ làm người duyệt tưởng phiếu nhập thiếu số.
-  const rowInfo: [string, string][] = laHopDong
+  // Giấy đề nghị chuyển tiền cũng vậy: người duyệt cần thấy TIỀN ĐI ĐÂU, nên
+  // số tài khoản + ngân hàng phải nằm ngay đây chứ không nằm trong file Word.
+  const rowInfo: [string, string][] = laChuyenTien
+    ? [
+        ["Đơn vị thụ hưởng", row.chu_dau_tu || "—"],
+        ["Số tài khoản", row.so_tai_khoan || "—"],
+        ["Ngân hàng", row.ngan_hang || "—"],
+        ["Dự án", row.du_an || "—"],
+        ["Nội dung chuyển tiền", row.noi_dung_trinh || row.ve_viec || "—"],
+      ]
+    : laHopDong
     ? [
         ["Dự án", row.du_an || "—"],
         ["Gói thầu", row.goi_thau || "—"],
@@ -1142,7 +1186,9 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
             <h4 className="font-heading font-extrabold text-slate-800 text-xs leading-tight truncate">
               {/* Phiếu hợp đồng không có "đợt" — ghi "Đợt —" chỉ làm người xem
                   tưởng phiếu nhập thiếu. Thay bằng tên loại phiếu. */}
-              {row.ma_phieu} · {laHopDong ? LOAI_META.hop_dong.label : `Đợt ${row.dot_so ?? "—"}`}
+              {row.ma_phieu} · {laHopDong || laChuyenTien
+                ? LOAI_META[row.loai].label
+                : `Đợt ${row.dot_so ?? "—"}`}
             </h4>
             <p className="text-[10px] text-slate-400 font-semibold truncate">
               Biểu mẫu {LOAI_META[row.loai].bieuMau} · {row.created_by_name || row.created_by} lập {fmtDateTime(row.created_at)}
@@ -1183,7 +1229,16 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
                   <span className="text-[11px] font-bold text-slate-800 flex-1 min-w-0">{v}</span>
                 </div>
               ))}
-              {!laHopDong && (
+              {laChuyenTien ? (
+                <div className="flex gap-3 px-3.5 py-2.5 bg-emerald-50/70">
+                  <span className="text-[11px] font-extrabold text-emerald-900 w-52 shrink-0">
+                    Số tiền đề nghị chuyển
+                  </span>
+                  <span className="text-xs font-extrabold text-emerald-900 flex-1">
+                    {fmtMoney(row.de_nghi_thanh_toan)} đồng
+                  </span>
+                </div>
+              ) : !laHopDong && (
                 <div className="flex gap-3 px-3.5 py-2.5 bg-blue-50/70">
                   <span className="text-[11px] font-extrabold text-blue-900 w-52 shrink-0">
                     Đề nghị thanh toán (A−B−C−D)

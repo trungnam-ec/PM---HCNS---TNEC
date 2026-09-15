@@ -396,15 +396,21 @@ export default function Header({ title, subtitle }: Props) {
         dot_so: number | null; status: string;
         created_by: string; created_by_name: string | null; updated_at: string | null;
         tra_lai_ly_do: string | null; tra_lai_boi: string | null;
+        // Cấp 1 KHÔNG theo cờ quyền mà theo email lưu trên từng phiếu
+        // (migration 074) — phải select cột này thì mới lọc được ở dưới.
+        cap1_email: string | null;
       };
       let signingData: SigningNotifRow[] = [];
       try {
         const { data, error } = await supabase
           .from("signing_submissions")
-          .select("id, ma_phieu, hop_dong_so, chu_dau_tu, du_an, dot_so, status, created_by, created_by_name, created_at, updated_at, tra_lai_ly_do, tra_lai_boi")
+          .select("id, ma_phieu, hop_dong_so, chu_dau_tu, du_an, dot_so, status, created_by, created_by_name, created_at, updated_at, tra_lai_ly_do, tra_lai_boi, cap1_email")
           // 'tra_lai' phải có trong danh sách: phiếu bị trả là việc cần NGƯỜI LẬP
           // sửa lại, đúng nghĩa "việc cần xử lý" của chuông.
-          .in("status", ["cho_pho_giam_doc", "cho_giam_doc", "cho_ke_toan", "tra_lai",
+          // 'cho_cap1' (migration 074) là bước ĐẦU TIÊN của mọi phiếu mới — thiếu
+          // nó ở đây thì Trưởng bộ phận/Tổ trưởng không bao giờ nghe chuông và
+          // phiếu nằm im ở bước 1 cho tới khi họ tự mở trang ra xem.
+          .in("status", ["cho_cap1", "cho_pho_giam_doc", "cho_giam_doc", "cho_ke_toan", "tra_lai",
                          "cho_pgd_qlda", "cho_pgd_khdt"]);
         if (!error && data) signingData = data;
       } catch (err) {
@@ -629,7 +635,16 @@ export default function Header({ title, subtitle }: Props) {
         console.warn("Could not fetch attendee bookings for header:", err);
       }
 
-      const hasApprovalPrivileges = isUserAdmin || isUserManager || isUserHR || hasAnyApprovalPermission(perms) || perms.canApproveBenefit || perms.canManageVpp || hasSigningRole || isMarketingTeamLeader(userObj.name);
+      // Người duyệt CẤP 1 của một phiếu trình ký cụ thể: không suy ra từ cờ hay
+      // chức danh nào cả, mà do chính phiếu chỉ đích danh (cap1_email, migration
+      // 074). Tổ trưởng một tổ nhỏ có thể không mang chức danh quản lý và không
+      // giữ cờ trình ký nào — thiếu vế này thì họ bị `return` sớm ngay dưới đây
+      // và phiếu nằm im ở bước 1.
+      const isSigningCap1OfSome = signingData.some(
+        (s) => s.status === "cho_cap1" && emailFieldMatches(s.cap1_email, userObj.email)
+      );
+
+      const hasApprovalPrivileges = isUserAdmin || isUserManager || isUserHR || hasAnyApprovalPermission(perms) || perms.canApproveBenefit || perms.canManageVpp || hasSigningRole || isSigningCap1OfSome || isMarketingTeamLeader(userObj.name);
       if (!hasApprovalPrivileges) {
         // Không có quyền duyệt gì cả thì chuông vẫn phải kêu cho ghi chú của
         // chính họ, ý kiến trao đổi trong việc của họ, và lịch họ được mời tham
@@ -835,6 +850,7 @@ export default function Header({ title, subtitle }: Props) {
       // Phiếu trình ký: chỉ báo cho ĐÚNG cấp đang giữ phiếu. Admin thấy tất cả
       // vì Admin duyệt thay được ở mọi bước.
       const SIGNING_STAGE_LABEL: Record<string, string> = {
+        cho_cap1: "Trưởng bộ phận duyệt",
         cho_pho_giam_doc: "Phó Giám đốc xem xét",
         cho_giam_doc: "Giám đốc phê duyệt",
         cho_ke_toan: "Kế toán xác nhận chi",
@@ -865,6 +881,16 @@ export default function Header({ title, subtitle }: Props) {
         .filter((s) => {
           if (s.status === "tra_lai") {
             return !!myEmailLower && (s.created_by || "").toLowerCase() === myEmailLower;
+          }
+          // Cấp 1 KHÔNG đi theo cờ quyền: người duyệt được chốt lúc lập phiếu và
+          // lưu thẳng vào cột cap1_email (migration 074). Dùng cùng một phép so
+          // với canActOn() bên lib/signingSubmissions — nhưng khớp TUYỆT ĐỐI
+          // từng địa chỉ (emailFieldMatches), không phải chuỗi con.
+          // cap1_email rỗng = không tính được cấp 1 -> Admin duyệt thay.
+          if (s.status === "cho_cap1") {
+            return isUserAdmin
+              ? true
+              : emailFieldMatches(s.cap1_email, myEmailLower);
           }
           return isUserAdmin || mySigningStages.has(s.status);
         })

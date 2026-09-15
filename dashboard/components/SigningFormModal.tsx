@@ -21,6 +21,7 @@ import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/apiClient";
 import { useProjectCatalog } from "@/lib/projectCatalog";
+import { exportTransferRequestDocx } from "@/components/TransferRequestPreview";
 import { useDepartments } from "@/lib/departments";
 import {
   useFinancePartners, PARTY_TYPE_LABELS, foldVi,
@@ -29,6 +30,7 @@ import {
 import {
   tinhDeNghi, tinhLuyKe, fmtMoney, uploadDossierFile, resolveDossierUrl, errText,
   downloadSigningForm, docxFileName, buildSigningRoute, resolveCap1,
+  notifySigningSubmitted,
   type SigningSubmission, type SigningFile,
   LOAI_META, SO_SANH_MAU,
   type SigningLoai, type SoSanhRow,
@@ -80,7 +82,9 @@ function toDraft(s: SigningSubmission | null, defaultDept = "", prefill?: Record
   for (const k of ["don_vi", "ve_viec", "noi_dung_trinh", "chu_dau_tu", "du_an",
     "hop_dong_so", "ngay_ky_hop_dong", "goi_thau", "project_code",
     // migration 060 — chỉ dùng cho phiếu hợp đồng
-    "hang_muc", "ben_a", "ben_b"] as const) {
+    "hang_muc", "ben_a", "ben_b",
+    // migration 079 — chỉ dùng cho phiếu đề nghị chuyển tiền
+    "so_tai_khoan", "ngan_hang"] as const) {
     d[k] = (s[k] as string) || "";
   }
   d.vat_percent = s.vat_percent != null ? String(s.vat_percent) : "";
@@ -95,6 +99,7 @@ function toDraft(s: SigningSubmission | null, defaultDept = "", prefill?: Record
 
 export default function SigningFormModal({
   existing, loai: loaiMoi, currentEmail, currentName, currentDepartment, prefill, onClose, onSaved, onCreated,
+  onMailWarn,
 }: {
   existing: SigningSubmission | null;
   /** Loại phiếu khi LẬP MỚI. Sửa phiếu cũ thì lấy theo phiếu, không đổi được. */
@@ -109,6 +114,9 @@ export default function SigningFormModal({
   onSaved: () => void;
   /** Gọi sau khi TẠO MỚI phiếu thành công, kèm id — để nơi gọi liên kết (Kế hoạch TC). */
   onCreated?: (id: string) => void | Promise<void>;
+  /** Cảnh báo mềm khi email báo cấp duyệt gửi không được. Modal đóng ngay sau khi
+      trình nên câu này phải nổi ở PANEL CHA, không hiển thị được trong form. */
+  onMailWarn?: (m: string) => void;
 }) {
   const { projects } = useProjectCatalog();
   // Danh sách phòng ban + BĐH (bảng departments) — nguồn cho ô "Phòng ban".
@@ -121,6 +129,10 @@ export default function SigningFormModal({
   // vài bước lại nhảy sang luồng khác.
   const loai: SigningLoai = existing ? existing.loai : (loaiMoi || "ho_so");
   const laHopDong = loai === "hop_dong";
+  // Giấy đề nghị chuyển tiền (HC-BM021/ĐNCT, migration 079): tờ này chỉ hỏi
+  // CHUYỂN CHO AI, VÀO TÀI KHOẢN NÀO, BAO NHIÊU, VÌ VIỆC GÌ. Không hợp đồng,
+  // không đợt, không A−B−C−D — mấy ô đó là của tờ TL/BM/011.
+  const laChuyenTien = loai === "chuyen_tien";
   const meta = LOAI_META[loai];
   const [d, setD] = useState<Draft>(() => toDraft(existing, currentDepartment, prefill));
   // Bảng so sánh A-B ↔ B-B′ — mảng riêng, không nhét vào Draft (Draft toàn chuỗi).
@@ -219,6 +231,21 @@ export default function SigningFormModal({
     return mine.find((a) => a.is_default) || mine[0] || null;
   }, [partner, accounts]);
 
+  // Phiếu chuyển tiền: điền hộ số tài khoản + ngân hàng từ danh mục đối tác,
+  // nhưng CHỈ khi ô còn trống — người lập gõ đè rồi thì không giật lại, và mở
+  // phiếu cũ ra sửa cũng không bị ghi đè bằng số tài khoản hiện hành.
+  useEffect(() => {
+    if (!laChuyenTien || !partnerAccount) return;
+    setD((prev) => {
+      if (prev.so_tai_khoan || prev.ngan_hang) return prev;
+      return {
+        ...prev,
+        so_tai_khoan: partnerAccount.bank_account || "",
+        ngan_hang: [partnerAccount.bank_name, partnerAccount.bank_branch].filter(Boolean).join(" — "),
+      };
+    });
+  }, [laChuyenTien, partnerAccount]);
+
   // Điền hộ từ một dòng hợp đồng đã lưu. `overwrite=false` (hệ thống tự điền khi
   // đối tác chỉ có 1 hợp đồng): chỉ đổ vào ô CÒN TRỐNG, không đè lên số liệu AI
   // đã bóc hay người lập đã gõ. Bấm chọn trong ô "Lấy theo hợp đồng" thì
@@ -291,6 +318,9 @@ export default function SigningFormModal({
       ben_a: d.ben_a?.trim() || null,
       ben_b: d.ben_b?.trim() || null,
       vat_percent: toRate(d.vat_percent || ""),
+      // migration 079 — tài khoản nhận tiền, chỉ phiếu 'chuyen_tien' dùng tới.
+      so_tai_khoan: d.so_tai_khoan?.trim() || null,
+      ngan_hang: d.ngan_hang?.trim() || null,
       // Bỏ dòng trống trước khi lưu — người lập hay để lại vài dòng mẫu chưa điền.
       so_sanh: soSanh.filter((r) => [r.muc, r.ab, r.bb].some((v) => (v || "").trim() !== "")),
       // migration 074 — ghi lại lựa chọn PGĐ (route dựng ở save()); route mới là
@@ -419,10 +449,21 @@ export default function SigningFormModal({
     setBusy(submit ? "submit" : "save"); setErr("");
     try {
       const payload = buildPayload();
-      if (submit && !payload.hop_dong_so) throw new Error("Phải có Số hợp đồng trước khi trình.");
-      // "Đợt số" là khái niệm của phiếu thanh toán. Phiếu hợp đồng trình MỘT
-      // hợp đồng, không có đợt nào cả.
-      if (submit && !laHopDong && !payload.dot_so) throw new Error("Phải có Đợt số trước khi trình.");
+      // Giấy đề nghị chuyển tiền KHÔNG gắn hợp đồng/đợt — nó trình một khoản
+      // chi trong kế hoạch thu chi. Bắt buộc của nó là: chuyển cho ai, bao
+      // nhiêu, và vì việc gì.
+      if (submit && laChuyenTien) {
+        if (!payload.chu_dau_tu) throw new Error("Phải chọn Đơn vị thụ hưởng trước khi trình.");
+        if (!payload.de_nghi_thanh_toan) throw new Error("Phải có Số tiền đề nghị chuyển trước khi trình.");
+        if (!payload.noi_dung_trinh && !payload.ve_viec) {
+          throw new Error("Phải ghi Nội dung / lý do chuyển tiền trước khi trình.");
+        }
+      } else {
+        if (submit && !payload.hop_dong_so) throw new Error("Phải có Số hợp đồng trước khi trình.");
+        // "Đợt số" là khái niệm của phiếu thanh toán. Phiếu hợp đồng trình MỘT
+        // hợp đồng, không có đợt nào cả.
+        if (submit && !laHopDong && !payload.dot_so) throw new Error("Phải có Đợt số trước khi trình.");
+      }
 
       // Dựng luồng riêng của phiếu + tính người duyệt cấp 1 (theo Phòng ban trên
       // phiếu + người lập). Bước đầu luôn là 'cho_cap1'. Tính cả khi lưu nháp để
@@ -434,6 +475,11 @@ export default function SigningFormModal({
         dept: ((payload.don_vi as string) || currentDepartment || ""),
       });
       const routeFields = { route, cap1_email: cap1.email };
+
+      // Dữ liệu để báo email cho cấp duyệt đầu tiên (chỉ khi TRÌNH, không phải
+      // lưu nháp). Gom ở đây vì hai nhánh dưới lấy ma_phieu từ hai nguồn khác
+      // nhau: phiếu cũ đã có sẵn, phiếu mới do trigger CSDL sinh lúc insert.
+      let maPhieu: string | null = existing?.ma_phieu ?? null;
 
       if (existing) {
         const { error } = await supabase
@@ -448,11 +494,38 @@ export default function SigningFormModal({
           status: submit ? route[0] : "nhap",
           created_by: currentEmail,
           created_by_name: currentName || null,
-        }]).select("id").single();
+        }]).select("id, ma_phieu").single();
         if (error) throw error;
+        maPhieu = (data?.ma_phieu as string) ?? null;
         // Liên kết ngược (vd dòng Kế hoạch TC) — chờ xong để khoá dòng chắc chắn.
         if (onCreated && data?.id) await onCreated(data.id as string);
       }
+
+      // ─── BÁO CẤP DUYỆT ĐẦU TIÊN ───
+      // Nút này trình phiếu đi thẳng, y hệt nút "Trình" ở màn hình chi tiết —
+      // nên cũng phải gửi email y hệt. Thiếu đoạn này (trước 15/09/2026) thì
+      // phiếu lập-và-trình một lèo nằm im ở bước cấp 1, không ai được báo.
+      // Fire-and-forget: phiếu đã chuyển bước trong CSDL, SMTP hỏng không được
+      // làm hỏng thao tác — cảnh báo nổi ở panel cha vì modal đóng ngay.
+      if (submit) {
+        const snapshot = {
+          ma_phieu: maPhieu,
+          hop_dong_so: (payload.hop_dong_so as string) || null,
+          du_an: (payload.du_an as string) || null,
+          chu_dau_tu: (payload.chu_dau_tu as string) || null,
+          dot_so: (payload.dot_so as number) ?? null,
+          de_nghi_thanh_toan: deNghiCuoi,
+          cap1_email: cap1.email,
+          created_by: existing?.created_by || currentEmail,
+          created_by_name: existing?.created_by_name || currentName || null,
+        };
+        void notifySigningSubmitted({
+          row: snapshot,
+          firstStep: route[0],
+          actorName: currentName || currentEmail,
+        }).then((w) => { if (w) onMailWarn?.(w); });
+      }
+
       onSaved();
       onClose();
     } catch (e) {
@@ -473,6 +546,24 @@ export default function SigningFormModal({
     try {
       // Xuất theo BẢN NHÁP đang gõ (chưa cần lưu), nên dựng payload từ `d` chứ
       // không dùng docxPayloadFromRow — hàm đó đọc phiếu đã lưu trong CSDL.
+      //
+      // Phiếu chuyển tiền đi ĐƯỜNG KHÁC HẲN hai loại kia: nó in ra tờ
+      // HC-BM021/ĐNCT, đã có sẵn mẫu + route riêng (/api/export-invoice-payment
+      // templateType "transfer") mà Hành chính và Kế hoạch TC đang dùng chung.
+      // Không dựng mẫu Word thứ ba cho cùng một tờ giấy.
+      if (laChuyenTien) {
+        await exportTransferRequestDocx({
+          employeeName: currentName || currentEmail,
+          employeeDept: d.don_vi || currentDepartment || "",
+          reason: d.noi_dung_trinh?.trim() || d.ve_viec?.trim() || "",
+          projectName: d.du_an || "",
+          supplierName: d.chu_dau_tu || "",
+          bankAccount: d.so_tai_khoan || "",
+          bankNameBranch: d.ngan_hang || "",
+          amount: deNghiCuoi || 0,
+        });
+        return;
+      }
       if (laHopDong) {
         await downloadSigningForm(
           {
@@ -606,6 +697,15 @@ export default function SigningFormModal({
                   className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:border-blue-300 hover:text-blue-600 text-slate-600 font-bold rounded-xl text-[11px] transition-all cursor-pointer disabled:opacity-50">
                   <Upload size={13} /> Chọn file
                 </button>
+                <span className="text-[10px] font-semibold text-slate-400">
+                  PDF · ảnh · Word · Excel — tối đa 8 tệp / 25MB
+                </span>
+                {/* Bóc tách AI đọc HỢP ĐỒNG + biên bản nghiệm thu để điền
+                    A−B−C−D, đợt số, luỹ kế… — phiếu chuyển tiền không có ô nào
+                    trong số đó, nên nút này ở đây chỉ gây hiểu nhầm. Ô đính kèm
+                    thì vẫn giữ: giấy đề nghị chuyển tiền hay kèm hoá đơn/báo giá. */}
+                {!laChuyenTien && (
+                <>
                 <button type="button" onClick={runAI} disabled={!!busy || pending.length === 0}
                   className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 hover:opacity-90 disabled:opacity-40 text-white font-bold rounded-xl text-[11px] transition-all cursor-pointer">
                   {busy === "ai" ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
@@ -613,9 +713,6 @@ export default function SigningFormModal({
                     ? "Đang đọc hồ sơ…"
                     : `Bóc tách ${pending.length || ""} tệp`.replace("  ", " ")}
                 </button>
-                <span className="text-[10px] font-semibold text-slate-400">
-                  PDF · ảnh · Word · Excel — tối đa 8 tệp / 25MB
-                </span>
                 <button
                   type="button"
                   onClick={() => setShowCfg((v) => !v)}
@@ -632,6 +729,8 @@ export default function SigningFormModal({
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Chưa nhập API key riêng" />
                   )}
                 </button>
+                </>
+                )}
               </div>
 
               {showCfg && (
@@ -787,14 +886,18 @@ export default function SigningFormModal({
 
           {/* ─── 3. Thông tin hợp đồng ─── */}
           <section className="space-y-3">
-            <h5 className={labelCls}>3. Hợp đồng &amp; dự án</h5>
+            <h5 className={labelCls}>
+              {laChuyenTien ? "3. Người thụ hưởng & dự án" : "3. Hợp đồng & dự án"}
+            </h5>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {/* Chủ đầu tư chỉ có trên phiếu hồ sơ/văn bản. Phiếu hợp đồng nói
                   vai bằng ô "Bên A / Bên B" bên dưới, vì tuỳ loại hợp đồng mà
                   chủ đầu tư đứng vai A hay Trung Nam đứng vai A. */}
               {!laHopDong && (
                 <div className="flex flex-col gap-1.5 md:col-span-2">
-                  <span className={labelCls}>Đơn vị / Đối tác</span>
+                  <span className={labelCls}>
+                    {laChuyenTien ? "Đơn vị thụ hưởng" : "Đơn vị / Đối tác"}
+                  </span>
                   <div className="relative" ref={custRef}>
                     {d.chu_dau_tu ? (
                       // Đã chọn: hiện thành thẻ, bấm X để chọn lại.
@@ -880,7 +983,7 @@ export default function SigningFormModal({
 
               {/* Nhiều hợp đồng: KHÔNG đoán bừa — cho người lập chọn để điền hộ
                   dự án + số hợp đồng đã lưu (đè lên vì là thao tác cố ý). */}
-              {!laHopDong && partnerContracts.length > 1 && (
+              {!laHopDong && !laChuyenTien && partnerContracts.length > 1 && (
                 <label className="flex flex-col gap-1.5 md:col-span-2">
                   <span className={labelCls}>Lấy theo hợp đồng đã lưu</span>
                   <select value={contractId}
@@ -902,12 +1005,32 @@ export default function SigningFormModal({
                 <span className={labelCls}>Dự án</span>
                 <input value={d.du_an || ""} onChange={(e) => set("du_an", e.target.value)} className={inputCls} />
               </label>
-              <label className="flex flex-col gap-1.5">
-                <span className={labelCls}>Số hợp đồng *</span>
-                <input value={d.hop_dong_so || ""} onChange={(e) => set("hop_dong_so", e.target.value)}
-                  className={`${inputCls} font-mono`} />
-              </label>
-              {!laHopDong && (
+              {/* Số tài khoản + ngân hàng: chỉ tờ ĐNCT mới có, và là hai ô
+                  quan trọng nhất của nó (tiền đi đâu). Điền hộ từ danh mục đối
+                  tác khi ô còn trống, nhưng vẫn cho sửa: có đơn vị đổi tài khoản
+                  cho riêng một lần chi. */}
+              {laChuyenTien && (
+                <>
+                  <label className="flex flex-col gap-1.5">
+                    <span className={labelCls}>Số tài khoản thụ hưởng</span>
+                    <input value={d.so_tai_khoan || ""} onChange={(e) => set("so_tai_khoan", e.target.value)}
+                      placeholder="0123456789" className={`${inputCls} font-mono`} />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className={labelCls}>Ngân hàng — chi nhánh</span>
+                    <input value={d.ngan_hang || ""} onChange={(e) => set("ngan_hang", e.target.value)}
+                      placeholder="Vietcombank — CN Tân Bình" className={inputCls} />
+                  </label>
+                </>
+              )}
+              {!laChuyenTien && (
+                <label className="flex flex-col gap-1.5">
+                  <span className={labelCls}>Số hợp đồng *</span>
+                  <input value={d.hop_dong_so || ""} onChange={(e) => set("hop_dong_so", e.target.value)}
+                    className={`${inputCls} font-mono`} />
+                </label>
+              )}
+              {!laHopDong && !laChuyenTien && (
                 <label className="flex flex-col gap-1.5">
                   <span className={labelCls}>Ngày ký</span>
                   <input value={d.ngay_ky_hop_dong || ""} onChange={(e) => set("ngay_ky_hop_dong", e.target.value)}
@@ -922,10 +1045,12 @@ export default function SigningFormModal({
                     className={inputCls} />
                 </label>
               )}
-              <label className="flex flex-col gap-1.5 md:col-span-2">
-                <span className={labelCls}>Gói thầu</span>
-                <input value={d.goi_thau || ""} onChange={(e) => set("goi_thau", e.target.value)} className={inputCls} />
-              </label>
+              {!laChuyenTien && (
+                <label className="flex flex-col gap-1.5 md:col-span-2">
+                  <span className={labelCls}>Gói thầu</span>
+                  <input value={d.goi_thau || ""} onChange={(e) => set("goi_thau", e.target.value)} className={inputCls} />
+                </label>
+              )}
               <label className="flex flex-col gap-1.5">
                 <span className={labelCls}>Dự án trong danh mục</span>
                 <select value={d.project_code || ""} onChange={(e) => set("project_code", e.target.value)}
@@ -936,7 +1061,7 @@ export default function SigningFormModal({
                   ))}
                 </select>
               </label>
-              {!laHopDong && (
+              {!laHopDong && !laChuyenTien && (
                 <label className="flex flex-col gap-1.5">
                   <span className={labelCls}>Đợt số *</span>
                   <input value={d.dot_so || ""} onChange={(e) => set("dot_so", e.target.value)}
@@ -1020,8 +1145,36 @@ export default function SigningFormModal({
             </section>
           )}
 
+          {/* ─── 4b. Số tiền đề nghị chuyển (chỉ phiếu chuyển tiền) ─── */}
+          {laChuyenTien && (
+            <section className="space-y-3">
+              <h5 className={labelCls}>4. Số tiền đề nghị chuyển</h5>
+              {/* MỘT con số duy nhất, gõ thẳng. Tờ ĐNCT không có nghiệm thu,
+                  giữ bảo hành hay khấu trừ tạm ứng để mà trừ ra — đưa bảng
+                  A−B−C−D vào đây chỉ làm người lập phải bỏ qua 8 ô trống. */}
+              <div className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold text-emerald-100 uppercase tracking-wider">
+                    Số tiền đề nghị chuyển
+                  </p>
+                  <p className="font-heading font-extrabold text-white text-xl leading-tight mt-0.5">
+                    {fmtMoney(deNghiCuoi)} <span className="text-xs font-bold text-emerald-100">đồng</span>
+                  </p>
+                </div>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] font-bold text-emerald-100 uppercase tracking-wider">
+                    Số tiền (VNĐ)
+                  </span>
+                  <input value={d.de_nghi_thanh_toan || ""} onChange={(e) => set("de_nghi_thanh_toan", e.target.value)}
+                    inputMode="numeric" placeholder="0"
+                    className="border border-white/30 bg-white/10 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-white placeholder:text-emerald-200/70 outline-none focus:bg-white/20 w-44 text-right" />
+                </label>
+              </div>
+            </section>
+          )}
+
           {/* ─── 4. Số liệu (chỉ phiếu hồ sơ/văn bản) ─── */}
-          {!laHopDong && (
+          {!laHopDong && !laChuyenTien && (
           <section className="space-y-3">
             <h5 className={labelCls}>4. Số liệu đợt thanh toán</h5>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">

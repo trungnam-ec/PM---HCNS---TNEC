@@ -38,10 +38,13 @@ export type SigningStatus =
 
 export type SigningFile = { path: string; name: string; size?: number };
 
-// ─── Hai loại phiếu (migration 060) ───
-// ho_so    : TL/BM/011  — trình MỘT ĐỢT THANH TOÁN của hợp đồng đã ký.
-// hop_dong : KHKT/BM/001 — trình NỘI DUNG HỢP ĐỒNG trước khi ký.
-export type SigningLoai = "ho_so" | "hop_dong";
+// ─── Ba loại phiếu (migration 060 + 079) ───
+// ho_so       : TL/BM/011    — trình MỘT ĐỢT THANH TOÁN của hợp đồng đã ký.
+// hop_dong    : KHKT/BM/001  — trình NỘI DUNG HỢP ĐỒNG trước khi ký.
+// chuyen_tien : HC-BM021/ĐNCT — đề nghị CHUYỂN TIỀN cho một dòng kế hoạch thu
+//               chi. Không gắn hợp đồng/đợt, không có bảng A−B−C−D; thứ nó cần
+//               mà hai loại kia không có là số tài khoản + ngân hàng người nhận.
+export type SigningLoai = "ho_so" | "hop_dong" | "chuyen_tien";
 
 export const LOAI_META: Record<SigningLoai, { label: string; short: string; bieuMau: string; chip: string }> = {
   ho_so: {
@@ -55,6 +58,12 @@ export const LOAI_META: Record<SigningLoai, { label: string; short: string; bieu
     short: "Hợp đồng",
     bieuMau: "KHKT/BM/001",
     chip: "bg-violet-50 text-violet-700",
+  },
+  chuyen_tien: {
+    label: "Đề nghị chuyển tiền",
+    short: "Chuyển tiền",
+    bieuMau: "HC-BM021/ĐNCT",
+    chip: "bg-emerald-50 text-emerald-700",
   },
 };
 
@@ -110,6 +119,10 @@ export type SigningSubmission = {
   ben_b: string | null;
   vat_percent: number | null;
   so_sanh: SoSanhRow[];
+
+  // ─── migration 079: riêng phiếu 'chuyen_tien' ───
+  so_tai_khoan: string | null;
+  ngan_hang: string | null;
 
   status: SigningStatus;
 
@@ -207,6 +220,9 @@ export const FLOW_HOP_DONG: SigningStatus[] = [
   "hoan_tat",
 ];
 
+// Chỉ dùng cho PHIẾU CŨ (route rỗng, lập trước 074). Phiếu 'chuyen_tien' sinh
+// sau 074 nên luôn có route — nhánh này không bao giờ chạm tới nó, nhưng vẫn
+// trả về FLOW (có chặng Kế toán) để không có góc nào trả undefined.
 export function flowOf(loai: SigningLoai): SigningStatus[] {
   return loai === "hop_dong" ? FLOW_HOP_DONG : FLOW;
 }
@@ -800,7 +816,13 @@ export async function pushToPaymentDossier(
   let soTaiKhoan = "";
   let taiNganHang = "";
   const ten = (row.chu_dau_tu || "").trim();
-  if (ten) {
+  // Phiếu đề nghị chuyển tiền (079) đã ghi thẳng tài khoản nhận lên phiếu và
+  // Giám đốc đã duyệt ĐÚNG con số tài khoản đó. Ưu tiên nó hơn danh mục đối
+  // tác: đơn vị có thể đổi tài khoản mặc định sau khi phiếu được ký.
+  if (row.loai === "chuyen_tien" && (row.so_tai_khoan || row.ngan_hang)) {
+    soTaiKhoan = row.so_tai_khoan || "";
+    taiNganHang = row.ngan_hang || "";
+  } else if (ten) {
     const { data: p } = await supabase
       .from("finance_partners")
       .select("id")
@@ -865,4 +887,59 @@ export async function resolveDossierUrl(path: string): Promise<string | null> {
     .createSignedUrl(path, SIGNED_TTL);
   if (error || !data) return null;
   return data.signedUrl;
+}
+
+// ─── Báo email lúc TRÌNH PHIẾU ĐI (dùng chung cho 2 cửa) ───
+// Phiếu có thể được trình từ HAI chỗ: nút "Trình" ở màn hình chi tiết
+// (SigningPanel) và nút "Trình duyệt" ngay trong form lập phiếu
+// (SigningFormModal — cũng là cửa mà "Trình ký online" bên Kế hoạch thu chi đi
+// vào). Trước 15/09/2026 chỉ cửa thứ nhất gửi email, nên phiếu lập-và-trình
+// một lèo thì cấp 1 KHÔNG nhận được gì: không mail, không chuông, việc nằm im.
+//
+// Fire-and-forget đúng khuôn của SigningPanel: phiếu đã chuyển bước trong CSDL
+// rồi, SMTP hỏng cũng không được phép làm hỏng thao tác — chỉ trả về câu cảnh
+// báo (hoặc chuỗi rỗng nếu êm) để nơi gọi hiển thị mềm.
+export async function notifySigningSubmitted(params: {
+  row: {
+    ma_phieu?: string | null; hop_dong_so?: string | null; du_an?: string | null;
+    chu_dau_tu?: string | null; dot_so?: number | null; de_nghi_thanh_toan?: number | null;
+    cap1_email?: string | null; created_by?: string | null; created_by_name?: string | null;
+  };
+  firstStep: SigningStatus;
+  actorName: string;
+}): Promise<string> {
+  const { row, firstStep, actorName } = params;
+  try {
+    // Bước cấp 1 không theo cờ — email người duyệt đã chốt trên chính phiếu.
+    const nextEmails =
+      firstStep === "cho_cap1"
+        ? (row.cap1_email || "").split(",").map((e) => e.trim()).filter((e) => e.includes("@"))
+        : await fetchStageApproverEmails(firstStep);
+    const res = await apiFetch("/api/send-signing-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        maPhieu: row.ma_phieu,
+        hopDongSo: row.hop_dong_so,
+        duAn: row.du_an,
+        chuDauTu: row.chu_dau_tu,
+        dotSo: row.dot_so,
+        soTien: row.de_nghi_thanh_toan,
+        event: "trinh",
+        nextLabel: STATUS_META[firstStep]?.label,
+        actorName,
+        creatorEmail: row.created_by,
+        creatorName: row.created_by_name,
+        nextApproverEmails: nextEmails,
+        siteUrl: typeof window !== "undefined" ? window.location.origin : "",
+      }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) return j.error || `Không gửi được email (${res.status}).`;
+    if (j.failed?.length) return `Gửi email lỗi: ${j.failed.join("; ")}`;
+    if (!j.sent?.length) return "Không có địa chỉ email nào để gửi thông báo.";
+    return "";
+  } catch (e) {
+    return `Không gửi được email: ${errText(e)}`;
+  }
 }

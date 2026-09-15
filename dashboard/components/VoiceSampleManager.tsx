@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabase";
+import { signMeetingFile } from "@/lib/meetingFiles";
 import {
   MEETINGS_BUCKET,
   VOICE_SAMPLE_MIN_SEC,
@@ -282,8 +283,15 @@ export default function VoiceSampleManager({
     setError("");
     stopPlaying();
 
-    const { data } = supabase.storage.from(MEETINGS_BUCKET).getPublicUrl(path);
-    const url = `${data.publicUrl}?v=${Date.now()}`;
+    // Kho `meetings` là private từ 078 -> phải xin link ký, URL public không mở
+    // được nữa. Không cần ?v= chống cache: mỗi link ký đã là một link khác.
+    let url = "";
+    try {
+      url = await signMeetingFile(path);
+    } catch (err: any) {
+      setError(err?.message || "Không mở được mẫu giọng.");
+      return;
+    }
     const audio = new Audio(url);
     audioRef.current = audio;
     audio.onended = () => { audioRef.current = null; setPlayingId(null); };

@@ -13,6 +13,7 @@ import { DialogProvider, useDialog } from "@/components/DialogProvider";
 import MeetingRecorder, { type RecordedSegment } from "@/components/MeetingRecorder";
 import VoiceSampleManager from "@/components/VoiceSampleManager";
 import { transcribeSegmentInBrowser, analyzeInBrowser, type KnownSpeaker } from "@/lib/meetingOpenAI";
+import { signMeetingFile, meetingPathFromRef } from "@/lib/meetingFiles";
 import PersonSearchCell, { type PersonOption } from "@/components/PersonSearchCell";
 import {
   ANALYSIS_MODELS,
@@ -201,6 +202,9 @@ function MeetingTeamContent() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playerSrc, setPlayerSrc] = useState("");
   const [playerLabel, setPlayerLabel] = useState("");
+  // Đường dẫn trong kho của đoạn đang phát. Không so bằng chính `playerSrc` được
+  // nữa: link ký mỗi lần một khác nên so URL luôn ra "khác đoạn".
+  const playerPathRef = useRef("");
   const pendingSeekRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -392,7 +396,8 @@ function MeetingTeamContent() {
       setProcessingStep("stt");
       log(`[1/4] Khởi tạo biên bản nháp cho ${segs.length} đoạn ghi âm…`);
 
-      const { data: { publicUrl } } = supabase.storage.from(MEETINGS_BUCKET).getPublicUrl(segs[0].path);
+      // Kho `meetings` là private (078): lưu ĐƯỜNG DẪN trong kho, không lưu URL
+      // public — URL đó nay không mở được, giữ lại chỉ tổ đánh lừa người đọc sau.
       const today = new Date().toISOString().split("T")[0];
 
       const { data: draftMeeting, error: dbError } = await supabase
@@ -402,7 +407,7 @@ function MeetingTeamContent() {
           meeting_date: today,
           chairperson,
           attendees: rosterNames,
-          audio_url: publicUrl,
+          audio_url: segs[0].path,
           audio_paths: segs.map(s => s.path),
           audio_segments: segs,
           recording_started_at: startedAt,
@@ -654,6 +659,7 @@ function MeetingTeamContent() {
     setSpeakerMapDraft(meeting.speaker_map || {});
     setPlayerSrc("");
     setPlayerLabel("");
+    playerPathRef.current = "";
     setReviewTab("tasks");
     setCurrentView("detail");
   };
@@ -803,7 +809,9 @@ function MeetingTeamContent() {
       if (!docxRes.ok) throw new Error(docxData.error || "Không thể biên dịch file Word.");
 
       const documentUrl = docxData.documentUrl;
-      setSelectedMeeting({ ...selectedMeeting, document_url: documentUrl });
+      // State giữ ĐƯỜNG DẪN (giống cột trong CSDL), không giữ link ký — link ký
+      // hết hạn sau 1 giờ, để trong state là nút tải sẽ hỏng ngay trong phiên.
+      setSelectedMeeting({ ...selectedMeeting, document_url: docxData.documentPath || documentUrl });
       await downloadFile(documentUrl, `Bien_Ban_Hop_${editableTitle.replace(/[^a-zA-Z0-9]/g, "_")}.docx`);
 
       await dialog.alert("Đã xuất và tải xuống file Word biên bản họp.", { title: "Xuất Word xong", tone: "success" });
@@ -906,15 +914,15 @@ function MeetingTeamContent() {
       setLoading(true);
       const target = meetings.find(m => m.id === id);
 
+      // meetingPathFromRef nhận cả URL public kiểu cũ lẫn đường dẫn trần kiểu mới.
       const paths = [...(target?.audio_paths || [])];
       if (paths.length === 0 && target?.audio_url) {
-        const audioUrl = target.audio_url.split("?")[0];
-        paths.push(audioUrl.substring(audioUrl.indexOf("/meetings/") + "/meetings/".length));
+        const p = meetingPathFromRef(target.audio_url);
+        if (p) paths.push(p);
       }
       if (target?.document_url) {
-        // document_url carries a ?v= cache-buster — strip it to get the storage path
-        const docUrl = target.document_url.split("?")[0];
-        paths.push(docUrl.substring(docUrl.indexOf("/meetings/") + "/meetings/".length));
+        const p = meetingPathFromRef(target.document_url);
+        if (p) paths.push(p);
       }
       if (paths.length > 0) await supabase.storage.from(MEETINGS_BUCKET).remove(paths);
 
@@ -974,17 +982,27 @@ function MeetingTeamContent() {
     }
     const seg = segs.find(s => ts >= s.offsetSec && ts < s.offsetSec + (s.durationSec || Number.MAX_SAFE_INTEGER))
       || segs[segs.length - 1];
-    const { data: { publicUrl } } = supabase.storage.from(MEETINGS_BUCKET).getPublicUrl(seg.path);
     const within = Math.max(0, ts - seg.offsetSec);
-    pendingSeekRef.current = within;
-    setPlayerLabel(`Đoạn ${segs.indexOf(seg) + 1} · mốc ${formatTs(ts)}`);
 
-    if (playerSrc === publicUrl && audioRef.current) {
+    // Cùng một đoạn đang phát thì tua tại chỗ, KHÔNG ký link mới: đổi src là
+    // trình duyệt nạp lại file từ đầu, nghe bị khựng một nhịp.
+    if (playerPathRef.current === seg.path && audioRef.current) {
+      setPlayerLabel(`Đoạn ${segs.indexOf(seg) + 1} · mốc ${formatTs(ts)}`);
       audioRef.current.currentTime = within;
       void audioRef.current.play();
       pendingSeekRef.current = null;
-    } else {
-      setPlayerSrc(publicUrl);
+      return;
+    }
+
+    try {
+      const url = await signMeetingFile(seg.path);
+      pendingSeekRef.current = within;
+      setPlayerLabel(`Đoạn ${segs.indexOf(seg) + 1} · mốc ${formatTs(ts)}`);
+      playerPathRef.current = seg.path;
+      setPlayerSrc(url);
+    } catch (err: any) {
+      pendingSeekRef.current = null;
+      await dialog.alert(err.message, { title: "Không nghe lại được", tone: "danger" });
     }
   };
 
@@ -995,6 +1013,32 @@ function MeetingTeamContent() {
       pendingSeekRef.current = null;
     }
   };
+
+  // Mở một biên bản -> ký sẵn link đoạn đầu để trình phát có cái mà phát ngay.
+  // Trước 078 chỗ này dùng thẳng `audio_url` (URL public); kho đã private nên
+  // phải ký, và ký hỏng thì im lặng để trống chứ không nhảy hộp thoại lỗi ngay
+  // lúc vừa mở biên bản.
+  useEffect(() => {
+    const m = selectedMeeting;
+    if (!m || m.audio_deleted_at) return;
+    const segs: AudioSegment[] = Array.isArray(m.audio_segments) ? m.audio_segments : [];
+    const firstPath = segs[0]?.path || meetingPathFromRef(m.audio_url);
+    if (!firstPath) return;
+
+    let huy = false;
+    (async () => {
+      try {
+        const url = await signMeetingFile(firstPath);
+        if (huy) return;
+        playerPathRef.current = firstPath;
+        setPlayerSrc(url);
+      } catch {
+        // Không ký được (file đã xoá, hoặc của tài khoản khác) -> để trình phát
+        // trống. Người dùng bấm mốc giờ sẽ nhận thông báo lỗi rõ ràng.
+      }
+    })();
+    return () => { huy = true; };
+  }, [selectedMeeting?.id]);
 
   // ─── Gợi ý tên cho ô gán người nói ───
   const speakerQuery = speakerSearch.trim().toLowerCase();
@@ -1184,6 +1228,17 @@ function MeetingTeamContent() {
                     </div>
                   </div>
 
+                  {/* Nói thẳng luật nhìn thấy, nếu không người dùng sẽ tưởng
+                      biên bản cũ bị mất và gọi báo lỗi. */}
+                  <div className="flex items-start gap-2 px-1">
+                    <Info size={13} className="text-slate-400 shrink-0 mt-0.5" />
+                    <p className="text-[11px] font-semibold text-slate-500 leading-relaxed">
+                      {account.isAdmin
+                        ? "Bạn là Quản trị viên nên đang xem TOÀN BỘ biên bản của công ty. Mỗi tài khoản khác chỉ thấy biên bản và file ghi âm do chính họ tạo."
+                        : "Kho này chỉ hiện biên bản và file ghi âm do chính tài khoản của bạn tạo. Biên bản của người khác — và các biên bản có từ trước ngày 15/09/2026 — do Quản trị viên giữ."}
+                    </p>
+                  </div>
+
                   {loading ? (
                     <div className="flex flex-col items-center justify-center py-20 space-y-4">
                       <Loader2 className="animate-spin text-blue-600" size={32} />
@@ -1193,7 +1248,7 @@ function MeetingTeamContent() {
                     <div className="flex flex-col items-center justify-center p-20 bg-white rounded-2xl border border-slate-200/80 shadow-sm text-center">
                       <Archive className="text-slate-300 mb-3" size={44} />
                       <h3 className="text-slate-700 font-bold text-sm">Chưa có biên bản họp nào</h3>
-                      <p className="text-slate-500 text-xs mt-1 max-w-sm">Chuyển sang tab &quot;Trung tâm Xử lý AI&quot; để ghi âm cuộc họp hoặc tải file ghi âm lên.</p>
+                      <p className="text-slate-500 text-xs mt-1 max-w-sm">Chuyển sang tab &quot;Trung tâm Xử lý AI&quot; để ghi âm cuộc họp hoặc tải file ghi âm lên. Biên bản do đồng nghiệp khác tạo không hiện ở đây.</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1255,9 +1310,14 @@ function MeetingTeamContent() {
                             {m.document_url ? (
                               <button
                                 type="button"
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                   e.stopPropagation();
-                                  downloadFile(m.document_url, `Bien_Ban_Hop_${m.title.replace(/[^a-zA-Z0-9]/g, "_")}.docx`);
+                                  try {
+                                    const url = await signMeetingFile(m.document_url);
+                                    await downloadFile(url, `Bien_Ban_Hop_${m.title.replace(/[^a-zA-Z0-9]/g, "_")}.docx`);
+                                  } catch (err: any) {
+                                    await dialog.alert(err.message, { title: "Không tải được file Word", tone: "danger" });
+                                  }
                                 }}
                                 className="text-xs text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 hover:underline"
                               >
@@ -1939,7 +1999,7 @@ function MeetingTeamContent() {
                         <audio
                           ref={audioRef}
                           controls
-                          src={playerSrc || selectedMeeting.audio_url || undefined}
+                          src={playerSrc || undefined}
                           onLoadedMetadata={onPlayerLoaded}
                           className="w-full h-8 mt-1 rounded bg-slate-50"
                         />

@@ -1,7 +1,5 @@
-import { requireApiAuth } from "@/lib/apiAuth";
+import { requireApiAuth, supabaseForCaller } from "@/lib/apiAuth";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
 import fs from "fs";
 import path from "path";
 import PizZip from "pizzip";
@@ -19,17 +17,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Thiếu meetingId." }, { status: 400 });
     }
 
-    // RLS on meetings only allows authenticated reads — query with the caller's
-    // session token (same pattern as /api/export-template), else the shared anon
-    // client returns no rows and the export fails with "Cannot coerce...".
-    const supabaseToken = req.headers.get("x-supabase-auth");
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-    const dbClient = (supabaseToken && supabaseUrl && supabaseAnonKey)
-      ? createClient(supabaseUrl, supabaseAnonKey, {
-          global: { headers: { Authorization: `Bearer ${supabaseToken}` } }
-        })
-      : supabase;
+    // PHẢI chạy bằng token của chính người gọi, KHÔNG dùng client anon dùng chung:
+    //   • RLS của 078 chỉ trả biên bản của người đó (anon trả 0 dòng -> lỗi khó hiểu
+    //     "Cannot coerce...");
+    //   • file Word tạo ra được Storage ghi nhận chủ sở hữu theo token này — upload
+    //     bằng client anon là file vô chủ, chính người vừa xuất cũng không tải được.
+    const dbClient = supabaseForCaller(auth.caller);
 
     // 1. Fetch meeting details from Supabase
     const { data: meeting, error: fetchError } = await dbClient
@@ -136,17 +129,20 @@ export async function POST(req: NextRequest) {
       throw new Error(`Lỗi upload file lên storage: ${uploadError.message}`);
     }
 
-    // 8. Get public URL and save it to the DB.
-    // Upsert reuses the same storage path, but Supabase CDN caches public
-    // objects (~1h) — version the URL so re-exports don't serve a stale file.
-    const { data: { publicUrl: rawPublicUrl } } = dbClient.storage
+    // 8. Kho `meetings` là PRIVATE (078):
+    //    - CSDL lưu ĐƯỜNG DẪN trong kho, không lưu URL (URL ký sẽ hết hạn);
+    //    - trả về một link ký để trình duyệt tải ngay file vừa xuất.
+    //    Cũng không cần ?v= chống cache nữa — private thì CDN không giữ bản cũ.
+    const { data: signed, error: signError } = await dbClient.storage
       .from("meetings")
-      .getPublicUrl(storageFileName);
-    const publicUrl = `${rawPublicUrl}?v=${Date.now()}`;
+      .createSignedUrl(storageFileName, 60 * 60);
+    if (signError || !signed?.signedUrl) {
+      throw new Error(`Lỗi tạo link tải file Word: ${signError?.message || "không ký được"}`);
+    }
 
     const { error: dbUpdateError } = await dbClient
       .from("meetings")
-      .update({ document_url: publicUrl })
+      .update({ document_url: storageFileName })
       .eq("id", meetingId);
 
     if (dbUpdateError) {
@@ -156,7 +152,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      documentUrl: publicUrl,
+      documentUrl: signed.signedUrl,
+      documentPath: storageFileName,
     });
   } catch (err: any) {
     console.error("Export docx error:", err);

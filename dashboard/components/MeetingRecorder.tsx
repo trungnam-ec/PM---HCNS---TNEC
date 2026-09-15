@@ -43,6 +43,11 @@ export type RecordedSegment = {
 
 type RecorderState = "idle" | "recording" | "paused" | "finishing";
 
+/** Dưới mức này coi như không có tiếng (RMS 0..1). */
+const SILENCE_RMS = 0.01;
+/** Im lặng liên tục bao lâu thì mới báo micro câm (ms). */
+const SILENCE_ALERT_MS = 5000;
+
 function fmtClock(totalSec: number): string {
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
@@ -60,7 +65,8 @@ export default function MeetingRecorder({
 }) {
   const [state, setState] = useState<RecorderState>("idle");
   const [elapsed, setElapsed] = useState(0);          // giây ĐÃ THU (không tính lúc tạm dừng)
-  const [level, setLevel] = useState(0);              // vạch mức âm thanh 0..1
+  const [level, setLevel] = useState(0);              // vạch mức âm thanh 0..1 (đã làm mượt)
+  const [micSilent, setMicSilent] = useState(false);  // im lặng KÉO DÀI, không phải khoảng nghỉ giữa câu
   const [segments, setSegments] = useState<RecordedSegment[]>([]);
   const [error, setError] = useState("");
 
@@ -82,6 +88,9 @@ export default function MeetingRecorder({
   const blobsRef = useRef<Map<number, Blob>>(new Map());
   const audioCtxRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number | null>(null);
+  const levelRef = useRef(0);                         // mức đã làm mượt, đọc ở 60fps
+  const lastSoundAtRef = useRef(0);                   // lần cuối nghe thấy tiếng (ms)
+  const lastPaintRef = useRef(0);                     // lần cuối vẽ lại vạch mức (ms)
 
   const pushSegment = useCallback((seg: RecordedSegment) => {
     segmentsRef.current = [...segmentsRef.current, seg];
@@ -160,6 +169,11 @@ export default function MeetingRecorder({
       elapsedRef.current += 1;
       setElapsed(elapsedRef.current);
 
+      // Cảnh báo micro câm xét MỘT LẦN MỖI GIÂY và chỉ bật sau 5 giây im hẳn.
+      // Xét theo từng khung hình thì mỗi lần người nói lấy hơi là dòng chữ đỏ lại
+      // nhảy ra rồi biến mất, làm cả khối giật lên giật xuống.
+      setMicSilent(performance.now() - lastSoundAtRef.current > SILENCE_ALERT_MS);
+
       // Đủ 20 phút cho đoạn hiện tại -> dừng hẳn rồi tạo recorder mới
       if (elapsedRef.current - segStartOffsetRef.current >= RECORD_SEGMENT_SEC) {
         const rec = recorderRef.current;
@@ -186,13 +200,31 @@ export default function MeetingRecorder({
 
       const tick = () => {
         analyser.getByteTimeDomainData(buf);
-        let peak = 0;
+        // RMS (mức trung bình) chứ KHÔNG lấy đỉnh tức thời: đỉnh nhảy loạn theo
+        // từng khung hình nên vạch mức rung bần bật.
+        let sum = 0;
         for (let i = 0; i < buf.length; i++) {
-          peak = Math.max(peak, Math.abs(buf[i] - 128) / 128);
+          const v = (buf[i] - 128) / 128;
+          sum += v * v;
         }
-        setLevel(peak);
+        const rms = Math.sqrt(sum / buf.length);
+
+        // Bao hình: lên tức thì, xuống từ từ — giống vạch mức của máy thu thật.
+        const prev = levelRef.current;
+        levelRef.current = rms > prev ? rms : prev * 0.9 + rms * 0.1;
+
+        const now = performance.now();
+        if (rms > SILENCE_RMS) lastSoundAtRef.current = now;
+
+        // Vẽ lại ~15 lần/giây thay vì 60: mắt không phân biệt được, mà React
+        // cũng không phải dựng lại cả khối ghi âm 60 lần mỗi giây.
+        if (now - lastPaintRef.current >= 66) {
+          lastPaintRef.current = now;
+          setLevel(levelRef.current);
+        }
         rafRef.current = requestAnimationFrame(tick);
       };
+      lastSoundAtRef.current = performance.now();
       tick();
     } catch {
       // Không có vạch mức thì vẫn ghi âm bình thường — không chặn cuộc họp vì thứ phụ.
@@ -204,7 +236,9 @@ export default function MeetingRecorder({
     rafRef.current = null;
     audioCtxRef.current?.close().catch(() => {});
     audioCtxRef.current = null;
+    levelRef.current = 0;
     setLevel(0);
+    setMicSilent(false);
   }, []);
 
   // ─── Bắt đầu ───
@@ -229,6 +263,10 @@ export default function MeetingRecorder({
       finishRequestedRef.current = false;
       setSegments([]);
       setElapsed(0);
+      levelRef.current = 0;
+      lastSoundAtRef.current = performance.now();
+      setLevel(0);
+      setMicSilent(false);
       startLevelMeter(stream);
       startSegmentRecorder();
       setState("recording");
@@ -366,15 +404,19 @@ export default function MeetingRecorder({
         {/* Vạch mức: micro câm thì thấy ngay từ phút đầu, thay vì họp xong 2 tiếng mới biết */}
         <div className="h-2.5 bg-slate-200 rounded-full overflow-hidden max-w-xs mx-auto">
           <div
-            className={`h-full rounded-full transition-[width] duration-75 ${level > 0.02 ? "bg-emerald-500" : "bg-slate-300"}`}
-            style={{ width: `${Math.min(100, Math.round(level * 140))}%` }}
+            className={`h-full rounded-full transition-[width] duration-150 ease-out ${micSilent ? "bg-slate-300" : "bg-emerald-500"}`}
+            style={{ width: `${Math.min(100, Math.round(Math.sqrt(level) * 130))}%` }}
           />
         </div>
-        {state === "recording" && level <= 0.02 && (
-          <p className="text-[11px] font-bold text-rose-500 flex items-center justify-center gap-1.5">
-            <AlertCircle size={13} /> Không nghe thấy tiếng — kiểm tra lại micro trước khi họp tiếp.
-          </p>
-        )}
+        {/* Chỗ của dòng cảnh báo luôn chừa sẵn: có hay không có chữ thì các nút
+            bên dưới vẫn đứng yên một chỗ. */}
+        <div className="h-4 flex items-center justify-center">
+          {state === "recording" && micSilent && (
+            <p className="text-[11px] font-bold text-rose-500 flex items-center justify-center gap-1.5">
+              <AlertCircle size={13} /> Không nghe thấy tiếng — kiểm tra lại micro trước khi họp tiếp.
+            </p>
+          )}
+        </div>
 
         {state !== "idle" && (
           <p className="text-[11px] font-semibold text-slate-400">

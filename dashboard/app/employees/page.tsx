@@ -1154,7 +1154,15 @@ export default function EmployeeManagementPage() {
                         <td style={{ left: frozenLefts[0] }} className={`sticky z-10 px-4 py-3 text-center text-xs text-slate-400 font-mono ${isResignedEmployee(emp) ? "cell-frozen-resigned" : "cell-frozen"}`}>{index + 1}</td>
 
                         {/* Mã nhân viên — ghim */}
-                        <td style={{ left: frozenLefts[1] }} className={`sticky z-10 px-4 py-3 text-xs text-slate-600 font-semibold ${isResignedEmployee(emp) ? "cell-frozen-resigned" : "cell-frozen"}`}>{emp.employee_code || <span className="text-slate-300 italic">—</span>}</td>
+                        <td style={{ left: frozenLefts[1] }} className={`sticky z-10 px-4 py-1 text-xs text-slate-600 font-semibold ${isResignedEmployee(emp) ? "cell-frozen-resigned" : "cell-frozen"}`}>
+                          <div className="w-[110px]">
+                            <EditableCell
+                              value={emp.employee_code}
+                              onSave={(val) => handleUpdateEmployeeField(emp.id, "employee_code", val)}
+                              readOnly={!canEdit}
+                            />
+                          </div>
+                        </td>
 
                         {/* Họ tên — ghim (cột cuối vùng ghim, có đổ bóng phân tách) */}
                         <td style={{ left: frozenLefts[2] }} className={`sticky z-10 px-4 py-3 shadow-[3px_0_6px_-2px_rgba(15,23,42,0.18)] ${isResignedEmployee(emp) ? "cell-frozen-resigned" : "cell-frozen"}`}>

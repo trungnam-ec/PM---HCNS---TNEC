@@ -1006,6 +1006,35 @@ function MeetingTeamContent() {
     }
   };
 
+  /** Tên file khi tải ghi âm về máy — kèm số đoạn để không đè lên nhau. */
+  const segmentFileName = (index: number, path: string) => {
+    const ext = (path.split(".").pop() || "webm").split("?")[0];
+    const stem = (selectedMeeting?.title || "Bien_ban_hop").replace(/[^a-zA-Z0-9]/g, "_").slice(0, 60);
+    return `Ghi_am_${stem}_doan_${index + 1}.${ext}`;
+  };
+
+  /** Nạp một đoạn vào trình phát (đoạn 2 trở đi không có đường nào khác để mở). */
+  const playSegment = async (seg: AudioSegment, index: number) => {
+    try {
+      const url = await signMeetingFile(seg.path);
+      pendingSeekRef.current = null;
+      playerPathRef.current = seg.path;
+      setPlayerLabel(`Đoạn ${index + 1} · từ ${formatTs(seg.offsetSec)}`);
+      setPlayerSrc(url);
+    } catch (err: any) {
+      await dialog.alert(err.message, { title: "Không mở được đoạn ghi âm", tone: "danger" });
+    }
+  };
+
+  const downloadSegment = async (seg: AudioSegment, index: number) => {
+    try {
+      const url = await signMeetingFile(seg.path);
+      await downloadFile(url, segmentFileName(index, seg.path));
+    } catch (err: any) {
+      await dialog.alert(err.message, { title: "Không tải được đoạn ghi âm", tone: "danger" });
+    }
+  };
+
   const onPlayerLoaded = () => {
     if (pendingSeekRef.current !== null && audioRef.current) {
       audioRef.current.currentTime = pendingSeekRef.current;
@@ -1226,17 +1255,6 @@ function MeetingTeamContent() {
                         className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:outline-none text-slate-800 text-xs placeholder-slate-400"
                       />
                     </div>
-                  </div>
-
-                  {/* Nói thẳng luật nhìn thấy, nếu không người dùng sẽ tưởng
-                      biên bản cũ bị mất và gọi báo lỗi. */}
-                  <div className="flex items-start gap-2 px-1">
-                    <Info size={13} className="text-slate-400 shrink-0 mt-0.5" />
-                    <p className="text-[11px] font-semibold text-slate-500 leading-relaxed">
-                      {account.isAdmin
-                        ? "Bạn là Quản trị viên nên đang xem TOÀN BỘ biên bản của công ty. Mỗi tài khoản khác chỉ thấy biên bản và file ghi âm do chính họ tạo."
-                        : "Kho này chỉ hiện biên bản và file ghi âm do chính tài khoản của bạn tạo. Biên bản của người khác — và các biên bản có từ trước ngày 15/09/2026 — do Quản trị viên giữ."}
-                    </p>
                   </div>
 
                   {loading ? (
@@ -2003,10 +2021,40 @@ function MeetingTeamContent() {
                           onLoadedMetadata={onPlayerLoaded}
                           className="w-full h-8 mt-1 rounded bg-slate-50"
                         />
-                        {(selectedMeeting.audio_segments?.length || 0) > 1 && (
-                          <p className="text-[10px] font-semibold text-slate-400">
-                            Cuộc họp gồm {selectedMeeting.audio_segments!.length} đoạn — bấm nút mốc giờ ở bảng phân công để nghe đúng chỗ.
-                          </p>
+                        {/* Danh sách đoạn: họp dài bị cắt mỗi 20 phút thành nhiều
+                            file, trình phát chỉ nạp được một đoạn — thiếu danh sách
+                            này thì các đoạn sau không có đường nào để nghe hay tải. */}
+                        {(selectedMeeting.audio_segments?.length || 0) > 0 && (
+                          <div className="space-y-1 pt-1">
+                            {selectedMeeting.audio_segments!.length > 1 && (
+                              <p className="text-[10px] font-semibold text-slate-400">
+                                Cuộc họp bị cắt thành {selectedMeeting.audio_segments!.length} đoạn (mỗi 20 phút). Bấm mốc giờ ở bảng phân công để nghe đúng chỗ, hoặc tải từng đoạn dưới đây.
+                              </p>
+                            )}
+                            {selectedMeeting.audio_segments!.map((seg, i) => (
+                              <div key={seg.path || i} className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+                                <span className={`text-[11px] font-bold truncate ${playerPathRef.current === seg.path ? "text-[#005BAC]" : "text-slate-600"}`}>
+                                  Đoạn {i + 1} · {formatTs(seg.offsetSec)} → {formatTs(seg.offsetSec + (seg.durationSec || 0))}
+                                </span>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => playSegment(seg, i)}
+                                    className="text-[11px] font-bold text-slate-600 hover:text-[#005BAC] flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Play size={11} /> Nghe
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => downloadSegment(seg, i)}
+                                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <FileDown size={11} /> Tải
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </>
                     )}

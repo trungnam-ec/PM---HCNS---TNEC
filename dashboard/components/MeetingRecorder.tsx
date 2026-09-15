@@ -67,6 +67,9 @@ export default function MeetingRecorder({
   const [elapsed, setElapsed] = useState(0);          // giây ĐÃ THU (không tính lúc tạm dừng)
   const [level, setLevel] = useState(0);              // vạch mức âm thanh 0..1 (đã làm mượt)
   const [micSilent, setMicSilent] = useState(false);  // im lặng KÉO DÀI, không phải khoảng nghỉ giữa câu
+  // Đã bấm Kết thúc nhưng recorder chưa kịp trả đoạn cuối về. Xem ghi chú ở
+  // handleStop — thiếu cờ này là mất trắng đoạn cuối của MỌI cuộc họp dài.
+  const [finalPending, setFinalPending] = useState(false);
   const [segments, setSegments] = useState<RecordedSegment[]>([]);
   const [error, setError] = useState("");
 
@@ -155,6 +158,10 @@ export default function MeetingRecorder({
         // Cắt đoạn: dựng ngay recorder mới, cuộc họp không gián đoạn.
         stoppingForRotationRef.current = false;
         startSegmentRecorder();
+      } else {
+        // Dừng hẳn. Đoạn cuối vừa được đưa vào danh sách ở ngay trên, giờ mới
+        // mở khoá cho bước bàn giao.
+        setFinalPending(false);
       }
     };
 
@@ -261,6 +268,7 @@ export default function MeetingRecorder({
       segmentsRef.current = [];
       blobsRef.current.clear();
       finishRequestedRef.current = false;
+      setFinalPending(false);
       setSegments([]);
       setElapsed(0);
       levelRef.current = 0;
@@ -299,8 +307,22 @@ export default function MeetingRecorder({
   // ─── Kết thúc ───
   const handleStop = useCallback(() => {
     const rec = recorderRef.current;
+    const dangXoayDoan = stoppingForRotationRef.current;
     finishRequestedRef.current = true;
     stoppingForRotationRef.current = false;
+
+    // ⚠ PHẢI KHOÁ TRƯỚC KHI GỌI stop().
+    // `stop()` trả về ngay, sự kiện `onstop` mới là lúc đoạn cuối thành file.
+    // Không khoá thì bước bàn giao thấy các đoạn TRƯỚC ĐÓ đều đã "done" và chạy
+    // luôn — đoạn cuối lên kho sau đó nhưng không còn ai gắn nó vào biên bản.
+    // Đúng lỗi họp 20+ phút chỉ còn đoạn 1 (phát hiện 15/09/2026): họp ngắn hơn
+    // 20 phút không dính vì lúc bấm Kết thúc danh sách còn RỖNG nên có chốt chặn.
+    //
+    // `dangXoayDoan`: vừa cắt đoạn xong mà bấm Kết thúc ngay thì recorder đã ở
+    // trạng thái "inactive", nhưng `onstop` của nó vẫn chưa chạy — vẫn phải đợi.
+    if (rec && (rec.state !== "inactive" || dangXoayDoan)) {
+      setFinalPending(true);
+    }
     setState("finishing");
     if (rec && rec.state !== "inactive") rec.stop();
     streamRef.current?.getTracks().forEach(t => t.stop());
@@ -322,6 +344,7 @@ export default function MeetingRecorder({
   // ném mất 20 phút họp.
   useEffect(() => {
     if (state !== "finishing" || !finishRequestedRef.current) return;
+    if (finalPending) return;                       // đoạn cuối chưa đóng gói xong
     if (segments.length === 0) return;
     if (segments.some(s => s.status === "uploading")) return;
 
@@ -334,7 +357,7 @@ export default function MeetingRecorder({
       return;
     }
     handOver();
-  }, [segments, state, handOver]);
+  }, [segments, state, finalPending, handOver]);
 
   // ─── Tải lại đoạn lỗi ───
   const retryFailed = useCallback(async () => {
@@ -457,7 +480,7 @@ export default function MeetingRecorder({
             </>
           )}
           {state === "finishing" && (
-            segments.some(s => s.status === "uploading") || segments.length === 0 ? (
+            finalPending || segments.some(s => s.status === "uploading") || segments.length === 0 ? (
               <span className="text-xs font-bold text-slate-500 flex items-center gap-2">
                 <Loader2 size={15} className="animate-spin" /> Đang tải nốt các đoạn lên…
               </span>

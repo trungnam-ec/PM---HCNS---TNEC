@@ -13,7 +13,7 @@ import { supabase } from "@/lib/supabase";
 import { usePlan } from "@/lib/plan";
 import { PLAN_LABELS, type Plan } from "@/lib/planShared";
 import { useDepartments } from "@/lib/departments";
-import { useTenantConfig } from "@/lib/tenantConfig";
+import { useTenantConfig, invalidateTenantConfig } from "@/lib/tenantConfig";
 import {
   hasAnyApprovalPermission,
   isMarketingTeamLeader,
@@ -97,6 +97,52 @@ function SettingsContent() {
   const [deptPlansDraft, setDeptPlansDraft] = useState<Record<string, Plan>>({});
   const [deptPlansEnabled, setDeptPlansEnabled] = useState(false);
   const [savingDeptPlans, setSavingDeptPlans] = useState(false);
+
+  useEffect(() => {
+    setBookingSkipCap1(!!tenantCfg.booking_skip_cap1);
+  }, [tenantCfg.booking_skip_cap1]);
+
+  // Bật/tắt bước duyệt cấp 1 của đăng ký xe / phòng họp. Ghi vào tenant_config
+  // (RLS chỉ cho Admin), xoá cache rồi tải lại để mọi trang đọc giá trị mới.
+  //
+  // CHẶN bật khi không còn ai giữ cờ "Duyệt đăng ký xe / phòng họp": bỏ cấp 1 mà
+  // cấp điều phối cũng trống thì đơn gửi lên không còn ai xử lý ngoài Admin.
+  const handleToggleBookingFlow = async () => {
+    const next = !bookingSkipCap1;
+    if (next) {
+      const dispatchers = await fetchCap2ApproverEmails("booking");
+      if (dispatchers === null) {
+        notify("Không đọc được danh sách người điều phối. Kiểm tra kết nối mạng rồi thử lại.", "error");
+        return;
+      }
+      if (!dispatchers) {
+        notify("Chưa có ai giữ cờ \"Duyệt đăng ký xe / phòng họp\". Cấp cờ đó cho nhân sự điều phối trước, nếu không đơn gửi lên sẽ không còn ai xử lý.", "error");
+        return;
+      }
+    }
+    setSavingBookingFlow(true);
+    try {
+      const { error } = await supabase
+        .from("tenant_config")
+        .upsert({ key: "booking_skip_cap1", value: next, updated_at: new Date().toISOString() }, { onConflict: "key" });
+      if (error) throw error;
+      invalidateTenantConfig();
+      setBookingSkipCap1(next);
+      // Cấu hình được cache ở tầng module trong TỪNG tab trình duyệt: người đang
+      // mở sẵn trang Đăng ký vẫn chạy luồng cũ cho tới khi họ tải lại.
+      notify(
+        (next
+          ? "Đã bỏ bước Trưởng phòng. Đăng ký xe / phòng họp từ giờ gửi thẳng tới người điều phối."
+          : "Đã bật lại bước Trưởng phòng cho đăng ký xe / phòng họp.") +
+        "\nAi đang mở sẵn trang Đăng ký cần tải lại (F5) mới thấy luồng mới.",
+        "success"
+      );
+    } catch (err: any) {
+      notify("Không lưu được thiết lập: " + (err?.message || err) + "\n(Chỉ tài khoản Admin mới đổi được.)", "error");
+    } finally {
+      setSavingBookingFlow(false);
+    }
+  };
 
   useEffect(() => {
     const dp = tenantCfg.department_plans;
@@ -188,6 +234,10 @@ function SettingsContent() {
   // duyệt cuối tương ứng. Không ai giữ -> luồng 1 cấp: cấp 1 duyệt là đơn xong luôn.
   // Chỉ dùng để hiện đúng nhãn nút/badge; lúc bấm duyệt thật thì đọc lại DB.
   const [cap2Enabled, setCap2Enabled] = useState(CAP2_UNKNOWN);
+  // Công tắc BỎ CẤP 1 của đăng ký xe / phòng họp (tenant_config.booking_skip_cap1).
+  // Bật: đơn gửi thẳng tới người điều phối, không qua Trưởng phòng.
+  const [bookingSkipCap1, setBookingSkipCap1] = useState(false);
+  const [savingBookingFlow, setSavingBookingFlow] = useState(false);
   const [activeApprovalTab, setActiveApprovalTab] = useState<"trip" | "leave" | "explanation" | "booking">("trip");
   // Bộ lọc đơn vị cho 4 tab duyệt — 1 giá trị dùng chung (phòng ban VÀ ban điều hành
   // đều là cột `department`, nên chọn ở dropdown này thì dropdown kia tự bỏ chọn).
@@ -920,10 +970,19 @@ function SettingsContent() {
       });
   }, [explanations, currentUser, isApprover, approvalPerms]);
 
+  // Người điều phối xe / phòng họp: cờ can_approve_booking, hoặc Admin.
+  const canDispatchBooking = !!currentUser && (
+    currentUser.isAdmin ||
+    (currentUser.role || "").toLowerCase() === "admin" ||
+    approvalPerms.canApproveBooking
+  );
+
   // Đăng ký xe / phòng họp chờ duyệt:
-  // - Cấp 1 (pending_manager): tổ trưởng của chính tổ người đăng ký; người đăng
-  //   ký chưa xếp tổ thì Trưởng/Phó phòng cùng đơn vị. Hoặc Admin.
-  // - Cấp 2 (pending_hcns): người được cấp quyền can_approve_booking (HCNS điều phối) hoặc Admin.
+  // - pending_manager: Trưởng/Phó phòng cùng đơn vị (hoặc tổ trưởng của tổ người
+  //   đăng ký), hoặc Admin. Khi công tắc BỎ CẤP 1 đang bật thì người điều phối
+  //   cũng thấy — đây là các đơn CŨ gửi trước lúc bật, không còn bước 1 nữa nên
+  //   phải có người xử lý nốt.
+  // - pending_hcns: người giữ cờ can_approve_booking (điều phối) hoặc Admin.
   const pendingBookings = useMemo(() => {
     if (!currentUser || !isApprover) return [];
 
@@ -931,6 +990,7 @@ function SettingsContent() {
 
     return resourceBookings.filter((b) => {
       if (b.status === "pending_manager") {
+        if (bookingSkipCap1 && canDispatchBooking) return true;
         return isBookingCap1Approver({
           currentUserName: currentUser.name,
           currentUserRole: currentUser.role,
@@ -945,7 +1005,7 @@ function SettingsContent() {
       }
       return false;
     });
-  }, [resourceBookings, currentUser, isApprover, approvalPerms]);
+  }, [resourceBookings, currentUser, isApprover, approvalPerms, bookingSkipCap1, canDispatchBooking]);
 
   // ─── Bộ lọc đơn vị (phòng ban / ban điều hành) áp cho cả 4 tab duyệt ───
   // Cùng một cột `department`: đơn công tác/nghỉ phép tra ngược từ danh bạ theo tên
@@ -1269,6 +1329,37 @@ function SettingsContent() {
                     </div>
                     <ChevronRight size={15} className="text-rose-400 shrink-0" />
                   </button>
+
+                  {/* Công tắc rút luồng đăng ký xe / phòng họp còn 1 cấp. KHÁC ba mục
+                      trên: đây không phải nút mở bảng dữ liệu mà là một thiết lập
+                      bật/tắt ngay tại chỗ, có hiệu lực cho cả công ty. */}
+                  <div className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-emerald-100 bg-emerald-50/50 text-left">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-400 text-white flex items-center justify-center shadow-sm shrink-0">
+                      <CarFront size={16} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-slate-800">Bỏ bước Trưởng phòng — Đăng ký xe / phòng họp</p>
+                      <p className="text-[10px] text-slate-400 font-medium">
+                        {bookingSkipCap1
+                          ? "ĐANG BẬT: đơn gửi thẳng tới người điều phối, Trưởng phòng không nhận email nữa. Tắt là luồng 2 cấp trở lại ngay."
+                          : "Đang tắt: đơn qua Trưởng phòng rồi mới tới người điều phối. Bật để gửi thẳng, không cần deploy."}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={bookingSkipCap1}
+                      disabled={savingBookingFlow}
+                      onClick={handleToggleBookingFlow}
+                      className={`relative w-11 h-6 rounded-full shrink-0 transition-colors cursor-pointer disabled:opacity-50 ${
+                        bookingSkipCap1 ? "bg-emerald-600" : "bg-slate-300"
+                      }`}
+                    >
+                      <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${
+                        bookingSkipCap1 ? "left-[22px]" : "left-0.5"
+                      }`} />
+                    </button>
+                  </div>
                 </div>
               </div>
               )}
@@ -1801,9 +1892,13 @@ function SettingsContent() {
                                 </div>
                               </div>
                               <span className={`px-2.5 py-1 rounded-full border text-[9px] font-extrabold uppercase ${
-                                isManagerStep ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                isManagerStep && !bookingSkipCap1
+                                  ? "bg-amber-50 text-amber-700 border-amber-200"
+                                  : "bg-indigo-50 text-indigo-700 border-indigo-200"
                               }`}>
-                                {isManagerStep ? "Cấp 1: Chờ Trưởng phòng phê duyệt" : "Cấp 2: Chờ phòng HCNS xác nhận"}
+                                {bookingSkipCap1
+                                  ? (isManagerStep ? "Đơn cũ — chờ điều phối" : "Chờ điều phối")
+                                  : (isManagerStep ? "Cấp 1: Chờ Trưởng phòng phê duyệt" : "Cấp 2: Chờ phòng HCNS xác nhận")}
                               </span>
                             </div>
 
@@ -1838,7 +1933,10 @@ function SettingsContent() {
                             )}
 
                             <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
-                              {isManagerStep ? (
+                              {/* Bỏ cấp 1: người điều phối xử lý thẳng đơn còn ở bước
+                                  Trưởng phòng. Trưởng phòng không kiêm điều phối thì
+                                  vẫn thấy nút cũ để duyệt nốt đơn của phòng mình. */}
+                              {isManagerStep && !(bookingSkipCap1 && canDispatchBooking) ? (
                                 <>
                                   <button
                                     type="button"
@@ -1862,7 +1960,7 @@ function SettingsContent() {
                                     onClick={() => handleFinalBookingDecision(b, true)}
                                     className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-4 py-2 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
                                   >
-                                    Xác nhận & gửi mail
+                                    {bookingSkipCap1 ? "Điều phối & gửi mail" : "Xác nhận & gửi mail"}
                                   </button>
                                   <button
                                     type="button"

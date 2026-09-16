@@ -51,6 +51,16 @@ export type TenantConfig = {
   // nhận diện người đăng nhập (Header/Sidebar/useCurrentUser) và các số liệu
   // thống kê — lọc ở đó sẽ làm mất quyền hoặc sai số đếm.
   hide_resigned_in_pickers: boolean;
+  // ĐĂNG KÝ XE / PHÒNG HỌP — bỏ bước duyệt cấp 1 của Trưởng phòng, đơn gửi thẳng
+  // tới người điều phối (cờ can_approve_booking). Bật/tắt tại Cài đặt hệ thống >
+  // Phân quyền & Luồng duyệt, có hiệu lực ngay, không cần deploy.
+  //
+  // CHỈ áp cho xe/phòng họp. Nghỉ phép và công tác vẫn bắt buộc qua cấp 1 — đó là
+  // duyệt nhân sự, không phải điều phối tài sản.
+  //
+  // Bật thì Trưởng phòng KHÔNG nhận email báo nữa (user chốt 16/09/2026: im lặng
+  // hoàn toàn, không gửi bản báo tin).
+  booking_skip_cap1: boolean;
 };
 
 export const TENANT_DEFAULTS: TenantConfig = {
@@ -72,6 +82,7 @@ export const TENANT_DEFAULTS: TenantConfig = {
   plan: "enterprise",
   department_plans: null, // chưa bật phân gói theo phòng -> dùng chung `plan`
   hide_resigned_in_pickers: false, // mặc định TẮT -> hành vi y như trước khi có tính năng
+  booking_skip_cap1: false, // mặc định TẮT -> vẫn đủ 2 cấp như cũ
 };
 
 let cached: TenantConfig | null = null;

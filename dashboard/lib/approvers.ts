@@ -581,18 +581,23 @@ export function isLeaveTripCap2Approver(params: {
 // CẢNH BÁO cho người sửa sau: 3 cờ này vừa là "quyền duyệt cuối" VỪA là công tắc
 // bật cấp 2. Tick cờ cho ai đó chỉ để họ NHÌN THẤY đơn là luồng lập tức quay về
 // 2 cấp cho toàn công ty. Cần cho xem mà không bật cấp 2 thì phải làm cờ khác.
-export type Cap2Flow = "trip" | "leave" | "justification";
+export type Cap2Flow = "trip" | "leave" | "justification" | "booking";
 
 const CAP2_FLAG_OF: Record<Cap2Flow, string> = {
   trip: "can_approve_trip",
   leave: "can_approve_leave",
   justification: "can_approve_justification",
+  // Đăng ký xe / phòng họp KHÔNG dùng công tắc theo cờ như 3 luồng trên: bước bỏ
+  // được ở đó là CẤP 1 (Trưởng phòng), bật/tắt bằng tenant_config.booking_skip_cap1.
+  // Có mặt ở đây chỉ để tra "còn ai điều phối không" — dùng cho lời cảnh báo khi
+  // Admin định tắt cấp 1, và để gửi mail thẳng cho người điều phối.
+  booking: "can_approve_booking",
 };
 
 // Chưa biết (đang tải / lỗi mạng) -> coi như VẪN CÒN cấp 2, tức giữ nguyên nhãn
 // của luồng cũ. Đây chỉ là giá trị khởi tạo cho giao diện, không quyết định gì:
 // lúc bấm duyệt, hàm dưới đọc lại DB rồi mới ghi.
-export const CAP2_UNKNOWN: Record<Cap2Flow, boolean> = { trip: true, leave: true, justification: true };
+export const CAP2_UNKNOWN: Record<Cap2Flow, boolean> = { trip: true, leave: true, justification: true, booking: true };
 
 /**
  * Email của những người đang giữ cờ duyệt cuối của MỘT luồng, nối bằng ", " để
@@ -635,7 +640,7 @@ export async function fetchCap2Availability(): Promise<Record<Cap2Flow, boolean>
     const { data, error } = await supabase.from("approval_permissions").select("*");
     if (error || !data) return CAP2_UNKNOWN;
     const has = (flow: Cap2Flow) => data.some((r: any) => r[CAP2_FLAG_OF[flow]] && r.email);
-    return { trip: has("trip"), leave: has("leave"), justification: has("justification") };
+    return { trip: has("trip"), leave: has("leave"), justification: has("justification"), booking: has("booking") };
   } catch {
     return CAP2_UNKNOWN;
   }

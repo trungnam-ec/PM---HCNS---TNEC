@@ -31,7 +31,9 @@ import { supabase } from "@/lib/supabase";
 import {
   isBookingCap1Approver,
   resolveBookingCap1Approvers,
+  fetchCap2ApproverEmails,
 } from "@/lib/approvers";
+import { useTenantConfig } from "@/lib/tenantConfig";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { emailFieldMatches } from "@/lib/emailMatch";
 
@@ -83,6 +85,9 @@ function addOneHour(clock: string): string {
   return `${String((h + 1) % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+// `pending_hcns` mang hai nghĩa tuỳ luồng: còn cấp 1 thì nó là "Trưởng phòng đã
+// duyệt, chờ điều phối"; bỏ cấp 1 thì đơn vào thẳng đây, chưa ai duyệt cả — nên
+// nhãn phải đổi theo, xem statusLabelOf() bên dưới.
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   pending_manager: { label: "Chờ duyệt", cls: "bg-red-50 text-red-600 border-red-200" },
   pending_hcns: { label: "Đã phê duyệt", cls: "bg-blue-50 text-blue-700 border-blue-200" },
@@ -198,6 +203,9 @@ function BookingContent() {
   const user = useCurrentUser();
   const currentUser = user.authenticated ? user : null;
   const approvalPerms = user.perms;
+  // Công tắc BỎ CẤP 1 (Cài đặt hệ thống > Phân quyền & Luồng duyệt): bật thì đơn
+  // đăng ký xe / phòng họp đi thẳng tới người điều phối, không qua Trưởng phòng.
+  const skipCap1 = !!useTenantConfig().booking_skip_cap1;
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [loadingList, setLoadingList] = useState(false);
@@ -470,10 +478,15 @@ function BookingContent() {
     return data || [];
   };
 
+  // Nhãn trạng thái hiển thị. Khi đã bỏ cấp 1, `pending_hcns` không còn nghĩa
+  // "Trưởng phòng đã phê duyệt" — đơn vào thẳng bước điều phối, chưa ai duyệt.
+  const statusLabelOf = (status: string) =>
+    skipCap1 && status === "pending_hcns" ? "Chờ điều phối" : (STATUS_META[status]?.label || status);
+
   // Câu thông báo chung khi bị chặn vì trùng lịch
   const describeConflict = (c: { host_name: string; start_time: string; end_time: string; status: string }, resource: string) =>
     `${resource} đã có lịch ${formatDateTime(c.start_time)} → ${formatDateTime(c.end_time)} ` +
-    `(chủ trì: ${c.host_name}, trạng thái: ${STATUS_META[c.status]?.label || c.status}).`;
+    `(chủ trì: ${c.host_name}, trạng thái: ${statusLabelOf(c.status)}).`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -538,26 +551,31 @@ function BookingContent() {
             participant_type: participantType,
             customer_info: participantType === "khach_hang" ? customerInfo.trim() : null,
             notes: notes.trim() || null,
-            status: "pending_manager",
+            // Công tắc bỏ cấp 1 (tenant_config.booking_skip_cap1): đơn vào thẳng
+            // bước điều phối, không qua Trưởng phòng.
+            status: skipCap1 ? "pending_hcns" : "pending_manager",
           },
         ])
         .select();
       if (error) throw error;
 
-      // Gửi email báo người duyệt cấp 1 (Trưởng phòng cùng phòng ban; thành viên nhóm
-      // duyệt riêng trong bảng approval_groups — VD tổ Marketing — thì báo tổ trưởng nhóm).
-      // Chạy nền, lỗi không chặn việc gửi đăng ký.
+      // Gửi email báo người xử lý tiếp theo — chạy nền, lỗi không chặn việc gửi đăng ký.
+      //  - Còn cấp 1: Trưởng phòng cùng phòng ban (thành viên nhóm duyệt riêng thì
+      //    báo tổ trưởng nhóm). Cùng hàm với dòng "Đơn sẽ chuyển tới X" hiện ngay
+      //    trên form -> người đăng ký đọc thấy tên nào thì mail bay đúng tên đó.
+      //  - Bỏ cấp 1: báo THẲNG người điều phối (cờ can_approve_booking). Trưởng
+      //    phòng KHÔNG nhận gì cả — user chốt 16/09/2026 là im lặng hoàn toàn.
       try {
-        // Cùng hàm với dòng "Đơn sẽ chuyển tới X" hiện ngay trên form -> người
-        // đăng ký đọc thấy tên nào thì mail bay đúng tên đó, không lệch.
-        const approverEmails = resolveBookingCap1Approvers({
-          requesterName: currentUser.name,
-          bookingDepartment: department,
-          people: employees,
-        })
-          .map((e) => e.email)
-          .filter(Boolean)
-          .join(", ");
+        const approverEmails = skipCap1
+          ? ((await fetchCap2ApproverEmails("booking")) || "")
+          : resolveBookingCap1Approvers({
+              requesterName: currentUser.name,
+              bookingDepartment: department,
+              people: employees,
+            })
+              .map((e) => e.email)
+              .filter(Boolean)
+              .join(", ");
 
         if (approverEmails && inserted && inserted[0]) {
           apiFetch("/api/send-booking-email", {
@@ -565,7 +583,7 @@ function BookingContent() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               mode: "notify_approver",
-              stage: "manager",
+              stage: skipCap1 ? "final" : "manager",
               smtpConfig: {
                 user: localStorage.getItem("tnec_cb_smtp_user") || "",
                 pass: localStorage.getItem("tnec_cb_smtp_pass") || "",
@@ -577,13 +595,18 @@ function BookingContent() {
               approverEmails,
               siteUrl: window.location.origin,
             }),
-          }).catch((e) => console.warn("Không gửi được email báo người duyệt cấp 1:", e));
+          }).catch((e) => console.warn("Không gửi được email báo người duyệt:", e));
         }
       } catch (notifyErr) {
-        console.warn("Bỏ qua lỗi gửi email báo duyệt cấp 1:", notifyErr);
+        console.warn("Bỏ qua lỗi gửi email báo duyệt:", notifyErr);
       }
 
-      showToast("success", "Đã gửi đăng ký thành công! Yêu cầu đang chờ Trưởng phòng phê duyệt.");
+      showToast(
+        "success",
+        skipCap1
+          ? "Đã gửi đăng ký thành công! Yêu cầu đang chờ Hành chính điều phối."
+          : "Đã gửi đăng ký thành công! Yêu cầu đang chờ Trưởng phòng phê duyệt."
+      );
       resetForm();
       fetchBookings();
     } catch (err: any) {
@@ -1199,7 +1222,7 @@ function BookingContent() {
                 <div className="p-6 space-y-4 overflow-y-auto text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className={`inline-block px-2.5 py-1 rounded-full border text-[9px] font-extrabold uppercase ${STATUS_META[selectedBooking.status]?.cls || ""}`}>
-                      {STATUS_META[selectedBooking.status]?.label || selectedBooking.status}
+                      {statusLabelOf(selectedBooking.status)}
                     </span>
                     <span className="text-[10px] text-slate-400 font-semibold">Gửi lúc {formatDateTime(selectedBooking.created_at)}</span>
                   </div>
@@ -1234,7 +1257,7 @@ function BookingContent() {
                       {modalConflicts.map((c) => (
                         <p key={c.id} className="text-[11px] font-semibold text-rose-700">
                           • {formatDateTime(c.start_time)} → {formatDateTime(c.end_time)} — {c.host_name} ({c.department}) —{" "}
-                          {STATUS_META[c.status]?.label || c.status}
+                          {statusLabelOf(c.status)}
                         </p>
                       ))}
                       <p className="text-[10px] text-rose-600 font-semibold pt-0.5">
@@ -1426,7 +1449,11 @@ function BookingContent() {
                     </button>
                   )}
 
-                  {isHcnsApproverUser && selectedBooking.status === "pending_hcns" && (
+                  {/* Bỏ cấp 1: đơn CŨ còn kẹt ở bước Trưởng phòng cũng điều phối
+                      thẳng được, không bắt ai bấm duyệt lấy lệ một lần nữa. */}
+                  {isHcnsApproverUser &&
+                    (selectedBooking.status === "pending_hcns" ||
+                      (skipCap1 && selectedBooking.status === "pending_manager")) && (
                     <button
                       type="button"
                       disabled={processingAction || modalConflicts.length > 0}
@@ -1765,7 +1792,9 @@ function BookingContent() {
                   {/* Đơn chạy theo PHÒNG BAN CHỌN Ở TRÊN, không theo phòng của người
                       đăng ký. Không in tên người duyệt ra form nữa (user yêu cầu ẩn);
                       chỉ còn cảnh báo khi phòng ban đó KHÔNG có ai duyệt được. */}
-                  {department && cap1ApproverNames.length === 0 && (
+                  {/* Bỏ cấp 1 thì đơn không đi qua cấp quản lý nữa -> cảnh báo
+                      "phòng này không có ai duyệt" thành thừa và gây hoang mang. */}
+                  {!skipCap1 && department && cap1ApproverNames.length === 0 && (
                     <p className="flex items-start gap-1.5 text-[11px] font-semibold text-amber-700 pt-0.5">
                       <AlertTriangle size={12} className="text-amber-500 shrink-0 mt-0.5" />
                       <span>
@@ -1940,7 +1969,7 @@ function BookingContent() {
                   {formConflicts.map((c) => (
                     <p key={c.id} className="text-[11px] font-semibold text-rose-700">
                       • {formatDateTime(c.start_time)} → {formatDateTime(c.end_time)} — {c.host_name} ({c.department}) —{" "}
-                      {STATUS_META[c.status]?.label || c.status}
+                      {statusLabelOf(c.status)}
                     </p>
                   ))}
                   <p className="text-[11px] text-rose-600 font-semibold">
@@ -2104,7 +2133,7 @@ function BookingContent() {
                               type="button"
                               key={b.id}
                               onClick={() => openBookingModal(b)}
-                              title={`${b.host_name} • ${formatDateTime(b.start_time)} ➔ ${formatDateTime(b.end_time)} • ${b.content} • ${STATUS_META[b.status]?.label || b.status}${conflictIds.has(b.id) ? " • ⚠ TRÙNG LỊCH" : ""} (bấm để xem chi tiết)`}
+                              title={`${b.host_name} • ${formatDateTime(b.start_time)} ➔ ${formatDateTime(b.end_time)} • ${b.content} • ${statusLabelOf(b.status)}${conflictIds.has(b.id) ? " • ⚠ TRÙNG LỊCH" : ""} (bấm để xem chi tiết)`}
                               className={`absolute rounded-md px-2 flex items-center text-[10px] font-bold text-white truncate shadow-sm cursor-pointer z-10 hover:brightness-95 active:scale-[0.98] transition-all ${
                                 TIMELINE_STATUS_COLOR[b.status] || "bg-slate-400"
                               } ${conflictIds.has(b.id) ? "ring-2 ring-rose-500 ring-offset-1" : ""}`}
@@ -2160,7 +2189,7 @@ function BookingContent() {
                         <td className="py-3 px-4 text-slate-450 font-normal max-w-[220px] truncate" title={b.content}>{b.content}</td>
                         <td className="py-3 px-4">
                           <span className={`inline-block px-2.5 py-1 rounded-full border text-[9px] font-extrabold uppercase ${STATUS_META[b.status]?.cls || ""}`}>
-                            {STATUS_META[b.status]?.label || b.status}
+                            {statusLabelOf(b.status)}
                           </span>
                         </td>
                       </tr>
@@ -2217,7 +2246,7 @@ function BookingContent() {
                             className={`inline-block px-2.5 py-1 rounded-full border text-[9px] font-extrabold uppercase ${STATUS_META[b.status]?.cls || ""}`}
                             title={b.status === "rejected" && b.reject_reason ? `Lý do: ${b.reject_reason}` : undefined}
                           >
-                            {STATUS_META[b.status]?.label || b.status}
+                            {statusLabelOf(b.status)}
                           </span>
                           {b.status === "rejected" && b.reject_reason && (
                             <p className="text-[10px] text-rose-500 font-normal mt-1 max-w-[200px]">Lý do: {b.reject_reason}</p>

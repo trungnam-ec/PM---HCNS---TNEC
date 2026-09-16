@@ -117,6 +117,11 @@ Quét TOÀN BỘ tài liệu theo thứ tự ưu tiên:
 const FULL_PROMPT =
   'Hãy phân tích bộ "Hồ sơ thanh toán" này và trích xuất 11 trường theo đúng cấu trúc JSON { "data": {...}, "validationScores": {...} } đã hướng dẫn. Ưu tiên đọc trang đề nghị chi tiền — có thể là "Phiếu đề nghị thanh toán" HOẶC "Giấy đề nghị chuyển tiền" (hai mẫu tương đương).';
 
+// Dòng gpt-5.x / o-series là model SUY LUẬN: KHÔNG nhận `temperature`, dùng
+// `reasoning_effort` (chat) / `reasoning.effort` (responses) thay vào.
+const isReasoningModel = (m: string) => /^gpt-5/i.test(m) || /^o\d/i.test(m);
+const REASONING_EFFORT = "high";
+
 async function analyzeWithResponsesAPI(
   openai: OpenAI,
   model: string,
@@ -127,7 +132,7 @@ async function analyzeWithResponsesAPI(
   const base64Data = fileBuffer.toString("base64");
   const fileDataUrl = `data:${mimeType};base64,${base64Data}`;
 
-  const response = await openai.responses.create({
+  const params: any = {
     model,
     input: [
       {
@@ -139,8 +144,10 @@ async function analyzeWithResponsesAPI(
       },
     ],
     text: { format: { type: "json_object" } },
-  });
+  };
+  if (isReasoningModel(model)) params.reasoning = { effort: REASONING_EFFORT };
 
+  const response = await openai.responses.create(params);
   return JSON.parse(response.output_text || "{}");
 }
 
@@ -149,12 +156,11 @@ async function analyzeWithChatCompletions(
   model: string,
   messages: OpenAI.Chat.ChatCompletionMessageParam[]
 ): Promise<Record<string, unknown>> {
-  const completion = await openai.chat.completions.create({
-    model,
-    messages,
-    temperature: 0,
-    response_format: { type: "json_object" },
-  });
+  const params: any = { model, messages, response_format: { type: "json_object" } };
+  if (isReasoningModel(model)) params.reasoning_effort = REASONING_EFFORT;
+  else params.temperature = 0;
+
+  const completion = await openai.chat.completions.create(params);
   return JSON.parse(completion.choices[0]?.message?.content || "{}");
 }
 

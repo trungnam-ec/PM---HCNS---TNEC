@@ -1011,6 +1011,16 @@ export default function Header({ title, subtitle }: Props) {
             fetchNotifications(currentUser);
           }
         )
+        // Phiếu trình ký: thiếu bảng này (tới 15/09/2026) nên mọi bước duyệt
+        // chỉ hiện lên chuông sau khi người dùng TẢI LẠI TRANG — người bị trả
+        // lại phiếu ngồi nhìn chuông im re dù phiếu đã bị trả từ lâu.
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "signing_submissions" },
+          () => {
+            fetchNotifications(currentUser);
+          }
+        )
         .subscribe();
 
       return () => {

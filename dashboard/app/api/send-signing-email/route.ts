@@ -149,12 +149,15 @@ export async function POST(request: NextRequest) {
     };
 
     // ─── 1. Thư cho NGƯỜI LẬP ───
-    if (b.creatorEmail) {
+    // TRỪ lúc chính họ vừa bấm Trình: họ vừa thao tác xong, màn hình đã báo rồi,
+    // thư "Đã trình phiếu ký" chỉ là tiếng vọng lại việc mình vừa làm (user chốt
+    // 16/09/2026). Bước Trình chỉ báo cho CẤP 1 ở khối 2 bên dưới.
+    // Các bước sau vẫn báo người lập: duyệt xuôi (phiếu đang ở đâu) và trả lại
+    // (việc họ phải sửa) đều là tin họ KHÔNG tự biết.
+    if (b.creatorEmail && b.event !== "trinh") {
       const isBack = b.event === "tra_lai";
       const title = isBack
         ? "Phiếu trình ký bị trả lại"
-        : b.event === "trinh"
-        ? "Đã trình phiếu ký"
         : b.eventLabel || "Phiếu trình ký đã được xử lý";
 
       const note = isBack

@@ -336,13 +336,18 @@ export default function SigningPanel() {
       </div>
 
       {/* Thanh công cụ */}
-      {/* ─── THANH CÔNG CỤ: MỘT LƯỚI 3 CỘT CHO CẢ HAI HÀNG ───
-        Trước đây hai hàng là hai khối flex RIÊNG, nên cột giữa của hàng trên
-        (ô chọn ngày) và cột giữa của hàng dưới (ô tìm kiếm) rơi vào hai vị trí
-        khác nhau — nhìn so le hẳn ra. Gom vào một lưới thì trình duyệt tự canh
-        cột 1 rộng bằng thứ rộng nhất trong hai hàng, hai ô ở cột 2 thẳng nhau.
-        Màn hình hẹp thì lưới rút về 1 cột, mọi thứ xếp dọc như cũ. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr_auto] items-center gap-x-2.5 gap-y-3">
+      {/* ─── THANH CÔNG CỤ: BA HÀNG XẾP DỌC ───
+        Từng dùng MỘT lưới 3 cột cho cả hai hàng để ô chọn ngày thẳng cột với ô
+        tìm kiếm. Bỏ cách đó (16/09/2026): cột 3 của lưới chỉ rộng bằng phần
+        thừa, nên cụm ba nút lập phiếu bị bẻ xuống thành 2-3 dòng.
+        Tiêu đề tách hẳn ra một hàng riêng (user chốt) để ô chọn ngày bắt đầu từ
+        MÉP TRÁI, thẳng cột với cụm tab lọc ngay bên dưới — trước đó nó bị tiêu
+        đề đẩy thụt vào trong, nhìn so le với hàng tab.
+        Cụm nút đẩy sang phải bằng `ml-auto` và KHÔNG cho xuống dòng
+        (`flex-nowrap` + `shrink-0`): màn hình hẹp thì cả cụm rơi xuống nguyên
+        khối, chứ không gãy giữa chừng. */}
+      <div className="space-y-3">
+        {/* ─── Hàng 1: tiêu đề ─── */}
         <div>
           <h3 className={labelCls}>Phiếu trình ký hồ sơ / văn bản</h3>
           <p className="text-[11px] text-slate-400 font-medium mt-1">
@@ -352,85 +357,91 @@ export default function SigningPanel() {
             )}
           </p>
         </div>
-        {/* Khoảng ngày lập phiếu — cùng khuôn ô lọc bên Kế hoạch TC: hai ô ngày
-            nằm chung một khung để đọc ra là MỘT khoảng, `max`/`min` chéo nhau
-            chặn luôn khoảng ngược đời. */}
-        <div className="flex items-center gap-1.5 bg-slate-100/50 border border-slate-200/60 rounded-xl px-2.5 py-1.5 w-fit">
-          <Calendar size={14} className="text-slate-400 shrink-0" />
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Từ</span>
-          <input type="date" value={from} max={to || undefined}
-            onChange={(e) => setFrom(e.target.value)}
-            className="bg-transparent border-0 text-xs font-bold text-slate-700 outline-none cursor-pointer p-0" />
-          <span className="text-slate-300 font-bold">–</span>
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đến</span>
-          <input type="date" value={to} min={from || undefined}
-            onChange={(e) => setTo(e.target.value)}
-            className="bg-transparent border-0 text-xs font-bold text-slate-700 outline-none cursor-pointer p-0" />
-          {(from || to) ? (
-            <button type="button" onClick={() => { setFrom(""); setTo(""); }}
-              title="Bỏ lọc theo ngày, xem tất cả"
-              className="p-1 text-slate-400 hover:text-rose-500 hover:bg-slate-200 rounded-lg transition-all cursor-pointer">
-              <X size={12} />
-            </button>
-          ) : (
-            <button type="button"
-              onClick={() => { const b = tronThang(homNay()); setFrom(b.from); setTo(b.to); }}
-              title="Lọc nhanh trọn tháng này"
-              className="px-2 py-0.5 text-[10px] font-bold text-slate-400 hover:text-blue-600 hover:bg-white rounded-lg transition-all cursor-pointer">
-              Tháng này
-            </button>
+
+        {/* ─── Hàng 2: khoảng ngày · cụm nút lập phiếu ─── */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
+          {/* Khoảng ngày lập phiếu — cùng khuôn ô lọc bên Kế hoạch TC: hai ô ngày
+              nằm chung một khung để đọc ra là MỘT khoảng, `max`/`min` chéo nhau
+              chặn luôn khoảng ngược đời. */}
+          <div className="flex items-center gap-1.5 bg-slate-100/50 border border-slate-200/60 rounded-xl px-2.5 py-1.5 w-fit">
+            <Calendar size={14} className="text-slate-400 shrink-0" />
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Từ</span>
+            <input type="date" value={from} max={to || undefined}
+              onChange={(e) => setFrom(e.target.value)}
+              className="bg-transparent border-0 text-xs font-bold text-slate-700 outline-none cursor-pointer p-0" />
+            <span className="text-slate-300 font-bold">–</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đến</span>
+            <input type="date" value={to} min={from || undefined}
+              onChange={(e) => setTo(e.target.value)}
+              className="bg-transparent border-0 text-xs font-bold text-slate-700 outline-none cursor-pointer p-0" />
+            {(from || to) ? (
+              <button type="button" onClick={() => { setFrom(""); setTo(""); }}
+                title="Bỏ lọc theo ngày, xem tất cả"
+                className="p-1 text-slate-400 hover:text-rose-500 hover:bg-slate-200 rounded-lg transition-all cursor-pointer">
+                <X size={12} />
+              </button>
+            ) : (
+              <button type="button"
+                onClick={() => { const b = tronThang(homNay()); setFrom(b.from); setTo(b.to); }}
+                title="Lọc nhanh trọn tháng này"
+                className="px-2 py-0.5 text-[10px] font-bold text-slate-400 hover:text-blue-600 hover:bg-white rounded-lg transition-all cursor-pointer">
+                Tháng này
+              </button>
+            )}
+          </div>
+
+          {/* Ba nút riêng thay vì một nút rồi hỏi loại: ba tờ này khác hẳn nhau
+              về mục đích, chọn ngay từ đây đỡ một bước bấm. */}
+          {canCreate && (
+            <div className="flex items-center gap-2 flex-nowrap ml-auto">
+              <button type="button" onClick={() => setCreating("ho_so")}
+                title="Trình duyệt một đợt thanh toán của hợp đồng đã ký (TL/BM/011)"
+                className="flex items-center gap-1.5 shrink-0 whitespace-nowrap bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-blue-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
+                <Plus size={14} /> Phiếu hồ sơ / văn bản
+              </button>
+              <button type="button" onClick={() => setCreating("hop_dong")}
+                title="Trình duyệt nội dung hợp đồng trước khi ký (KHKT/BM/001)"
+                className="flex items-center gap-1.5 shrink-0 whitespace-nowrap bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-violet-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
+                <Plus size={14} /> Phiếu hợp đồng
+              </button>
+              {/* Đề nghị chuyển tiền — cũng chính là tờ mà nút "Trình ký online"
+                  bên Kế hoạch thu chi mở ra. Cùng một loại phiếu, hai lối vào. */}
+              <button type="button" onClick={() => setCreating("chuyen_tien")}
+                title="Đề nghị chuyển tiền cho một khoản chi (HC-BM021/ĐNCT)"
+                className="flex items-center gap-1.5 shrink-0 whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-emerald-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
+                <Plus size={14} /> Đề nghị chuyển tiền
+              </button>
+            </div>
           )}
         </div>
 
-        {/* Ba nút riêng thay vì một nút rồi hỏi loại: ba tờ này khác hẳn nhau
-            về mục đích, chọn ngay từ đây đỡ một bước bấm. */}
-        {canCreate && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <button type="button" onClick={() => setCreating("ho_so")}
-              title="Trình duyệt một đợt thanh toán của hợp đồng đã ký (TL/BM/011)"
-              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-blue-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
-              <Plus size={14} /> Phiếu hồ sơ / văn bản
-            </button>
-            <button type="button" onClick={() => setCreating("hop_dong")}
-              title="Trình duyệt nội dung hợp đồng trước khi ký (KHKT/BM/001)"
-              className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-violet-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
-              <Plus size={14} /> Phiếu hợp đồng
-            </button>
-            {/* Đề nghị chuyển tiền — cũng chính là tờ mà nút "Trình ký online"
-                bên Kế hoạch thu chi mở ra. Cùng một loại phiếu, hai lối vào. */}
-            <button type="button" onClick={() => setCreating("chuyen_tien")}
-              title="Đề nghị chuyển tiền cho một khoản chi (HC-BM021/ĐNCT)"
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-emerald-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
-              <Plus size={14} /> Đề nghị chuyển tiền
-            </button>
+        {/* ─── Hàng 3: tab lọc loại phiếu · ô tìm kiếm ─── */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
+          <div className="flex bg-slate-100/70 rounded-xl p-1 gap-1 w-fit">
+            {([
+              ["tat_ca", `Tất cả (${rows.length})`],
+              ["ho_so", `Hồ sơ (${rows.filter((r) => r.loai === "ho_so").length})`],
+              ["hop_dong", `Hợp đồng (${rows.filter((r) => r.loai === "hop_dong").length})`],
+              ["chuyen_tien", `Chuyển tiền (${rows.filter((r) => r.loai === "chuyen_tien").length})`],
+              ["cua_toi", `Phiếu của tôi (${cuaToi.length})`],
+            ] as [Filter, string][]).map(([k, lb]) => (
+              <button key={k} type="button" onClick={() => setFilter(k)}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                  filter === k ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                }`}>
+                {lb}
+              </button>
+            ))}
           </div>
-        )}
-
-        {/* ─── Hàng 2 của cùng lưới ─── */}
-        <div className="flex bg-slate-100/70 rounded-xl p-1 gap-1 w-fit">
-          {([
-            ["tat_ca", `Tất cả (${rows.length})`],
-            ["ho_so", `Hồ sơ (${rows.filter((r) => r.loai === "ho_so").length})`],
-            ["hop_dong", `Hợp đồng (${rows.filter((r) => r.loai === "hop_dong").length})`],
-            ["chuyen_tien", `Chuyển tiền (${rows.filter((r) => r.loai === "chuyen_tien").length})`],
-            ["cua_toi", `Phiếu của tôi (${cuaToi.length})`],
-          ] as [Filter, string][]).map(([k, lb]) => (
-            <button key={k} type="button" onClick={() => setFilter(k)}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                filter === k ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              }`}>
-              {lb}
-            </button>
-          ))}
-        </div>
-        {/* Trải sang cả cột 3: chỗ đó vốn dành cho nút tải lại, bỏ nút rồi thì
-            để trống sẽ hụt một khoảng, mép phải ô tìm kiếm không thẳng với cụm
-            nút ở hàng trên. Danh sách vẫn tự nạp lại sau mỗi thao tác. */}
-        <div className="relative min-w-[200px] lg:col-span-2">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm theo mã phiếu, số hợp đồng, chủ đầu tư, dự án…"
-            className="w-full pl-9 pr-4 py-2 bg-slate-100/50 hover:bg-slate-100 focus:bg-white text-xs font-semibold text-slate-700 placeholder:text-slate-400 placeholder:font-medium border border-slate-200/60 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" />
+          {/* Chiếm nốt phần thừa của hàng: mép phải ô tìm kiếm khi đó thẳng với
+              mép phải cụm nút ở hàng trên. Không có nút tải lại — danh sách vẫn
+              tự nạp lại sau mỗi thao tác. */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Tìm theo mã phiếu, số hợp đồng, chủ đầu tư, dự án…"
+              className="w-full pl-9 pr-4 py-2 bg-slate-100/50 hover:bg-slate-100 focus:bg-white text-xs font-semibold text-slate-700 placeholder:text-slate-400 placeholder:font-medium border border-slate-200/60 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" />
+          </div>
         </div>
       </div>
 

@@ -413,6 +413,11 @@ export default function Header({ title, subtitle }: Props) {
           .in("status", ["cho_cap1", "cho_pho_giam_doc", "cho_giam_doc", "cho_ke_toan", "tra_lai",
                          "cho_pgd_qlda", "cho_pgd_khdt"]);
         if (!error && data) signingData = data;
+        // Trước đây `error` bị nuốt hoàn toàn: truy vấn hỏng (thiếu cột, RLS đổi)
+        // thì chuông lặng thinh và không có cách nào lần ra. Nói ra ở Console.
+        else if (error) {
+          console.warn("[Header] Không đọc được phiếu trình ký cho chuông:", error.message);
+        }
       } catch (err) {
         // Chưa chạy migration 050 thì bảng chưa tồn tại — chuông vẫn phải kêu
         // cho các mục còn lại, không được để hỏng cả khối thông báo.

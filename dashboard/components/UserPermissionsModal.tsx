@@ -42,13 +42,15 @@ type DirectoryEmployee = { name: string; email: string; department: string; role
 export type UserPermissionsTab = "flags" | "groups" | "exceptions";
 
 // Nhãn tiếng Việt cho từng cờ — key khớp đúng tên cột trong DB
-const FLAG_GROUPS: { title: string; flags: { key: string; label: string; desc: string }[] }[] = [
+const FLAG_GROUPS: { title: string; note?: string; flags: { key: string; label: string; desc: string }[] }[] = [
   {
     title: "Quyền phê duyệt",
+    // 3 cờ đầu vừa là quyền, vừa là CÔNG TẮC bật cấp 2 — xem lib/approvers.ts.
+    note: "3 cờ đầu vừa là quyền duyệt cuối, vừa là công tắc bật cấp 2. Không ai trong công ty giữ cờ nào thì luồng đó chỉ còn 1 cấp: Trưởng phòng/Tổ trưởng duyệt là đơn xong luôn. Tick cho dù chỉ MỘT người là luồng quay lại 2 cấp cho tất cả — đừng tick chỉ để cho ai đó nhìn thấy đơn.",
     flags: [
-      { key: "can_approve_trip", label: "Duyệt công tác", desc: "Duyệt cuối đơn đi công tác (cấp 2 — HCNS)" },
-      { key: "can_approve_leave", label: "Duyệt nghỉ phép", desc: "Duyệt cuối đơn nghỉ phép (cấp 2 — HCNS)" },
-      { key: "can_approve_justification", label: "Duyệt giải trình công", desc: "Duyệt giải trình chấm công của nhân sự" },
+      { key: "can_approve_trip", label: "Duyệt công tác", desc: "Duyệt cuối đơn đi công tác (cấp 2 — HCNS). Bỏ tick ở mọi người = luồng 1 cấp" },
+      { key: "can_approve_leave", label: "Duyệt nghỉ phép", desc: "Duyệt cuối đơn nghỉ phép (cấp 2 — HCNS). Bỏ tick ở mọi người = luồng 1 cấp" },
+      { key: "can_approve_justification", label: "Duyệt giải trình công", desc: "Xem & duyệt giải trình chấm công của TOÀN công ty (không có cờ: chỉ duyệt trong phạm vi cấp 1)" },
       { key: "can_approve_booking", label: "Duyệt đăng ký xe / phòng họp", desc: "Duyệt cuối đăng ký xe & phòng họp (HCNS điều phối)" },
       { key: "can_approve_benefit", label: "Duyệt chi phúc lợi", desc: "Duyệt hiếu hỷ, biến cố & thưởng lễ (C&B > Phúc lợi)" },
     ],
@@ -749,6 +751,11 @@ export default function UserPermissionsModal({
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1.5">
                         {group.title}
                       </p>
+                      {group.note && (
+                        <p className="text-[10px] text-amber-700 font-semibold leading-snug bg-amber-50/70 border border-amber-200 rounded-lg px-2.5 py-2">
+                          ⚠️ {group.note}
+                        </p>
+                      )}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {group.flags.map(f => {
                           const missing = !(f.key in selectedRow);
@@ -833,7 +840,8 @@ export default function UserPermissionsModal({
           <div className="bg-amber-50/70 border border-amber-100 rounded-xl p-3.5 text-[11px] text-amber-800 leading-relaxed">
             <p className="font-bold flex items-center gap-1.5 mb-0.5"><Users size={13} /> Nhóm duyệt riêng là gì?</p>
             Tổ có luồng duyệt cấp 1 riêng: thành viên gửi <b>bất kỳ đơn gì</b> (nghỉ phép, công tác, đăng ký xe/phòng họp)
-            thì <b>tổ trưởng của tổ</b> duyệt cấp 1 thay vì Trưởng phòng ban — sau đó vẫn qua phòng HCNS xác nhận như thường.
+            thì <b>tổ trưởng của tổ</b> duyệt cấp 1 thay vì Trưởng phòng ban. Sau bước này đơn còn qua phòng HCNS xác nhận
+            hay xong luôn là tuỳ 3 cờ duyệt cuối ở tab đầu.
             Tên tổ trưởng/thành viên phải khớp đúng tên trong Danh sách nhân viên.
           </div>
 

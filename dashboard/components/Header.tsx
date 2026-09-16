@@ -11,6 +11,7 @@ import {
   isManagerRole,
   isBookingCap1Approver,
   getRequestStage,
+  fetchCap2Availability,
   isJustificationCap1Approver,
   isLeaveTripCap1Approver,
   isLeaveTripCap2Approver,
@@ -660,9 +661,15 @@ export default function Header({ title, subtitle }: Props) {
         return;
       }
 
-      // Filter tasks notifications — Nghỉ phép/Công tác giờ theo luồng 2 cấp (Trưởng phòng/Tổ
-      // trưởng xác nhận -> HCNS duyệt cuối), dùng chung logic với settings/page.tsx và
-      // calendar/page.tsx (lib/approvers.ts) để tránh 3 nơi có quy tắc lệch nhau.
+      // Mỗi luồng còn cấp 2 hay không (có ai đang giữ cờ duyệt cuối không) — quyết
+      // định chuông báo cho ai ở bước HCNS và câu chữ của thông báo. CỐ Ý đặt SAU
+      // cửa quyền ở trên: nhân viên thường không cần biết, đọc ở đây thì mỗi lần mở
+      // trang cả công ty lại thêm một truy vấn không dùng tới.
+      const cap2 = await fetchCap2Availability();
+
+      // Filter tasks notifications — Nghỉ phép/Công tác dùng chung logic với
+      // settings/page.tsx và calendar/page.tsx (lib/approvers.ts) để tránh 3 nơi có
+      // quy tắc lệch nhau. Luồng có 1 hay 2 cấp là do CÓ AI giữ cờ duyệt cuối hay không.
       const filteredTasks = (tasksData || []).filter(t => {
         const titleLower = t.title.toLowerCase();
         const isLeave = titleLower.startsWith("nghỉ phép") || titleLower.includes("nghi phep");
@@ -670,18 +677,20 @@ export default function Header({ title, subtitle }: Props) {
         if (!isLeave && !isTrip) return false;
 
         const stage = getRequestStage(t);
-        if (stage === "manager") {
-          return isLeaveTripCap1Approver({
-            currentUserName: userObj.name,
-            currentUserRole: userObj.role,
-            currentUserIsAdmin: isUserAdmin,
-            currentUserDepartment: userObj.department,
-            requesterName: t.assignee,
-            requesterDepartment: deptOfName.get(normalizeName(t.assignee || "")) || "",
-            taskNotes: t.notes,
-            taskTitleLower: titleLower,
-          });
-        }
+        const isCap1 = isLeaveTripCap1Approver({
+          currentUserName: userObj.name,
+          currentUserRole: userObj.role,
+          currentUserIsAdmin: isUserAdmin,
+          currentUserDepartment: userObj.department,
+          requesterName: t.assignee,
+          requesterDepartment: deptOfName.get(normalizeName(t.assignee || "")) || "",
+          taskNotes: t.notes,
+          taskTitleLower: titleLower,
+        });
+        if (stage === "manager") return isCap1;
+        // Đơn cũ kẹt ở bước HCNS trong khi luồng đã rút còn 1 cấp: chuông về lại
+        // chính cấp 1 (+ Admin) — người giữ cờ không còn nên không ai khác xử lý được.
+        if (!cap2[isTrip ? "trip" : "leave"]) return isUserAdmin || isCap1;
         // CẤP 2 (HCNS duyệt cuối) — CHỈ theo cờ can_approve_leave/can_approve_trip
         // (+ Admin). Trước 20/08/2026 chuông còn cộng thêm `isUserHR` (chức danh
         // chứa "nhân sự"), trong khi trang Cài đặt > Duyệt yêu cầu — nơi có nút
@@ -735,7 +744,10 @@ export default function Header({ title, subtitle }: Props) {
         }
 
         if (getRequestStage(t) === "hcns") {
-          messageText += " (đã qua Trưởng phòng/Tổ trưởng phê duyệt, chờ phòng HCNS xác nhận)";
+          const isTripMsg = !isLeave;
+          messageText += cap2[isTripMsg ? "trip" : "leave"]
+            ? " (đã qua Trưởng phòng/Tổ trưởng phê duyệt, chờ phòng HCNS xác nhận)"
+            : " (đơn cũ còn kẹt ở bước HCNS — luồng nay chỉ còn 1 cấp, bấm phê duyệt là xong)";
         }
 
         return {

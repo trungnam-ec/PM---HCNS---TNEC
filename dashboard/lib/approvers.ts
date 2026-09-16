@@ -96,7 +96,8 @@ export function hasAnyApprovalPermission(perms: ApprovalPermissions): boolean {
 
 // ━━━ NHÓM DUYỆT RIÊNG (bảng approval_groups) ━━━
 // Nhóm = tổ có luồng duyệt cấp 1 riêng: thành viên gửi đơn/đăng ký -> TỔ TRƯỞNG
-// nhóm duyệt (không phải Trưởng phòng ban), sau đó vẫn chuyển HCNS duyệt cuối.
+// nhóm duyệt (không phải Trưởng phòng ban). Sau bước đó còn chuyển HCNS duyệt cuối
+// hay xong luôn là tuỳ công tắc 1 cấp / 2 cấp bên dưới (fetchCap2ApproverEmails).
 // VD hiện tại: Tổ Marketing (trực thuộc HCNS). Danh sách đọc từ bảng
 // approval_groups — thêm/bớt thành viên, đổi tổ trưởng chỉ cần sửa bảng.
 //
@@ -564,6 +565,80 @@ export function isLeaveTripCap2Approver(params: {
   const { currentUserIsAdmin, approvalPerms, isTrip } = params;
   if (currentUserIsAdmin) return true;
   return isTrip ? approvalPerms.canApproveTrip : approvalPerms.canApproveLeave;
+}
+
+// ━━━ CÔNG TẮC 1 CẤP / 2 CẤP (chốt 16/09/2026) ━━━
+// Cấp 2 (duyệt cuối bên HCNS) CHỈ tồn tại khi có ÍT NHẤT MỘT người đang giữ cờ
+// tương ứng trong bảng approval_permissions. Không ai giữ cờ -> luồng rút còn 1
+// cấp: cấp 1 (Trưởng phòng/Tổ trưởng/đặc cách) duyệt là đơn xong luôn, gửi thẳng
+// email kết quả cho người làm đơn. Muốn 2 cấp trở lại thì tick cờ cho đúng một
+// người là xong — KHÔNG phải sửa code, không migration.
+//
+// Admin CỐ Ý không tính ở đây: Admin vẫn duyệt được mọi đơn (lối thoát khi đơn
+// không còn ai xử lý), nhưng sự tồn tại của tài khoản Admin không được phép kéo
+// cả công ty về luồng 2 cấp.
+//
+// CẢNH BÁO cho người sửa sau: 3 cờ này vừa là "quyền duyệt cuối" VỪA là công tắc
+// bật cấp 2. Tick cờ cho ai đó chỉ để họ NHÌN THẤY đơn là luồng lập tức quay về
+// 2 cấp cho toàn công ty. Cần cho xem mà không bật cấp 2 thì phải làm cờ khác.
+export type Cap2Flow = "trip" | "leave" | "justification";
+
+const CAP2_FLAG_OF: Record<Cap2Flow, string> = {
+  trip: "can_approve_trip",
+  leave: "can_approve_leave",
+  justification: "can_approve_justification",
+};
+
+// Chưa biết (đang tải / lỗi mạng) -> coi như VẪN CÒN cấp 2, tức giữ nguyên nhãn
+// của luồng cũ. Đây chỉ là giá trị khởi tạo cho giao diện, không quyết định gì:
+// lúc bấm duyệt, hàm dưới đọc lại DB rồi mới ghi.
+export const CAP2_UNKNOWN: Record<Cap2Flow, boolean> = { trip: true, leave: true, justification: true };
+
+/**
+ * Email của những người đang giữ cờ duyệt cuối của MỘT luồng, nối bằng ", " để
+ * đưa thẳng vào trường người nhận của email.
+ *   - chuỗi RỖNG = không ai giữ cờ = luồng 1 cấp
+ *   - null       = KHÔNG ĐỌC ĐƯỢC (mất mạng, RLS chặn, phiên hết hạn)
+ *
+ * Phân biệt rỗng với null là điều bắt buộc: một truy vấn hỏng mà trả về rỗng thì
+ * hệ thống sẽ tưởng công ty đang chạy 1 cấp và duyệt cuối luôn một đơn lẽ ra phải
+ * chuyển tiếp — sai mà không ai biết. Gặp null thì nơi gọi phải DỪNG, không ghi gì.
+ * (Supabase khi bị RLS chặn trả về mảng RỖNG chứ không báo lỗi, nên đừng trông chờ
+ * vào `error` để phát hiện; ở đây mọi người dùng đã đăng nhập đều đọc được bảng
+ * này — fetchApprovalPermissions vốn đã đọc trọn bảng ở mọi trang.)
+ *
+ * Luôn đọc thẳng DB, KHÔNG cache: đây là thứ quyết định đơn được ghi thế nào.
+ * Dòng có cờ nhưng bỏ trống email cũng bị loại — cấp 2 mà không nhận được mail
+ * thì đơn nằm im, đúng kiểu "bật cấp 2 rồi quên mất".
+ */
+export async function fetchCap2ApproverEmails(flow: Cap2Flow): Promise<string | null> {
+  try {
+    // select("*") để không vỡ khi cột của một cờ chưa được migrate
+    const { data, error } = await supabase.from("approval_permissions").select("*");
+    if (error || !data) return null;
+    return data
+      .filter((r: any) => r[CAP2_FLAG_OF[flow]] && r.email)
+      .map((r: any) => r.email)
+      .join(", ");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Mỗi luồng còn cấp 2 hay không — để giao diện hiện đúng nhãn nút và badge cấp
+ * duyệt. Chỉ dùng cho HIỂN THỊ; lúc bấm duyệt thật thì fetchCap2ApproverEmails
+ * đọc lại DB nên có nhấp nháy nhãn trong lúc tải cũng không ghi sai đơn.
+ */
+export async function fetchCap2Availability(): Promise<Record<Cap2Flow, boolean>> {
+  try {
+    const { data, error } = await supabase.from("approval_permissions").select("*");
+    if (error || !data) return CAP2_UNKNOWN;
+    const has = (flow: Cap2Flow) => data.some((r: any) => r[CAP2_FLAG_OF[flow]] && r.email);
+    return { trip: has("trip"), leave: has("leave"), justification: has("justification") };
+  } catch {
+    return CAP2_UNKNOWN;
+  }
 }
 
 // Per-user approval grants live in the approval_permissions table and are

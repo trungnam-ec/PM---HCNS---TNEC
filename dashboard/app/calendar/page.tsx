@@ -12,11 +12,15 @@ import { exportPhieuThanhToan, exportPhieuCongTac, downloadDocFile } from "@/lib
 import {
   getGroupLeaderNameForMember,
   getRequestStage,
+  fetchCap2Availability,
+  fetchCap2ApproverEmails,
+  CAP2_UNKNOWN,
   isLeaveTripCap1Approver,
   getLeaveExceptionApproversForAssignee,
   isManagerRole,
   normalizeName,
 } from "@/lib/approvers";
+import { finalizeLeaveTripApproval } from "@/lib/requestApproval";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { parseLeaveTask, computeLeaveQuota } from "@/lib/annualLeave";
 import TripDistanceModal from "@/components/TripDistanceModal";
@@ -201,6 +205,10 @@ function CalendarContent() {
     name: string; email: string; department: string; role: string;
     created_at?: string; annual_leave_override?: number | null;
   }[]>([]);
+
+  // Mỗi luồng còn cấp 2 (duyệt cuối HCNS) hay không — suy từ việc CÓ AI đang giữ cờ
+  // duyệt cuối tương ứng. Chỉ dùng để hiện đúng nhãn nút; lúc bấm duyệt thì đọc lại DB.
+  const [cap2Enabled, setCap2Enabled] = useState(CAP2_UNKNOWN);
 
   // Business trip specific states
   const [tripDestination, setTripDestination] = useState("");
@@ -457,6 +465,7 @@ function CalendarContent() {
 
   useEffect(() => {
     fetchData();
+    void (async () => setCap2Enabled(await fetchCap2Availability()))();
 
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -944,8 +953,10 @@ function CalendarContent() {
   });
 
   // Danh sách CẤP 1 (Trưởng phòng/Tổ trưởng xác nhận) chờ người dùng hiện tại xử lý.
-  // Cấp 2 (HCNS duyệt cuối) chỉ hiển thị & xử lý tại Cài đặt hệ thống > Duyệt yêu cầu,
-  // để tránh 2 nơi cùng có quyền duyệt cuối và lỡ bỏ qua bước chuyển HCNS.
+  // Khi luồng còn 2 cấp, bước HCNS chỉ hiển thị & xử lý tại Cài đặt hệ thống > Duyệt
+  // yêu cầu, để tránh 2 nơi cùng duyệt cuối và lỡ bỏ qua bước chuyển HCNS. Khi luồng
+  // đã rút còn 1 cấp (không ai giữ cờ duyệt cuối) thì các đơn cũ đang kẹt ở bước HCNS
+  // hiện luôn ở đây cho chính cấp 1 bấm nốt — không còn ai khác xử lý được chúng.
   const pendingApprovals = useMemo(() => {
     if (!currentUser) return [];
     // Ngoại lệ tên cứng (Giáp Nhân/Duy Hưng coi như Admin) đã bỏ. Ban giám đốc
@@ -956,11 +967,11 @@ function CalendarContent() {
 
     return tasks.filter(t => {
       if (t.status !== "pending_approval") return false;
-      if (getRequestStage(t) !== "manager") return false;
       const titleLower = t.title.toLowerCase();
       const isLeave = titleLower.startsWith("nghỉ phép") || titleLower.includes("nghi phep");
       const isTrip = titleLower.startsWith("công tác") || titleLower.includes("cong tac");
       if (!isLeave && !isTrip) return false;
+      if (getRequestStage(t) !== "manager" && cap2Enabled[isTrip ? "trip" : "leave"]) return false;
 
       return isLeaveTripCap1Approver({
         currentUserName: currentUser.name,
@@ -975,7 +986,7 @@ function CalendarContent() {
         taskTitleLower: titleLower,
       });
     });
-  }, [tasks, currentUser, employeeDirectory]);
+  }, [tasks, currentUser, employeeDirectory, cap2Enabled]);
 
   // Gửi email KHÔNG chặn giao diện — bắt tay SMTP với Gmail mất vài giây, nếu
   // `await` thì nút duyệt/từ chối đứng im khiến người dùng tưởng bấm hụt.
@@ -996,14 +1007,60 @@ function CalendarContent() {
     })();
   };
 
-  // Cấp 1 xác nhận -> chuyển sang HCNS duyệt cuối + báo email cho người có quyền duyệt cuối
+  // Cấp 1 bấm phê duyệt. Rẽ nhánh theo CÔNG TẮC 1 CẤP / 2 CẤP (lib/approvers.ts):
+  //   - Còn người giữ cờ duyệt cuối -> chuyển sang HCNS + báo mail họ (luồng cũ).
+  //   - Không ai giữ cờ -> duyệt cuối luôn tại đây, email kết quả về người làm đơn.
+  // Phần ghi CSDL của bước duyệt cuối dùng CHUNG lib/requestApproval.ts với trang
+  // Cài đặt > Duyệt yêu cầu, để hai nơi không trôi lệch nhau.
   const handleCap1Confirm = async (taskId: string) => {
     if (!currentUser) return;
-    try {
-      const task = tasks.find(t => t.id === taskId);
-      if (!task) return;
-      const isTrip = task.title.toLowerCase().startsWith("công tác") || task.title.toLowerCase().includes("cong tac");
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    const isTrip = task.title.toLowerCase().startsWith("công tác") || task.title.toLowerCase().includes("cong tac");
+    const approverEmails = await fetchCap2ApproverEmails(isTrip ? "trip" : "leave");
 
+    // Không đọc được cấu hình -> KHÔNG đoán, dừng lại để người dùng bấm lại.
+    if (approverEmails === null) {
+      showNotice("error", "Không đọc được cấu hình luồng duyệt", "Kiểm tra kết nối mạng rồi bấm lại.");
+      return;
+    }
+
+    // ── Luồng 1 cấp: duyệt là xong ──
+    if (!approverEmails) {
+      try {
+        await finalizeLeaveTripApproval({ task, isTrip, deciderName: currentUser.name });
+
+        const requesterEmail = employeeDirectory.find(e => e.name === task.assignee)?.email || "";
+        showNotice(
+          "success",
+          "Đã phê duyệt yêu cầu",
+          requesterEmail ? "Email kết quả đang được gửi cho người làm đơn." : undefined
+        );
+        fetchData();
+
+        if (requesterEmail) {
+          sendRequestEmailInBackground(
+            {
+              requestType: isTrip ? "trip" : "leave",
+              smtpConfig: readSmtpConfig(),
+              task,
+              requesterEmail,
+              decision: "approved",
+              rejectReason: "",
+              deciderName: currentUser.name,
+            },
+            "Chưa gửi được email kết quả"
+          );
+        }
+      } catch (err: any) {
+        console.error(err);
+        showNotice("error", "Không phê duyệt được yêu cầu", err?.message || "Vui lòng thử lại hoặc báo bộ phận kỹ thuật.");
+      }
+      return;
+    }
+
+    // ── Luồng 2 cấp: chuyển tiếp cho người giữ cờ duyệt cuối ──
+    try {
       const { error } = await supabase
         .from("tasks")
         .update({
@@ -1022,33 +1079,18 @@ function CalendarContent() {
       );
       fetchData();
 
-      // Tra cứu người duyệt cấp 2 + gửi mail: chạy nền
-      void (async () => {
-        try {
-          const { data: perms } = await supabase
-            .from("approval_permissions")
-            .select("email, can_approve_trip, can_approve_leave");
-          const approverEmails = (perms || [])
-            .filter((p: any) => (isTrip ? p.can_approve_trip : p.can_approve_leave) && p.email)
-            .map((p: any) => p.email)
-            .join(", ");
-          if (!approverEmails) return;
-          sendRequestEmailInBackground(
-            {
-              mode: "notify_approver",
-              stage: "hcns",
-              requestType: isTrip ? "trip" : "leave",
-              smtpConfig: readSmtpConfig(),
-              task: { ...task, manager_approved_by: currentUser.name },
-              approverEmails,
-              siteUrl: window.location.origin,
-            },
-            "Chưa gửi được email báo HCNS"
-          );
-        } catch (mailErr: any) {
-          showNotice("warning", "Chưa gửi được email báo HCNS", mailErr.message || "lỗi kết nối");
-        }
-      })();
+      sendRequestEmailInBackground(
+        {
+          mode: "notify_approver",
+          stage: "hcns",
+          requestType: isTrip ? "trip" : "leave",
+          smtpConfig: readSmtpConfig(),
+          task: { ...task, manager_approved_by: currentUser.name },
+          approverEmails,
+          siteUrl: window.location.origin,
+        },
+        "Chưa gửi được email báo HCNS"
+      );
     } catch (err) {
       console.error(err);
       showNotice("error", "Không xác nhận được yêu cầu", "Vui lòng thử lại hoặc báo bộ phận kỹ thuật.");
@@ -1845,16 +1887,24 @@ ${cap1Approver ? `Người duyệt: ${cap1Approver}` : ""}${bookedByLine}
             {pendingApprovals.length > 0 && (
               <div className="bg-white rounded-2xl border border-slate-200/50 shadow-sm p-4 flex flex-col space-y-4">
                 <div className="space-y-2.5">
-                  <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider block">📥 Chờ bạn phê duyệt - Cấp 1 ({pendingApprovals.length})</span>
+                  <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider block">📥 Chờ bạn phê duyệt ({pendingApprovals.length})</span>
                   <div className="space-y-2">
-                    {pendingApprovals.map(t => (
+                    {pendingApprovals.map(t => {
+                      const isTripCard = t.title.toLowerCase().startsWith("công tác") || t.title.toLowerCase().includes("cong tac");
+                      // Còn cấp 2 thì phê duyệt ở đây mới là bước 1; không còn thì duyệt là xong.
+                      const twoStep = cap2Enabled[isTripCard ? "trip" : "leave"];
+                      return (
                       <div key={t.id} className="p-3 bg-indigo-50/30 border border-indigo-100 rounded-xl space-y-2 text-left">
                         <p className="font-heading font-bold text-xs text-indigo-900 leading-snug">{t.title}</p>
                         <p className="text-[9px] text-indigo-600 font-semibold leading-relaxed">
                           Nhân sự: <span className="font-bold text-slate-800">{t.assignee}</span> <br />
                           Thời gian: {t.start_date ? new Date(t.start_date).toLocaleDateString("vi-VN") : ""} ➔ {t.due_date ? new Date(t.due_date).toLocaleDateString("vi-VN") : ""}
                         </p>
-                        <p className="text-[8px] text-indigo-400 font-semibold leading-relaxed">Phê duyệt xong sẽ tự động chuyển sang phòng HCNS xác nhận.</p>
+                        <p className="text-[8px] text-indigo-400 font-semibold leading-relaxed">
+                          {twoStep
+                            ? "Phê duyệt xong sẽ tự động chuyển sang phòng HCNS xác nhận."
+                            : "Phê duyệt xong là đơn hoàn tất, email kết quả gửi thẳng cho người làm đơn."}
+                        </p>
                         <div className="flex gap-2 pt-1">
                           <button
                             onClick={() => handleCap1Confirm(t.id)}
@@ -1870,7 +1920,8 @@ ${cap1Approver ? `Người duyệt: ${cap1Approver}` : ""}${bookedByLine}
                           </button>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -2084,11 +2135,14 @@ ${cap1Approver ? `Người duyệt: ${cap1Approver}` : ""}${bookedByLine}
                         <span className="font-extrabold text-indigo-700">
                           {resolveCap1Approver(modalName, leaveDaysCount <= 1)}
                         </span>
-                        <span className="text-slate-500 font-semibold"> phê duyệt, sau đó phòng HCNS xác nhận.</span>
+                        <span className="text-slate-500 font-semibold">
+                          {cap2Enabled.leave ? " phê duyệt, sau đó phòng HCNS xác nhận." : " phê duyệt là hoàn tất."}
+                        </span>
                       </>
                     ) : (
                       <span className="text-slate-500 font-semibold">
-                        Đơn sẽ nằm ở mục Duyệt yêu cầu để cấp quản lý phê duyệt, sau đó phòng HCNS xác nhận.
+                        Đơn sẽ nằm ở mục Duyệt yêu cầu để cấp quản lý phê duyệt
+                        {cap2Enabled.leave ? ", sau đó phòng HCNS xác nhận." : "."}
                       </span>
                     )}
                   </div>

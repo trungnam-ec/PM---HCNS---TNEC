@@ -23,8 +23,12 @@ import {
   resolveJustificationApproverName,
   isLeaveTripCap1Approver,
   isLeaveTripCap2Approver,
+  fetchCap2Availability,
+  fetchCap2ApproverEmails,
+  CAP2_UNKNOWN,
   normalizeName,
 } from "@/lib/approvers";
+import { finalizeLeaveTripApproval } from "@/lib/requestApproval";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { isDirectorRole } from "@/lib/access";
 import { useNoticeBox, useConfirmBox, usePromptBox } from "@/components/ConfirmDialog";
@@ -180,6 +184,10 @@ function SettingsContent() {
   const { askText, promptNode } = usePromptBox();
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  // Mỗi luồng còn cấp 2 (duyệt cuối HCNS) hay không — suy từ việc CÓ AI đang giữ cờ
+  // duyệt cuối tương ứng. Không ai giữ -> luồng 1 cấp: cấp 1 duyệt là đơn xong luôn.
+  // Chỉ dùng để hiện đúng nhãn nút/badge; lúc bấm duyệt thật thì đọc lại DB.
+  const [cap2Enabled, setCap2Enabled] = useState(CAP2_UNKNOWN);
   const [activeApprovalTab, setActiveApprovalTab] = useState<"trip" | "leave" | "explanation" | "booking">("trip");
   // Bộ lọc đơn vị cho 4 tab duyệt — 1 giá trị dùng chung (phòng ban VÀ ban điều hành
   // đều là cột `department`, nên chọn ở dropdown này thì dropdown kia tự bỏ chọn).
@@ -245,6 +253,7 @@ function SettingsContent() {
       fetchExplanations();
       fetchResourceBookings();
       fetchEmployeeDirectory();
+      void (async () => setCap2Enabled(await fetchCap2Availability()))();
     }
   }, []);
 
@@ -490,9 +499,33 @@ function SettingsContent() {
     }
   };
 
-  // Cấp 1: Trưởng phòng/Tổ trưởng xác nhận -> chuyển HCNS duyệt cuối + báo email cấp 2
+  // Cấp 1 (Trưởng phòng/Tổ trưởng/đặc cách) bấm phê duyệt.
+  //
+  // Rẽ nhánh theo CÔNG TẮC 1 CẤP / 2 CẤP (lib/approvers.ts): hỏi DB xem còn ai
+  // đang giữ cờ duyệt cuối của loại đơn này không.
+  //   - Còn người giữ cờ  -> luồng 2 cấp như cũ: chuyển sang HCNS + báo mail họ.
+  //   - Không ai giữ cờ   -> luồng 1 cấp: duyệt luôn ra trạng thái cuối, gửi mail
+  //                          kết quả thẳng cho người làm đơn.
+  // CỐ Ý `await` câu hỏi này TRƯỚC khi ghi: nó quyết định đơn được ghi kiểu gì,
+  // hỏi sau hoặc đọc cache là đơn đi sai luồng.
   const handleCap1Confirm = async (task: any, isTrip: boolean) => {
     if (!currentUser) return;
+    const approverEmails = await fetchCap2ApproverEmails(isTrip ? "trip" : "leave");
+
+    // Không đọc được cấu hình -> KHÔNG đoán. Ghi bừa lúc này là duyệt cuối nhầm
+    // một đơn lẽ ra phải chuyển tiếp (hoặc ngược lại).
+    if (approverEmails === null) {
+      notify("Không đọc được cấu hình luồng duyệt. Kiểm tra kết nối mạng rồi bấm lại.", "error");
+      return;
+    }
+
+    // ── Luồng 1 cấp: cấp 1 duyệt là xong ──
+    if (!approverEmails) {
+      await handleFinalDecision(task, isTrip, true);
+      return;
+    }
+
+    // ── Luồng 2 cấp: chuyển tiếp cho người giữ cờ duyệt cuối ──
     try {
       const { error } = await supabase
         .from("tasks")
@@ -508,40 +541,28 @@ function SettingsContent() {
       notify("Đã phê duyệt! Yêu cầu được chuyển sang phòng HCNS để xác nhận.\n📧 Email báo HCNS đang được gửi.", "success");
       fetchTasks();
 
-      // Tra cứu người duyệt cấp 2 + gửi mail: chạy nền
-      void (async () => {
-        try {
-          const { data: perms } = await supabase
-            .from("approval_permissions")
-            .select("email, can_approve_trip, can_approve_leave");
-          const approverEmails = (perms || [])
-            .filter((p: any) => (isTrip ? p.can_approve_trip : p.can_approve_leave) && p.email)
-            .map((p: any) => p.email)
-            .join(", ");
-          if (!approverEmails) return;
-          sendRequestEmailInBackground(
-            {
-              mode: "notify_approver",
-              stage: "hcns",
-              requestType: isTrip ? "trip" : "leave",
-              smtpConfig: readSmtpConfig(),
-              task: { ...task, manager_approved_by: currentUser.name },
-              approverEmails,
-              siteUrl: window.location.origin,
-            },
-            "Chưa gửi được email báo HCNS"
-          );
-        } catch (mailErr: any) {
-          notify(`Chưa gửi được email báo HCNS: ${mailErr.message || "lỗi kết nối"}`, "error");
-        }
-      })();
+      // Email báo người duyệt cuối — chạy nền, danh sách địa chỉ đã có sẵn ở trên
+      sendRequestEmailInBackground(
+        {
+          mode: "notify_approver",
+          stage: "hcns",
+          requestType: isTrip ? "trip" : "leave",
+          smtpConfig: readSmtpConfig(),
+          task: { ...task, manager_approved_by: currentUser.name },
+          approverEmails,
+          siteUrl: window.location.origin,
+        },
+        "Chưa gửi được email báo HCNS"
+      );
     } catch (err) {
       console.error("Error confirming request (manager step):", err);
       notify("Lỗi khi xác nhận yêu cầu!", "error");
     }
   };
 
-  // Cấp 2 (HCNS) hoặc từ chối ở cấp 1 — duyệt cuối / từ chối + gửi email kết quả cho người gửi đơn
+  // DUYỆT CUỐI / TỪ CHỐI + gửi email kết quả cho người gửi đơn. Gọi từ 3 chỗ:
+  // nút của cấp 2 (HCNS) khi còn luồng 2 cấp, nút Từ chối của cấp 1, và chính
+  // nút Phê duyệt của cấp 1 khi luồng đã rút còn 1 cấp.
   const handleFinalDecision = async (task: any, isTrip: boolean, approve: boolean, rejectReasonArg?: string) => {
     if (!currentUser) return;
     // Từ chối: mở hộp nhập lý do căn giữa (thay window.prompt), có lý do rồi gọi lại
@@ -559,79 +580,29 @@ function SettingsContent() {
     const rejectReason = rejectReasonArg || "";
 
     try {
-      if (approve && isTrip) {
-        let cleanDest = "Chưa xác định";
-        let cleanMission = "Đi công tác";
-        if (task.notes) {
-          const destMatch = task.notes.match(/-\s+\*\*Điểm công tác chính\*\*:\s*(.*)/i);
-          if (destMatch) cleanDest = destMatch[1].trim();
+      if (approve) {
+        // Ghi CSDL của bước duyệt cuối nằm trong lib/requestApproval.ts vì trang
+        // Lịch công việc cũng gọi đúng hàm này khi luồng chỉ còn 1 cấp.
+        await finalizeLeaveTripApproval({ task, isTrip, deciderName: currentUser.name });
+      } else {
+        const { data, error } = await supabase
+          .from("tasks")
+          .update({
+            status: "need_revision",
+            reject_reason: rejectReason.trim(),
+            final_decision_by: currentUser.name,
+            final_decision_at: new Date().toISOString(),
+          })
+          .eq("id", task.id)
+          .select("id");
 
-          const missionMatch = task.notes.match(/-\s+\*\*Nhiệm vụ cụ thể\*\*:\s*(.*)/i);
-          if (missionMatch) cleanMission = missionMatch[1].trim();
-        }
-
-        let costVal = 0;
-        if (task.notes) {
-          const metaMatch = task.notes.match(/<!--METADATA:(.*?)-->/);
-          if (metaMatch) {
-            try {
-              const meta = JSON.parse(metaMatch[1]);
-              if (meta && typeof meta.totalAmount !== "undefined") {
-                costVal = Number(meta.totalAmount);
-              }
-            } catch (e) {
-              console.error("Error parsing task metadata in settings:", e);
-            }
-          }
-
-          if (!costVal) {
-            const totalMatch = task.notes.match(/\*\*TỔNG ĐỀ NGHỊ THANH TOÁN\*\*:\s*([0-9.,\s]+)/i);
-            if (totalMatch) {
-              const cleanNum = totalMatch[1].replace(/[.,\s]/g, "");
-              costVal = Number(cleanNum);
-            }
-          }
-        }
-
-        if (!costVal) {
-          const days = task.start_date && task.due_date
-            ? Math.max(1, Math.round((new Date(task.due_date).getTime() - new Date(task.start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1)
-            : 1;
-          const nights = days >= 2 ? days - 1 : 0;
-          const hotelRate = 350000;
-          costVal = days * 120000 + nights * hotelRate;
-        }
-
-        const newTrip = {
-          name: task.assignee || "Nhân viên",
-          dest: cleanDest,
-          from_date: task.start_date || new Date().toISOString().split("T")[0],
-          to_date: task.due_date || new Date().toISOString().split("T")[0],
-          purpose: cleanMission,
-          cost: costVal,
-          status: "Đã duyệt",
-          task_id: task.id
-        };
-
-        const { error: insertError } = await supabase
-          .from("business_trips")
-          .insert([newTrip]);
-
-        if (insertError) {
-          console.error("Error inserting business trip:", insertError.message);
+        if (error) throw error;
+        // RLS chặn thì Postgres sửa 0 dòng mà KHÔNG báo lỗi — không đếm là báo
+        // "đã từ chối" giả trong khi đơn vẫn nằm nguyên chờ duyệt.
+        if (!data || data.length === 0) {
+          throw new Error("Không ghi được quyết định — tài khoản của bạn không có quyền cập nhật đơn này.");
         }
       }
-
-      const { error } = await supabase
-        .from("tasks")
-        .update(
-          approve
-            ? { status: isTrip ? "in_progress" : "completed", progress: isTrip ? 50 : 100, final_decision_by: currentUser.name, final_decision_at: new Date().toISOString() }
-            : { status: "need_revision", reject_reason: rejectReason.trim(), final_decision_by: currentUser.name, final_decision_at: new Date().toISOString() }
-        )
-        .eq("id", task.id);
-
-      if (error) throw error;
 
       const requesterEmail = employeeDirectory.find(e => e.name === task.assignee)?.email || "";
 
@@ -656,9 +627,9 @@ function SettingsContent() {
           "Chưa gửi được email kết quả"
         );
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error finalizing request decision:", err);
-      notify("Lỗi khi xử lý yêu cầu!", "error");
+      notify("Lỗi khi xử lý yêu cầu: " + (err?.message || err), "error");
     }
   };
 
@@ -760,8 +731,10 @@ function SettingsContent() {
   );
 
   // Business trip approvals list (Trưởng phòng & Admin only)
-  // Đơn công tác chờ duyệt — 2 cấp: Trưởng phòng/Tổ trưởng xác nhận (manager) -> HCNS duyệt cuối (hcns).
-  // Mỗi task được gắn thêm `stage` để UI hiển thị đúng badge + nút thao tác tương ứng.
+  // Đơn công tác chờ duyệt. Mỗi task được gắn thêm `stage` để UI hiện đúng badge +
+  // nút thao tác. Khi luồng chỉ còn 1 cấp (không ai giữ cờ duyệt cuối), các đơn CŨ
+  // đang kẹt ở bước HCNS được trả về cho chính cấp 1 (+ Admin) bấm nốt một lần là
+  // xong — nếu không thì chúng nằm lại vĩnh viễn vì cấp 2 không còn ai.
   const pendingTrips = useMemo(() => {
     if (!currentUser || !isApprover) return [];
     const isUserAdmin = currentUser.isAdmin || (currentUser.role || "").toLowerCase() === "admin";
@@ -770,21 +743,22 @@ function SettingsContent() {
       .filter(t => t.status === "pending_approval" && (t.title.toLowerCase().startsWith("công tác") || t.title.toLowerCase().includes("cong tac")))
       .map(t => ({ ...t, stage: getRequestStage(t) }))
       .filter(t => {
-        if (t.stage === "manager") {
-          return isLeaveTripCap1Approver({
-            currentUserName: currentUser.name,
-            currentUserRole: currentUser.role,
-            currentUserIsAdmin: isUserAdmin,
-            currentUserDepartment: currentUser.department,
-            requesterName: t.assignee,
-            requesterDepartment: departmentOfPerson(t.assignee),
-            taskNotes: t.notes,
-            taskTitleLower: t.title.toLowerCase(),
-          });
-        }
+        const isCap1 = isLeaveTripCap1Approver({
+          currentUserName: currentUser.name,
+          currentUserRole: currentUser.role,
+          currentUserIsAdmin: isUserAdmin,
+          currentUserDepartment: currentUser.department,
+          requesterName: t.assignee,
+          requesterDepartment: departmentOfPerson(t.assignee),
+          taskNotes: t.notes,
+          taskTitleLower: t.title.toLowerCase(),
+        });
+        if (t.stage === "manager") return isCap1;
+        // Đơn tồn ở bước HCNS mà luồng đã rút còn 1 cấp -> trả về cho cấp 1 + Admin
+        if (!cap2Enabled.trip) return isUserAdmin || isCap1;
         return isLeaveTripCap2Approver({ currentUserIsAdmin: isUserAdmin, approvalPerms, isTrip: true });
       });
-  }, [tasks, currentUser, isApprover, approvalPerms]);
+  }, [tasks, currentUser, isApprover, approvalPerms, cap2Enabled, departmentOfPerson]);
 
   // Đơn nghỉ phép chờ duyệt — cùng luồng 2 cấp, giữ nguyên các quy tắc đặc cách hiện có
   // (người duyệt được chỉ định tường minh, Quỳnh/Hằng, Hoành Anh/Quyên) ở cấp 1.
@@ -800,21 +774,22 @@ function SettingsContent() {
       })
       .map(t => ({ ...t, stage: getRequestStage(t) }))
       .filter(t => {
-        if (t.stage === "manager") {
-          return isLeaveTripCap1Approver({
-            currentUserName: currentUser.name,
-            currentUserRole: currentUser.role,
-            currentUserIsAdmin: isUserAdmin,
-            currentUserDepartment: currentUser.department,
-            requesterName: t.assignee,
-            requesterDepartment: departmentOfPerson(t.assignee),
-            taskNotes: t.notes,
-            taskTitleLower: t.title.toLowerCase(),
-          });
-        }
+        const isCap1 = isLeaveTripCap1Approver({
+          currentUserName: currentUser.name,
+          currentUserRole: currentUser.role,
+          currentUserIsAdmin: isUserAdmin,
+          currentUserDepartment: currentUser.department,
+          requesterName: t.assignee,
+          requesterDepartment: departmentOfPerson(t.assignee),
+          taskNotes: t.notes,
+          taskTitleLower: t.title.toLowerCase(),
+        });
+        if (t.stage === "manager") return isCap1;
+        // Đơn tồn ở bước HCNS mà luồng đã rút còn 1 cấp -> trả về cho cấp 1 + Admin
+        if (!cap2Enabled.leave) return isUserAdmin || isCap1;
         return isLeaveTripCap2Approver({ currentUserIsAdmin: isUserAdmin, approvalPerms, isTrip: false });
       });
-  }, [tasks, currentUser, isApprover, approvalPerms]);
+  }, [tasks, currentUser, isApprover, approvalPerms, cap2Enabled, departmentOfPerson]);
 
   // ─── Nhóm "Danh sách đã duyệt" ───
   // Ba danh sách dời nguyên từ cột phải trang Lịch công việc. Bên đó lọc trên
@@ -1575,6 +1550,10 @@ function SettingsContent() {
                               if (missionMatch) cleanMission = missionMatch[1].trim();
                             }
                             const isManagerStage = req.stage === "manager";
+                            // Luồng 1 cấp (không ai giữ cờ "Duyệt công tác"): cấp 1 bấm là
+                            // duyệt cuối luôn, kể cả đơn cũ đang kẹt ở bước HCNS.
+                            const twoStep = cap2Enabled.trip;
+                            const showFinalButtons = !twoStep || !isManagerStage;
 
                             return (
                               <tr key={req.id} className="hover:bg-slate-50/50 transition-all duration-150">
@@ -1591,48 +1570,31 @@ function SettingsContent() {
                                 <td className="py-3.5 px-4 text-slate-450 font-normal max-w-[200px] truncate" title={cleanMission}>{cleanMission}</td>
                                 <td className="py-3.5 px-4">
                                   <span className={`inline-block px-2.5 py-1 rounded-full border text-[9px] font-extrabold uppercase ${
-                                    isManagerStage ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                    !twoStep
+                                      ? "bg-slate-50 text-slate-600 border-slate-200"
+                                      : isManagerStage ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-indigo-50 text-indigo-700 border-indigo-200"
                                   }`}>
-                                    {isManagerStage ? "Cấp 1: Trưởng phòng" : "Cấp 2: HCNS"}
+                                    {!twoStep ? "Duyệt 1 cấp" : isManagerStage ? "Cấp 1: Trưởng phòng" : "Cấp 2: HCNS"}
                                   </span>
                                 </td>
                                 <td className="py-3.5 px-4">
                                   <div className="flex items-center justify-center gap-2">
-                                    {isManagerStage ? (
-                                      <>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleCap1Confirm(req, true)}
-                                          className="bg-[#005BAC] hover:bg-blue-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
-                                        >
-                                          Phê duyệt & chuyển HCNS
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleFinalDecision(req, true, false)}
-                                          className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
-                                        >
-                                          Từ chối
-                                        </button>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleFinalDecision(req, true, true)}
-                                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
-                                        >
-                                          Xác nhận & gửi mail
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleFinalDecision(req, true, false)}
-                                          className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
-                                        >
-                                          Từ chối
-                                        </button>
-                                      </>
-                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => showFinalButtons ? handleFinalDecision(req, true, true) : handleCap1Confirm(req, true)}
+                                      className={`text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer ${
+                                        showFinalButtons ? "bg-emerald-600 hover:bg-emerald-700" : "bg-[#005BAC] hover:bg-blue-700"
+                                      }`}
+                                    >
+                                      {showFinalButtons ? "Phê duyệt & gửi mail" : "Phê duyệt & chuyển HCNS"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleFinalDecision(req, true, false)}
+                                      className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
+                                    >
+                                      Từ chối
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -1669,6 +1631,10 @@ function SettingsContent() {
                               if (reasonMatch) cleanReason = reasonMatch[1].trim();
                             }
                             const isManagerStage = req.stage === "manager";
+                            // Luồng 1 cấp (không ai giữ cờ "Duyệt nghỉ phép"): cấp 1 bấm là
+                            // duyệt cuối luôn, kể cả đơn cũ đang kẹt ở bước HCNS.
+                            const twoStep = cap2Enabled.leave;
+                            const showFinalButtons = !twoStep || !isManagerStage;
 
                             return (
                               <tr key={req.id} className="hover:bg-slate-50/50 transition-all duration-150">
@@ -1684,48 +1650,31 @@ function SettingsContent() {
                                 <td className="py-3.5 px-4 text-slate-450 font-normal max-w-[250px] truncate" title={cleanReason}>{cleanReason}</td>
                                 <td className="py-3.5 px-4">
                                   <span className={`inline-block px-2.5 py-1 rounded-full border text-[9px] font-extrabold uppercase ${
-                                    isManagerStage ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                    !twoStep
+                                      ? "bg-slate-50 text-slate-600 border-slate-200"
+                                      : isManagerStage ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-indigo-50 text-indigo-700 border-indigo-200"
                                   }`}>
-                                    {isManagerStage ? "Cấp 1: Trưởng phòng" : "Cấp 2: HCNS"}
+                                    {!twoStep ? "Duyệt 1 cấp" : isManagerStage ? "Cấp 1: Trưởng phòng" : "Cấp 2: HCNS"}
                                   </span>
                                 </td>
                                 <td className="py-3.5 px-4">
                                   <div className="flex items-center justify-center gap-2">
-                                    {isManagerStage ? (
-                                      <>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleCap1Confirm(req, false)}
-                                          className="bg-[#005BAC] hover:bg-blue-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
-                                        >
-                                          Phê duyệt & chuyển HCNS
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleFinalDecision(req, false, false)}
-                                          className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
-                                        >
-                                          Từ chối
-                                        </button>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleFinalDecision(req, false, true)}
-                                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
-                                        >
-                                          Xác nhận & gửi mail
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleFinalDecision(req, false, false)}
-                                          className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
-                                        >
-                                          Từ chối
-                                        </button>
-                                      </>
-                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => showFinalButtons ? handleFinalDecision(req, false, true) : handleCap1Confirm(req, false)}
+                                      className={`text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer ${
+                                        showFinalButtons ? "bg-emerald-600 hover:bg-emerald-700" : "bg-[#005BAC] hover:bg-blue-700"
+                                      }`}
+                                    >
+                                      {showFinalButtons ? "Phê duyệt & gửi mail" : "Phê duyệt & chuyển HCNS"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleFinalDecision(req, false, false)}
+                                      className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer"
+                                    >
+                                      Từ chối
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -1764,6 +1713,11 @@ function SettingsContent() {
                         <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
                           {filteredExplanations.map((exp) => {
                             const isManagerStage = justificationIsManagerStage(exp);
+                            // Giải trình từ trước tới nay CHỈ có một bước ghi (status ->
+                            // "Đã duyệt"); hai nhãn "Cấp 1/Cấp 2" chỉ nói đơn này rơi vào
+                            // tay ai. Không còn ai giữ cờ "Duyệt giải trình công" thì cũng
+                            // không còn cấp 2 để phân biệt — hiện thẳng "Duyệt 1 cấp".
+                            const twoStep = cap2Enabled.justification;
                             return (
                             <tr key={exp.id} className="hover:bg-slate-50/50 transition-all duration-150">
                               <td className="py-3.5 px-4 font-bold text-slate-800 flex items-center gap-2">
@@ -1778,9 +1732,11 @@ function SettingsContent() {
                               <td className="py-3.5 px-4 font-mono text-[#005BAC]">{exp.propose}</td>
                               <td className="py-3.5 px-4">
                                 <span className={`inline-block px-2.5 py-1 rounded-full border text-[9px] font-extrabold uppercase ${
-                                  isManagerStage ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                  !twoStep
+                                    ? "bg-slate-50 text-slate-600 border-slate-200"
+                                    : isManagerStage ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-indigo-50 text-indigo-700 border-indigo-200"
                                 }`}>
-                                  {isManagerStage ? "Cấp 1: Trưởng phòng" : "Cấp 2: HCNS"}
+                                  {!twoStep ? "Duyệt 1 cấp" : isManagerStage ? "Cấp 1: Trưởng phòng" : "Cấp 2: HCNS"}
                                 </span>
                               </td>
                               <td className="py-3.5 px-4">
@@ -1789,7 +1745,7 @@ function SettingsContent() {
                                     type="button"
                                     onClick={() => handleApproveJustification(exp.id)}
                                     className={`text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm cursor-pointer ${
-                                      isManagerStage ? "bg-[#005BAC] hover:bg-blue-700" : "bg-emerald-600 hover:bg-emerald-700"
+                                      twoStep && isManagerStage ? "bg-[#005BAC] hover:bg-blue-700" : "bg-emerald-600 hover:bg-emerald-700"
                                     }`}
                                   >
                                     Duyệt

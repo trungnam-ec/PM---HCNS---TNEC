@@ -482,11 +482,21 @@ export default function SigningFormModal({
       let maPhieu: string | null = existing?.ma_phieu ?? null;
 
       if (existing) {
-        const { error } = await supabase
+        // `.select()` + đếm dòng: RLS chặn UPDATE thì PostgreSQL không báo lỗi,
+        // chỉ sửa 0 dòng — form sẽ đóng lại như thể đã lưu trong khi CSDL không
+        // đổi gì (cùng lớp lỗi với sự cố 16/09/2026, xem migration 081).
+        const { data: hit, error } = await supabase
           .from("signing_submissions")
           .update({ ...payload, ...routeFields, ...(submit ? { status: route[0] } : {}) })
-          .eq("id", existing.id);
+          .eq("id", existing.id)
+          .select("id");
         if (error) throw error;
+        if (!hit?.length) {
+          throw new Error(
+            "Máy chủ từ chối ghi: tài khoản của bạn không được phép sửa phiếu ở bước này. " +
+            "Phiếu KHÔNG thay đổi."
+          );
+        }
       } else {
         const { data, error } = await supabase.from("signing_submissions").insert([{
           ...payload,

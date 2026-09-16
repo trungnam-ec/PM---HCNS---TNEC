@@ -46,6 +46,14 @@ const QUICK_TYPE_RE = /\.(pdf|png|jpe?g|webp)$/i;
 const labelCls = "text-[10px] font-bold text-slate-400 uppercase tracking-wider";
 // Nhãn cột trên thanh tiêu đề nền xanh — cùng cỡ chữ với labelCls, khác mỗi màu.
 const headCls = "text-[10px] font-extrabold text-white uppercase tracking-wider";
+
+// Câu báo khi UPDATE đi lọt nhưng sửa 0 dòng — tức RLS đã chặn. PostgreSQL
+// không coi đó là lỗi, nên nếu không tự kiểm thì giao diện sẽ báo thành công
+// trong khi CSDL không đổi gì (sự cố 16/09/2026 — cấp 1 và Phó Giám đốc bấm
+// duyệt/trả lại mà phiếu đứng im, vá ở migration 081).
+const KHONG_GHI_DUOC =
+  "Máy chủ từ chối ghi: tài khoản của bạn không được phép đổi trạng thái phiếu ở bước này. " +
+  "Phiếu KHÔNG thay đổi. Báo quản trị kiểm tra quyền duyệt (migration 081).";
 const inputCls =
   "border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 font-semibold text-slate-800 text-xs bg-white transition-all";
 
@@ -980,11 +988,17 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
       // thì về luồng cũ 'cho_pho_giam_doc'.
       const firstStep: SigningStatus =
         row.route && row.route.length ? row.route[0] : "cho_pho_giam_doc";
-      const { error } = await supabase
+      // `.select()` + đếm dòng, KHÔNG chỉ kiểm `error`: RLS chặn UPDATE thì
+      // PostgreSQL không báo lỗi, nó sửa 0 dòng. Thiếu vế này là hỏng trong im
+      // lặng — modal đóng, email bắn đi, mà CSDL không đổi gì (sự cố 16/09/2026,
+      // xem migration 081).
+      const { data: hit, error } = await supabase
         .from("signing_submissions")
         .update({ status: firstStep })
-        .eq("id", row.id);
+        .eq("id", row.id)
+        .select("id");
       if (error) throw error;
+      if (!hit?.length) throw new Error(KHONG_GHI_DUOC);
 
       // ─── ĐÓNG NGAY, EMAIL CHẠY NGẦM ───
       // Trước đây phải chờ xong cả `fetchStageApproverEmails` lẫn cú gọi SMTP
@@ -1040,8 +1054,10 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
         Object.assign(patch, { ke_toan_by: who, ke_toan_at: now, ngay_chi: now.slice(0, 10) });
       }
 
-      const { error } = await supabase.from("signing_submissions").update(patch).eq("id", row.id);
+      const { data: hit, error } = await supabase
+        .from("signing_submissions").update(patch).eq("id", row.id).select("id");
       if (error) throw error;
+      if (!hit?.length) throw new Error(KHONG_GHI_DUOC);
 
       // ─── ĐÓNG NGAY, EMAIL CHẠY NGẦM ───
       // Trước đây phải chờ xong cả `fetchStageApproverEmails` lẫn cú gọi SMTP
@@ -1077,14 +1093,15 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
     dangChay.current = true;
     setBusy(true); setErr("");
     try {
-      const { error } = await supabase.from("signing_submissions").update({
+      const { data: hit, error } = await supabase.from("signing_submissions").update({
         status: "tra_lai",
         tra_lai_tu: row.status,
         tra_lai_boi: user.name || user.email,
         tra_lai_luc: new Date().toISOString(),
         tra_lai_ly_do: lyDo.trim(),
-      }).eq("id", row.id);
+      }).eq("id", row.id).select("id");
       if (error) throw error;
+      if (!hit?.length) throw new Error(KHONG_GHI_DUOC);
 
       // ─── ĐÓNG NGAY, EMAIL CHẠY NGẦM ───
       // Trước đây phải chờ xong cả `fetchStageApproverEmails` lẫn cú gọi SMTP

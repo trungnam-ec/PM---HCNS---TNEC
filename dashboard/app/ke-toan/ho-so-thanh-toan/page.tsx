@@ -20,8 +20,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
-import { apiFetch } from "@/lib/apiClient";
 import { supabase } from "@/lib/supabase";
+import { extractPaymentDossierInBrowser } from "@/lib/paymentDossierExtract";
 import { normalizeName } from "@/lib/approvers";
 import { useConfirmBox } from "@/components/ConfirmDialog";
 import {
@@ -314,56 +314,27 @@ export default function PaymentDossierPage() {
     for (let i = 0; i < list.length; i++) {
       const file = list[i];
       setProcessingText(`Đang phân tích ${i + 1}/${list.length}: ${file.name}...`);
-      let uploadedPath: string | null = null;
       try {
-        // 1) Tải file THẲNG lên Supabase Storage (né giới hạn 4.5MB của Vercel).
-        const ext = (file.name.split(".").pop() || "bin").toLowerCase();
-        uploadedPath = `tmp/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-        const up = await supabase.storage
-          .from("payment-dossiers")
-          .upload(uploadedPath, file, { upsert: false, contentType: file.type || undefined });
-        if (up.error) throw new Error("Tải tệp lên kho tạm thất bại: " + up.error.message);
-
-        // 2) Gọi route CHỈ với đường dẫn (JSON nhỏ) — server tự tải file về gửi OpenAI.
-        const headers: Record<string, string> = {
-          Authorization: `Bearer ${key}`,
-          "x-openai-model": mdl,
-          "Content-Type": "application/json",
-        };
-        const res = await apiFetch("/api/analyze-payment-dossier", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ storage_path: uploadedPath, filename: file.name }),
+        // Gọi OpenAI THẲNG từ trình duyệt (không qua server) -> né trần 60s của
+        // Vercel, đọc hồ sơ/hợp đồng nhiều trang bao lâu cũng được.
+        const { data: aiData, validationScores } = await extractPaymentDossierInBrowser({
+          apiKey: key,
+          model: mdl,
+          file,
         });
-        // Đọc text trước rồi mới parse: khi server trả lỗi hạ tầng (text thô) thì
-        // báo đúng nội dung thay vì "Unexpected token ... is not valid JSON".
-        const rawBody = await res.text();
-        let data: any;
-        try {
-          data = JSON.parse(rawBody);
-        } catch {
-          throw new Error(res.ok ? "Máy chủ trả về dữ liệu không hợp lệ." : (rawBody.slice(0, 180) || `Lỗi HTTP ${res.status}`));
-        }
-        if (!res.ok || data.error) throw new Error(data.error || `Lỗi HTTP ${res.status}`);
-        const ai = (data.data || {}) as PaymentDossierAi;
-        const draft = draftFromAi(ai, file.name, data.validationScores || {});
+        const ai = (aiData || {}) as PaymentDossierAi;
+        const draft = draftFromAi(ai, file.name, validationScores || {});
         // Phòng ban ưu tiên tra DANH SÁCH NHÂN VIÊN theo tên người đề nghị.
-        // Tra được -> ghi đè. Không tra được mà AI lỡ trả TÊN CÔNG TY -> để trống
-        // (thà rỗng còn hơn hiển thị sai), kế toán tự điền.
+        // Tra được -> ghi đè. Không tra được mà AI lỡ trả TÊN CÔNG TY -> để trống.
         const dept = deptForName(draft.nguoi_de_nghi_tt);
-        if (dept) {
-          draft.don_vi_cong_tac = dept;
-        } else if (looksLikeCompany(draft.don_vi_cong_tac)) {
-          draft.don_vi_cong_tac = "";
-        }
+        if (dept) draft.don_vi_cong_tac = dept;
+        else if (looksLikeCompany(draft.don_vi_cong_tac)) draft.don_vi_cong_tac = "";
         newDrafts.push(draft);
         ok++;
       } catch (err: any) {
         console.error("Analyze error", file.name, err);
         fail++;
         setNotice({ type: "error", text: `Lỗi phân tích "${file.name}": ${err.message || String(err)}` });
-        // Route chỉ xoá file tạm khi thành công -> lỗi thì client tự dọn.
-        if (uploadedPath) supabase.storage.from("payment-dossiers").remove([uploadedPath]).catch(() => {});
       }
     }
 

@@ -51,18 +51,22 @@ Trả về object "data" với 11 key sau (tiếng Việt có dấu, chính xác
 - BẮT BUỘC trả về dạng "DD/MM/YYYY". VD: "ngày 13 tháng 3 năm 2026" → "13/03/2026"
 
 ### 2. "Người nhận tiền"
-- Tìm trong mục "Người nhận tiền", "Đơn vị thụ hưởng", "Tên người hưởng", "Người thụ hưởng"
+- Tìm trong mục "Người nhận tiền", "Đơn vị thụ hưởng", "Tên người hưởng", "Người thụ hưởng".
+- Với "Giấy đề nghị chuyển tiền": lấy ở "Đơn vị/Cá nhân thụ hưởng", "Tên tài khoản thụ hưởng", "Người nhận".
+- ĐÂY LÀ BÊN NHẬN TIỀN (công ty/đối tác/nhà cung cấp hoặc cá nhân được chi tiền), KHÁC HẲN "Người đề nghị thanh toán" (nhân viên nội bộ ký đơn) — TUYỆT ĐỐI KHÔNG nhầm hai bên.
 
 ### 3. "Nội dung thanh toán"
-- Tìm trong mục "Nội dung", "Nội dung thanh toán", "Diễn giải", "Lý do thanh toán", "V/v", "Về việc", "Trích yếu"
-- Tóm tắt ngắn gọn nội dung thanh toán
+- Tìm ở "Nội dung", "Nội dung thanh toán", "Nội dung chuyển tiền", "Nội dung chuyển khoản", "Diễn giải", "Lý do thanh toán / chuyển tiền", "V/v", "Về việc", "Trích yếu".
+- GHI ĐẦY ĐỦ, CHÍNH XÁC nội dung đúng như trên phiếu (giữ nguyên câu chữ, kèm số hợp đồng / đợt / tháng / tên gói thầu nếu có). KHÔNG rút gọn làm mất ý, KHÔNG tự diễn giải thêm.
+- Nếu nội dung trải trên nhiều dòng, ghép lại thành MỘT câu hoàn chỉnh; chỉ bỏ ký tự thừa và ngắt dòng.
 
 ### 4. "Số tiền đề nghị thanh toán" — TRƯỜNG QUAN TRỌNG NHẤT
 Quét TOÀN BỘ tài liệu theo thứ tự ưu tiên:
-1. Tìm "Số tiền đề nghị", "Tổng số tiền", "Số tiền thanh toán", "Số tiền đề nghị thanh toán", "Tổng cộng", "Thành tiền"
+1. Tìm "Số tiền đề nghị", "Số tiền chuyển", "Số tiền bằng số", "Tổng số tiền", "Số tiền thanh toán", "Số tiền đề nghị thanh toán", "Tổng cộng", "Thành tiền"
 2. Tìm số tiền lớn nhất đi kèm VND/VNĐ/đồng/USD
 3. Tìm trong bảng: dòng cuối (TỔNG CỘNG) của bảng chi tiết
-4. Tìm số tiền viết bằng chữ: "Năm triệu đồng" → 5.000.000
+4. Tìm số tiền viết bằng chữ ("Bằng chữ:", "Số tiền viết bằng chữ"): "Năm triệu đồng" → 5.000.000
+⚠️ ĐỐI CHIẾU số bằng số với số bằng chữ; nếu lệch nhau thì lấy con số KHỚP với dòng bằng chữ.
 ⚠️ TUYỆT ĐỐI KHÔNG trả "N/A" nếu có BẤT KỲ con số nào đi kèm đơn vị tiền tệ
 ⚠️ Chỉ trả về CON SỐ, không kèm đơn vị. VD: "200000" hoặc "5000000" (không dùng dấu phân cách)
 
@@ -79,10 +83,12 @@ Quét TOÀN BỘ tài liệu theo thứ tự ưu tiên:
 - ⚠️ TUYỆT ĐỐI KHÔNG lấy tên công ty / nhà thầu / đơn vị thụ hưởng làm giá trị trường này (bất kỳ chuỗi nào chứa "Công ty", "TNHH", "Cổ phần", "CP", "JSC", "Corp", "DNTN"). Nếu chỉ thấy tên công ty mà KHÔNG có phòng/ban cụ thể của người đề nghị -> trả "N/A".
 
 ### 8. "Số tài khoản"
-- Tìm "Số TK", "STK", "Số tài khoản", "Account number"
+- Tìm "Số TK", "STK", "Số tài khoản", "Account number", "Tài khoản thụ hưởng".
+- LÀ TÀI KHOẢN CỦA NGƯỜI NHẬN TIỀN (bên thụ hưởng), KHÔNG lấy tài khoản của công ty chi tiền. Chỉ lấy dãy chữ số, giữ nguyên, không thêm dấu cách.
 
 ### 9. "Tại Ngân hàng"
-- Tìm "Ngân hàng", "NH", "Bank", "Tại NH"
+- Tìm "Ngân hàng", "NH", "Bank", "Tại NH", "Ngân hàng thụ hưởng".
+- Là ngân hàng (kèm chi nhánh nếu có) ỨNG VỚI số tài khoản của NGƯỜI NHẬN TIỀN ở trường trên.
 
 ### 10. "Hạn Thanh toán"
 - Tìm "Hạn thanh toán", "Thời hạn thanh toán", "Thanh toán trước ngày"

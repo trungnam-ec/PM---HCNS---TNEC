@@ -35,7 +35,7 @@ import { useSidebar } from "./SidebarContext";
 import { useDepartments } from "@/lib/departments";
 import ThemeToggle from "./ThemeToggle";
 import { supabase } from "@/lib/supabase";
-import { fetchApprovalPermissions, hasAnyApprovalPermission, isMarketingTeamLeader } from "@/lib/approvers";
+import { fetchApprovalPermissions, canOpenRequestsInbox, isMarketingTeamLeader } from "@/lib/approvers";
 import { emailFieldMatches } from "@/lib/emailMatch";
 import { useTenantConfig } from "@/lib/tenantConfig";
 import { usePlan } from "@/lib/plan";
@@ -301,7 +301,10 @@ export default function Sidebar() {
         const roleLower = role.toLowerCase();
         const hasApprovalPrivileges =
           isAdmin ||
-          hasAnyApprovalPermission(perms) ||
+          // canOpenRequestsInbox: có quyền duyệt HOẶC chỉ có cờ xem toàn bộ đơn
+          // (085). Thiếu vế sau thì người HCNS được cấp cờ xem lại không thấy
+          // mục "Duyệt yêu cầu" đâu để mà vào xem.
+          canOpenRequestsInbox(perms) ||
           isMarketingTeamLeader(empData?.name) ||
           roleLower.includes("tổ trưởng") ||
           roleLower.includes("to truong") ||

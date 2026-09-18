@@ -46,7 +46,7 @@ const FLAG_GROUPS: { title: string; note?: string; flags: { key: string; label: 
   {
     title: "Quyền phê duyệt",
     // 3 cờ đầu vừa là quyền, vừa là CÔNG TẮC bật cấp 2 — xem lib/approvers.ts.
-    note: "3 cờ đầu vừa là quyền duyệt cuối, vừa là công tắc bật cấp 2. Không ai trong công ty giữ cờ nào thì luồng đó chỉ còn 1 cấp: Trưởng phòng/Tổ trưởng duyệt là đơn xong luôn. Tick cho dù chỉ MỘT người là luồng quay lại 2 cấp cho tất cả — đừng tick chỉ để cho ai đó nhìn thấy đơn.",
+    note: "3 cờ đầu vừa là quyền duyệt cuối, vừa là công tắc bật cấp 2. Không ai trong công ty giữ cờ nào thì luồng đó chỉ còn 1 cấp: Trưởng phòng/Tổ trưởng duyệt là đơn xong luôn. Tick cho dù chỉ MỘT người là luồng quay lại 2 cấp cho tất cả — đừng tick chỉ để cho ai đó nhìn thấy đơn. Cần cho xem mà KHÔNG bật cấp 2 thì dùng cờ “Xem toàn bộ đơn nhân sự” ở nhóm bên dưới.",
     flags: [
       { key: "can_approve_trip", label: "Duyệt công tác", desc: "Duyệt cuối đơn đi công tác (cấp 2 — HCNS). Bỏ tick ở mọi người = luồng 1 cấp" },
       { key: "can_approve_leave", label: "Duyệt nghỉ phép", desc: "Duyệt cuối đơn nghỉ phép (cấp 2 — HCNS). Bỏ tick ở mọi người = luồng 1 cấp" },
@@ -58,6 +58,7 @@ const FLAG_GROUPS: { title: string; note?: string; flags: { key: string; label: 
   {
     title: "Quyền xem / quản lý dữ liệu",
     flags: [
+      { key: "can_view_all_requests", label: "Xem toàn bộ đơn nhân sự", desc: "Công tác, nghỉ phép, giải trình của TOÀN công ty — CHỈ XEM, không có nút duyệt, không bật lại cấp 2" },
       { key: "can_view_suggestions", label: "Góp ý & Kiến nghị", desc: "Xem và xử lý mọi góp ý gửi về hệ thống" },
       { key: "can_manage_employees", label: "Quản lý hồ sơ nhân sự", desc: "Sửa / xoá / khoá hồ sơ trong Danh sách nhân viên" },
       { key: "can_view_employees", label: "Xem full danh sách nhân viên", desc: "Không có cờ này: chỉ thấy hồ sơ của chính mình" },

@@ -16,6 +16,7 @@ import { useDepartments } from "@/lib/departments";
 import { useTenantConfig, invalidateTenantConfig, bookingSkipCap1Of } from "@/lib/tenantConfig";
 import {
   hasAnyApprovalPermission,
+  canOpenRequestsInbox,
   isMarketingTeamLeader,
   isBookingCap1Approver,
   getRequestStage,
@@ -760,7 +761,9 @@ function SettingsContent() {
   const isApprover = useMemo(() => {
     if (!currentUser) return false;
     if (currentUser.isAdmin) return true;
-    if (hasAnyApprovalPermission(approvalPerms)) return true;
+    // canOpenRequestsInbox = có quyền duyệt HOẶC chỉ có cờ xem toàn bộ đơn (085).
+    // Người chỉ có cờ xem vào được màn hình và thấy đủ đơn, nhưng không có nút bấm.
+    if (canOpenRequestsInbox(approvalPerms)) return true;
     // Tổ trưởng Marketing duyệt cấp 1 cho thành viên tổ Marketing
     if (isMarketingTeamLeader(currentUser.name)) return true;
     const roleLower = currentUser.role.toLowerCase();
@@ -823,7 +826,7 @@ function SettingsContent() {
     return tasks
       .filter(t => t.status === "pending_approval" && (t.title.toLowerCase().startsWith("công tác") || t.title.toLowerCase().includes("cong tac")))
       .map(t => ({ ...t, stage: getRequestStage(t) }))
-      .filter(t => {
+      .map(t => {
         const isCap1 = isLeaveTripCap1Approver({
           currentUserName: currentUser.name,
           currentUserRole: currentUser.role,
@@ -834,11 +837,16 @@ function SettingsContent() {
           taskNotes: t.notes,
           taskTitleLower: t.title.toLowerCase(),
         });
-        if (t.stage === "manager") return isCap1;
-        // Đơn tồn ở bước HCNS mà luồng đã rút còn 1 cấp -> trả về cho cấp 1 + Admin
-        if (!cap2Enabled.trip) return isUserAdmin || isCap1;
-        return isLeaveTripCap2Approver({ currentUserIsAdmin: isUserAdmin, approvalPerms, isTrip: true });
-      });
+        // canAct = ĐƯỢC BẤM duyệt/từ chối. Tách khỏi việc được THẤY đơn: cờ
+        // can_view_all_requests (085) chỉ mở tầm nhìn, không kèm nút bấm.
+        const canAct =
+          t.stage === "manager" ? isCap1
+          // Đơn tồn ở bước HCNS mà luồng đã rút còn 1 cấp -> trả về cho cấp 1 + Admin
+          : !cap2Enabled.trip ? (isUserAdmin || isCap1)
+          : isLeaveTripCap2Approver({ currentUserIsAdmin: isUserAdmin, approvalPerms, isTrip: true });
+        return { ...t, canAct };
+      })
+      .filter(t => t.canAct || approvalPerms.canViewAllRequests);
   }, [tasks, currentUser, isApprover, approvalPerms, cap2Enabled, departmentOfPerson]);
 
   // Đơn nghỉ phép chờ duyệt — cùng luồng 2 cấp, giữ nguyên các quy tắc đặc cách hiện có
@@ -854,7 +862,7 @@ function SettingsContent() {
         return titleLower.startsWith("nghỉ phép") || titleLower.includes("nghi phep");
       })
       .map(t => ({ ...t, stage: getRequestStage(t) }))
-      .filter(t => {
+      .map(t => {
         const isCap1 = isLeaveTripCap1Approver({
           currentUserName: currentUser.name,
           currentUserRole: currentUser.role,
@@ -865,11 +873,13 @@ function SettingsContent() {
           taskNotes: t.notes,
           taskTitleLower: t.title.toLowerCase(),
         });
-        if (t.stage === "manager") return isCap1;
-        // Đơn tồn ở bước HCNS mà luồng đã rút còn 1 cấp -> trả về cho cấp 1 + Admin
-        if (!cap2Enabled.leave) return isUserAdmin || isCap1;
-        return isLeaveTripCap2Approver({ currentUserIsAdmin: isUserAdmin, approvalPerms, isTrip: false });
-      });
+        const canAct =
+          t.stage === "manager" ? isCap1
+          : !cap2Enabled.leave ? (isUserAdmin || isCap1)
+          : isLeaveTripCap2Approver({ currentUserIsAdmin: isUserAdmin, approvalPerms, isTrip: false });
+        return { ...t, canAct };
+      })
+      .filter(t => t.canAct || approvalPerms.canViewAllRequests);
   }, [tasks, currentUser, isApprover, approvalPerms, cap2Enabled, departmentOfPerson]);
 
   // ─── Nhóm "Danh sách đã duyệt" ───
@@ -979,18 +989,22 @@ function SettingsContent() {
     const isUserAdmin = currentUser.isAdmin || (currentUser.role || "").toLowerCase() === "admin";
 
     return explanations
-      .filter(e => {
-        if (isUserAdmin || approvalPerms.canApproveJustification) return true;
-        return isJustificationCap1Approver({
-          currentUserName: currentUser.name,
-          currentUserRole: currentUser.role,
-          currentUserIsAdmin: isUserAdmin,
-          currentUserDepartment: currentUser.department,
-          requesterName: e.name,
-          requesterDepartment: e.department,
-          designatedApprover: e.approver,
-        });
+      .map(e => {
+        const canAct = isUserAdmin || approvalPerms.canApproveJustification
+          ? true
+          : isJustificationCap1Approver({
+              currentUserName: currentUser.name,
+              currentUserRole: currentUser.role,
+              currentUserIsAdmin: isUserAdmin,
+              currentUserDepartment: currentUser.department,
+              requesterName: e.name,
+              requesterDepartment: e.department,
+              designatedApprover: e.approver,
+            });
+        return { ...e, canAct };
       })
+      // Cờ xem (085) mở tầm nhìn toàn công ty mà KHÔNG kèm nút duyệt.
+      .filter(e => e.canAct || approvalPerms.canViewAllRequests)
       // Ngày giải trình MỚI NHẤT lên đầu. Sắp lại ở client cho chắc (không phụ thuộc
       // thứ tự DB trả về); cùng ngày thì đơn tạo sau đứng trên (created_at giảm dần).
       .sort((a, b) => {
@@ -1706,6 +1720,12 @@ function SettingsContent() {
                                   </span>
                                 </td>
                                 <td className="py-3.5 px-4">
+                                  {/* Người chỉ có cờ XEM (085) thấy đơn nhưng không
+                                      có nút nào — quyền duyệt vẫn nằm ở nhóm cờ phê
+                                      duyệt, cờ xem không được phép nới ra. */}
+                                  {!req.canAct ? (
+                                    <p className="text-center text-[10px] font-bold text-slate-400 italic">Chỉ xem</p>
+                                  ) : (
                                   <div className="flex items-center justify-center gap-2">
                                     <button
                                       type="button"
@@ -1724,6 +1744,7 @@ function SettingsContent() {
                                       Từ chối
                                     </button>
                                   </div>
+                                  )}
                                 </td>
                               </tr>
                             );
@@ -1786,6 +1807,12 @@ function SettingsContent() {
                                   </span>
                                 </td>
                                 <td className="py-3.5 px-4">
+                                  {/* Người chỉ có cờ XEM (085) thấy đơn nhưng không
+                                      có nút nào — quyền duyệt vẫn nằm ở nhóm cờ phê
+                                      duyệt, cờ xem không được phép nới ra. */}
+                                  {!req.canAct ? (
+                                    <p className="text-center text-[10px] font-bold text-slate-400 italic">Chỉ xem</p>
+                                  ) : (
                                   <div className="flex items-center justify-center gap-2">
                                     <button
                                       type="button"
@@ -1804,6 +1831,7 @@ function SettingsContent() {
                                       Từ chối
                                     </button>
                                   </div>
+                                  )}
                                 </td>
                               </tr>
                             );
@@ -1868,6 +1896,11 @@ function SettingsContent() {
                                 </span>
                               </td>
                               <td className="py-3.5 px-4">
+                                {/* Chỉ có cờ XEM (085) thì thấy giải trình nhưng
+                                    không có nút — quyền duyệt vẫn ở nhóm cờ phê duyệt. */}
+                                {!exp.canAct ? (
+                                  <p className="text-center text-[10px] font-bold text-slate-400 italic">Chỉ xem</p>
+                                ) : (
                                 <div className="flex items-center justify-center gap-2">
                                   <button
                                     type="button"
@@ -1886,6 +1919,7 @@ function SettingsContent() {
                                     Từ chối
                                   </button>
                                 </div>
+                                )}
                               </td>
                             </tr>
                             );

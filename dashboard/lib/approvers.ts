@@ -8,6 +8,12 @@ export type ApprovalPermissions = {
   canApproveBooking: boolean;
   // Duyệt chi phúc lợi: hiếu hỷ/biến cố và thưởng lễ (trang C&B > Phúc lợi).
   canApproveBenefit: boolean;
+  // CHỈ XEM toàn bộ đơn công tác + nghỉ phép + giải trình của công ty (085).
+  // Sinh ra vì 3 cờ duyệt ở trên kiêm luôn vai CÔNG TẮC bật cấp 2: bỏ tick để
+  // rút luồng xuống 1 cấp thì người HCNS mất sạch tầm nhìn, mà tick lại để cho
+  // họ xem thì cả công ty quay về 2 cấp. Cờ này cắt đứt ràng buộc đó — xem được
+  // TẤT CẢ nhưng KHÔNG có nút duyệt và KHÔNG bật lại cấp 2.
+  canViewAllRequests: boolean;
   // Xem/quản lý Góp ý & Kiến nghị — không phải quyền "duyệt", tách riêng khỏi
   // hasAnyApprovalPermission() để không ảnh hưởng hiển thị menu "Duyệt yêu cầu".
   canViewSuggestions: boolean;
@@ -67,6 +73,7 @@ export const NO_APPROVAL_PERMISSIONS: ApprovalPermissions = {
   canApproveJustification: false,
   canApproveBooking: false,
   canApproveBenefit: false,
+  canViewAllRequests: false,
   canViewSuggestions: false,
   canManageEmployees: false,
   canViewInvoices: false,
@@ -92,6 +99,14 @@ export const NO_APPROVAL_PERMISSIONS: ApprovalPermissions = {
 
 export function hasAnyApprovalPermission(perms: ApprovalPermissions): boolean {
   return perms.canApproveTrip || perms.canApproveLeave || perms.canApproveJustification || perms.canApproveBooking;
+}
+
+// CỐ Ý tách khỏi hasAnyApprovalPermission(): hàm trên trả lời "có quyền DUYỆT
+// cuối không" và còn dính tới công tắc 1 cấp/2 cấp. Hàm này chỉ trả lời "có được
+// NHÌN THẤY hộp Duyệt yêu cầu không" — người giữ cờ xem vào được màn hình, thấy
+// đủ đơn toàn công ty, nhưng không có nút bấm nào.
+export function canOpenRequestsInbox(perms: ApprovalPermissions): boolean {
+  return hasAnyApprovalPermission(perms) || perms.canViewAllRequests;
 }
 
 // ━━━ NHÓM DUYỆT RIÊNG (bảng approval_groups) ━━━
@@ -671,6 +686,7 @@ export async function fetchApprovalPermissions(email?: string | null): Promise<A
       canApproveJustification: !!row.can_approve_justification,
       canApproveBooking: !!row.can_approve_booking,
       canApproveBenefit: !!row.can_approve_benefit,
+      canViewAllRequests: !!row.can_view_all_requests,
       canViewSuggestions: !!row.can_view_suggestions,
       canManageEmployees: !!row.can_manage_employees,
       canViewInvoices: !!row.can_view_invoices,

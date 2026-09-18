@@ -107,17 +107,22 @@ const VN_MAXBOUNDS: L.LatLngBoundsExpression = [
 
 // Các nền bản đồ (đều miễn phí, KHÔNG cần API key). Mỗi nền có thể gồm nhiều lớp
 // chồng lên nhau (VD Vệ tinh = ảnh + lớp nhãn địa danh/đường như Google Hybrid).
-type BaseKey = "voyager" | "satellite" | "topo" | "dark";
+//
+// 18/09/2026: CARTO đã đóng tile miễn phí — nền "Đường phố" (rastertiles/voyager)
+// và "Nền tối" (dark_all) bị in chìm chữ "API KEY REQUIRED" lên khắp bản đồ.
+// Đổi cả hai sang ArcGIS Online, cùng nhà với nền Vệ tinh/Địa hình đang chạy tốt,
+// vẫn không cần đăng ký khoá. Đừng quay lại basemaps.cartocdn.com nếu không mua key.
+type BaseKey = "street" | "satellite" | "topo" | "dark";
 type BaseLayerDef = { label: string; layers: { url: string; options: L.TileLayerOptions }[] };
 
 const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
 const BASE_LAYERS: Record<BaseKey, BaseLayerDef> = {
-  voyager: {
+  street: {
     label: "Đường phố",
     layers: [
       {
-        url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-        options: { subdomains: "abcd", maxZoom: 20, attribution: "© OpenStreetMap © CARTO" },
+        url: `${ESRI}/World_Street_Map/MapServer/tile/{z}/{y}/{x}`,
+        options: { maxZoom: 19, attribution: "© Esri, HERE, Garmin, © OpenStreetMap" },
       },
     ],
   },
@@ -149,9 +154,16 @@ const BASE_LAYERS: Record<BaseKey, BaseLayerDef> = {
   dark: {
     label: "Nền tối",
     layers: [
+      // Esri Dark Gray Canvas chỉ có dữ liệu tới zoom 16; đặt maxNativeZoom 16 để
+      // Leaflet phóng to ảnh của mức 16 thay vì tải ô "Map data not yet available".
       {
-        url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-        options: { subdomains: "abcd", maxZoom: 20, attribution: "© OpenStreetMap © CARTO" },
+        url: `${ESRI}/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+        options: { maxNativeZoom: 16, maxZoom: 19, attribution: "© Esri, HERE, Garmin" },
+      },
+      // Lớp nhãn địa danh chữ sáng, đi kèm nền tối.
+      {
+        url: `${ESRI}/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`,
+        options: { maxNativeZoom: 16, maxZoom: 19 },
       },
     ],
   },
@@ -171,7 +183,7 @@ export default function ProjectMap() {
   const [selected, setSelected] = useState<ProjectItem | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [baseLayer, setBaseLayer] = useState<BaseKey>("voyager");
+  const [baseLayer, setBaseLayer] = useState<BaseKey>("street");
 
   // ─── Nạp dữ liệu: danh sách BĐH (departments) + phần định vị (project_locations) ───
   const loadData = useCallback(async () => {

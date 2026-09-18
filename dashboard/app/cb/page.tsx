@@ -3657,8 +3657,12 @@ export default function CBPage() {
                       (session.user.user_metadata?.full_name || "").toLowerCase().includes("admin") ||
                       (session.user.user_metadata?.name || "").toLowerCase().includes("admin");
 
-      // Xem toàn bộ dữ liệu C&B (lương, phép, công, HĐ...): Admin hoặc cờ can_view_salary
-      const fullAccess = !!(isAdmin || perms.canViewSalary);
+      // Xem toàn bộ dữ liệu C&B (lương, phép, công, HĐ...): Admin, cờ
+      // can_view_salary, hoặc cờ can_view_all_requests (085 + 086 — user chốt
+      // 18/09/2026 cho người HCNS giữ cờ đó xem ngang Admin, kể cả lương).
+      // Vế thứ ba PHẢI đi kèm migration 086: bảng `contracts` bị RLS khoá theo
+      // can_view_salary_caller(), mở mỗi ở đây thì tab Hợp đồng hiện rỗng.
+      const fullAccess = !!(isAdmin || perms.canViewSalary || perms.canViewAllRequests);
       setHasFullAccess(fullAccess);
 
       // Xóa lịch trình công tác & xem bảng tổng hợp ngày công/thư mục lưu trữ chấm công:
@@ -3680,8 +3684,13 @@ export default function CBPage() {
       // RLS employees (migration 007) đã cho đúng nhóm này ghi cột override.
       setCanEditUsedLeave(!!(isAdmin || perms.canManageEmployees));
 
-      // Đăng ký nghỉ cho toàn công ty: Admin hoặc cờ can_approve_leave (HCNS duyệt phép).
-      setCanBulkLeave(!!(isAdmin || perms.canApproveLeave));
+      // Đăng ký nghỉ cho toàn công ty: Admin, cờ can_approve_leave (HCNS duyệt
+      // phép), hoặc cờ can_view_all_requests (085).
+      // Vế thứ ba là BẮT BUỘC: can_approve_leave kiêm luôn vai CÔNG TẮC bật cấp 2,
+      // nên Admin rút luồng xuống 1 cấp (bỏ tick ở mọi người) là người HCNS mất
+      // luôn nút đăng ký nghỉ hàng loạt ở đây — dù việc đó chẳng liên quan gì tới
+      // số cấp duyệt.
+      setCanBulkLeave(!!(isAdmin || perms.canApproveLeave || perms.canViewAllRequests));
 
       const userInfo = {
         email,

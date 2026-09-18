@@ -58,7 +58,7 @@ const FLAG_GROUPS: { title: string; note?: string; flags: { key: string; label: 
   {
     title: "Quyền xem / quản lý dữ liệu",
     flags: [
-      { key: "can_view_all_requests", label: "Xem toàn bộ đơn nhân sự", desc: "Công tác, nghỉ phép, giải trình của TOÀN công ty — CHỈ XEM, không có nút duyệt, không bật lại cấp 2" },
+      { key: "can_view_all_requests", label: "Xem toàn bộ đơn nhân sự + C&B", desc: "Công tác, nghỉ phép, giải trình toàn công ty (chỉ xem, không có nút duyệt, không bật lại cấp 2) + xem & thao tác module C&B như Admin, KỂ CẢ lương và HĐLĐ" },
       { key: "can_view_suggestions", label: "Góp ý & Kiến nghị", desc: "Xem và xử lý mọi góp ý gửi về hệ thống" },
       { key: "can_manage_employees", label: "Quản lý hồ sơ nhân sự", desc: "Sửa / xoá / khoá hồ sơ trong Danh sách nhân viên" },
       { key: "can_view_employees", label: "Xem full danh sách nhân viên", desc: "Không có cờ này: chỉ thấy hồ sơ của chính mình" },

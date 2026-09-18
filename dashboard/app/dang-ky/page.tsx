@@ -33,7 +33,7 @@ import {
   resolveBookingCap1Approvers,
   fetchCap2ApproverEmails,
 } from "@/lib/approvers";
-import { useTenantConfig } from "@/lib/tenantConfig";
+import { useTenantConfig, bookingSkipCap1Of } from "@/lib/tenantConfig";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { emailFieldMatches } from "@/lib/emailMatch";
 
@@ -203,9 +203,12 @@ function BookingContent() {
   const user = useCurrentUser();
   const currentUser = user.authenticated ? user : null;
   const approvalPerms = user.perms;
-  // Công tắc BỎ CẤP 1 (Cài đặt hệ thống > Phân quyền & Luồng duyệt): bật thì đơn
-  // đăng ký xe / phòng họp đi thẳng tới người điều phối, không qua Trưởng phòng.
-  const skipCap1 = !!useTenantConfig().booking_skip_cap1;
+  // Công tắc BỎ CẤP 1 (Cài đặt hệ thống > Phân quyền & Luồng duyệt) — TÁCH RIÊNG
+  // cho xe và cho phòng họp. Bật loại nào thì đơn loại đó đi thẳng tới người điều
+  // phối, không qua Trưởng phòng.
+  const tenantCfgForFlow = useTenantConfig();
+  const skipCap1For = (t?: string | null) =>
+    bookingSkipCap1Of(tenantCfgForFlow, t === "xe" ? "xe" : "phong_hop");
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [loadingList, setLoadingList] = useState(false);
@@ -480,8 +483,10 @@ function BookingContent() {
 
   // Nhãn trạng thái hiển thị. Khi đã bỏ cấp 1, `pending_hcns` không còn nghĩa
   // "Trưởng phòng đã phê duyệt" — đơn vào thẳng bước điều phối, chưa ai duyệt.
-  const statusLabelOf = (status: string) =>
-    skipCap1 && status === "pending_hcns" ? "Chờ điều phối" : (STATUS_META[status]?.label || status);
+  const statusLabelOf = (status: string, forType?: string | null) =>
+    skipCap1For(forType ?? bookingType) && status === "pending_hcns"
+      ? "Chờ điều phối"
+      : (STATUS_META[status]?.label || status);
 
   // Câu thông báo chung khi bị chặn vì trùng lịch
   const describeConflict = (c: { host_name: string; start_time: string; end_time: string; status: string }, resource: string) =>
@@ -553,7 +558,7 @@ function BookingContent() {
             notes: notes.trim() || null,
             // Công tắc bỏ cấp 1 (tenant_config.booking_skip_cap1): đơn vào thẳng
             // bước điều phối, không qua Trưởng phòng.
-            status: skipCap1 ? "pending_hcns" : "pending_manager",
+            status: skipCap1For(bookingType) ? "pending_hcns" : "pending_manager",
           },
         ])
         .select();
@@ -566,7 +571,7 @@ function BookingContent() {
       //  - Bỏ cấp 1: báo THẲNG người điều phối (cờ can_approve_booking). Trưởng
       //    phòng KHÔNG nhận gì cả — user chốt 16/09/2026 là im lặng hoàn toàn.
       try {
-        const approverEmails = skipCap1
+        const approverEmails = skipCap1For(bookingType)
           ? ((await fetchCap2ApproverEmails("booking")) || "")
           : resolveBookingCap1Approvers({
               requesterName: currentUser.name,
@@ -583,7 +588,7 @@ function BookingContent() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               mode: "notify_approver",
-              stage: skipCap1 ? "final" : "manager",
+              stage: skipCap1For(bookingType) ? "final" : "manager",
               smtpConfig: {
                 user: localStorage.getItem("tnec_cb_smtp_user") || "",
                 pass: localStorage.getItem("tnec_cb_smtp_pass") || "",
@@ -603,7 +608,7 @@ function BookingContent() {
 
       showToast(
         "success",
-        skipCap1
+        skipCap1For(bookingType)
           ? "Đã gửi đăng ký thành công! Yêu cầu đang chờ Hành chính điều phối."
           : "Đã gửi đăng ký thành công! Yêu cầu đang chờ Trưởng phòng phê duyệt."
       );
@@ -1222,7 +1227,7 @@ function BookingContent() {
                 <div className="p-6 space-y-4 overflow-y-auto text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className={`inline-block px-2.5 py-1 rounded-full border text-[9px] font-extrabold uppercase ${STATUS_META[selectedBooking.status]?.cls || ""}`}>
-                      {statusLabelOf(selectedBooking.status)}
+                      {statusLabelOf(selectedBooking.status, selectedBooking.booking_type)}
                     </span>
                     <span className="text-[10px] text-slate-400 font-semibold">Gửi lúc {formatDateTime(selectedBooking.created_at)}</span>
                   </div>
@@ -1453,7 +1458,8 @@ function BookingContent() {
                       thẳng được, không bắt ai bấm duyệt lấy lệ một lần nữa. */}
                   {isHcnsApproverUser &&
                     (selectedBooking.status === "pending_hcns" ||
-                      (skipCap1 && selectedBooking.status === "pending_manager")) && (
+                      (skipCap1For(selectedBooking.booking_type) &&
+                        selectedBooking.status === "pending_manager")) && (
                     <button
                       type="button"
                       disabled={processingAction || modalConflicts.length > 0}
@@ -1794,7 +1800,7 @@ function BookingContent() {
                       chỉ còn cảnh báo khi phòng ban đó KHÔNG có ai duyệt được. */}
                   {/* Bỏ cấp 1 thì đơn không đi qua cấp quản lý nữa -> cảnh báo
                       "phòng này không có ai duyệt" thành thừa và gây hoang mang. */}
-                  {!skipCap1 && department && cap1ApproverNames.length === 0 && (
+                  {!skipCap1For(bookingType) && department && cap1ApproverNames.length === 0 && (
                     <p className="flex items-start gap-1.5 text-[11px] font-semibold text-amber-700 pt-0.5">
                       <AlertTriangle size={12} className="text-amber-500 shrink-0 mt-0.5" />
                       <span>
@@ -2133,7 +2139,7 @@ function BookingContent() {
                               type="button"
                               key={b.id}
                               onClick={() => openBookingModal(b)}
-                              title={`${b.host_name} • ${formatDateTime(b.start_time)} ➔ ${formatDateTime(b.end_time)} • ${b.content} • ${statusLabelOf(b.status)}${conflictIds.has(b.id) ? " • ⚠ TRÙNG LỊCH" : ""} (bấm để xem chi tiết)`}
+                              title={`${b.host_name} • ${formatDateTime(b.start_time)} ➔ ${formatDateTime(b.end_time)} • ${b.content} • ${statusLabelOf(b.status, b.booking_type)}${conflictIds.has(b.id) ? " • ⚠ TRÙNG LỊCH" : ""} (bấm để xem chi tiết)`}
                               className={`absolute rounded-md px-2 flex items-center text-[10px] font-bold text-white truncate shadow-sm cursor-pointer z-10 hover:brightness-95 active:scale-[0.98] transition-all ${
                                 TIMELINE_STATUS_COLOR[b.status] || "bg-slate-400"
                               } ${conflictIds.has(b.id) ? "ring-2 ring-rose-500 ring-offset-1" : ""}`}
@@ -2189,7 +2195,7 @@ function BookingContent() {
                         <td className="py-3 px-4 text-slate-450 font-normal max-w-[220px] truncate" title={b.content}>{b.content}</td>
                         <td className="py-3 px-4">
                           <span className={`inline-block px-2.5 py-1 rounded-full border text-[9px] font-extrabold uppercase ${STATUS_META[b.status]?.cls || ""}`}>
-                            {statusLabelOf(b.status)}
+                            {statusLabelOf(b.status, b.booking_type)}
                           </span>
                         </td>
                       </tr>
@@ -2246,7 +2252,7 @@ function BookingContent() {
                             className={`inline-block px-2.5 py-1 rounded-full border text-[9px] font-extrabold uppercase ${STATUS_META[b.status]?.cls || ""}`}
                             title={b.status === "rejected" && b.reject_reason ? `Lý do: ${b.reject_reason}` : undefined}
                           >
-                            {statusLabelOf(b.status)}
+                            {statusLabelOf(b.status, b.booking_type)}
                           </span>
                           {b.status === "rejected" && b.reject_reason && (
                             <p className="text-[10px] text-rose-500 font-normal mt-1 max-w-[200px]">Lý do: {b.reject_reason}</p>

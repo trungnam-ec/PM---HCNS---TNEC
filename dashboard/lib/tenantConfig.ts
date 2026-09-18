@@ -55,11 +55,20 @@ export type TenantConfig = {
   // tới người điều phối (cờ can_approve_booking). Bật/tắt tại Cài đặt hệ thống >
   // Phân quyền & Luồng duyệt, có hiệu lực ngay, không cần deploy.
   //
+  // TÁCH RIÊNG TỪNG LOẠI (18/09/2026): xe và phòng họp do hai người điều phối khác
+  // nhau và mức độ cần Trưởng phòng duyệt cũng khác, nên mỗi loại một công tắc.
+  //
   // CHỈ áp cho xe/phòng họp. Nghỉ phép và công tác vẫn bắt buộc qua cấp 1 — đó là
   // duyệt nhân sự, không phải điều phối tài sản.
   //
   // Bật thì Trưởng phòng KHÔNG nhận email báo nữa (user chốt 16/09/2026: im lặng
   // hoàn toàn, không gửi bản báo tin).
+  booking_skip_cap1_xe: boolean;
+  booking_skip_cap1_phong_hop: boolean;
+  // KHOÁ CŨ, chỉ còn để tương thích ngược: hồi 16/09 công tắc là một, áp chung cả
+  // hai loại. Bật = coi như cả hai loại đều bỏ cấp 1 (xem bookingSkipCap1Of). Giao
+  // diện không ghi vào khoá này nữa; công ty nào đang bật thì tắt nó đi rồi dùng
+  // hai khoá riêng ở trên.
   booking_skip_cap1: boolean;
 };
 
@@ -82,8 +91,20 @@ export const TENANT_DEFAULTS: TenantConfig = {
   plan: "enterprise",
   department_plans: null, // chưa bật phân gói theo phòng -> dùng chung `plan`
   hide_resigned_in_pickers: false, // mặc định TẮT -> hành vi y như trước khi có tính năng
-  booking_skip_cap1: false, // mặc định TẮT -> vẫn đủ 2 cấp như cũ
+  booking_skip_cap1_xe: false, // mặc định TẮT -> vẫn đủ 2 cấp như cũ
+  booking_skip_cap1_phong_hop: false,
+  booking_skip_cap1: false, // khoá cũ, mặc định TẮT
 };
+
+/**
+ * Loại đăng ký này có bỏ bước Trưởng phòng không.
+ * Khoá cũ `booking_skip_cap1` bật thì áp cho CẢ HAI loại — đừng bỏ vế này, công ty
+ * nào đã bật hồi 16/09 mà mất vế đó là luồng tự nhảy ngược về 2 cấp không ai hiểu vì sao.
+ */
+export function bookingSkipCap1Of(cfg: TenantConfig, bookingType: "xe" | "phong_hop"): boolean {
+  if (cfg.booking_skip_cap1) return true;
+  return bookingType === "xe" ? !!cfg.booking_skip_cap1_xe : !!cfg.booking_skip_cap1_phong_hop;
+}
 
 let cached: TenantConfig | null = null;
 let inflight: Promise<TenantConfig> | null = null;

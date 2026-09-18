@@ -4,7 +4,7 @@ import { apiFetch } from "@/lib/apiClient";
 import { useEffect, useState } from "react";
 import { Bell, Search, Globe, ChevronDown, Menu, X, Sparkles, Loader2, Send, Copy, Trash2, LogOut } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { fetchTenantConfig } from "@/lib/tenantConfig";
+import { fetchTenantConfig, bookingSkipCap1Of } from "@/lib/tenantConfig";
 import {
   fetchApprovalPermissions,
   hasAnyApprovalPermission,
@@ -777,7 +777,10 @@ export default function Header({ title, subtitle }: Props) {
       // mới vào thẳng pending_hcns, còn đơn CŨ ở pending_manager phải rơi về tay
       // người điều phối — nếu không chúng chỉ còn Trưởng phòng thấy mà bước đó đã
       // bị bỏ, chuông của người điều phối im re.
-      const bookingSkipCap1 = !!(await fetchTenantConfig()).booking_skip_cap1;
+      const tenantCfgForBooking = await fetchTenantConfig();
+      // Tách riêng từng loại: công ty có thể bỏ cấp 1 cho phòng họp mà vẫn giữ cho xe.
+      const bookingSkipCap1 = (t?: string | null) =>
+        bookingSkipCap1Of(tenantCfgForBooking, t === "xe" ? "xe" : "phong_hop");
 
       // Filter booking notifications:
       // - pending_manager: tổ trưởng của chính tổ người đăng ký, hoặc Trưởng/Phó
@@ -786,7 +789,7 @@ export default function Header({ title, subtitle }: Props) {
       // - pending_hcns: người có quyền can_approve_booking (HCNS điều phối) hoặc Admin
       const filteredBookings = bookingsData.filter(b => {
         if (b.status === "pending_manager") {
-          if (bookingSkipCap1 && (isUserAdmin || perms.canApproveBooking)) return true;
+          if (bookingSkipCap1(b.booking_type) && (isUserAdmin || perms.canApproveBooking)) return true;
           return isBookingCap1Approver({
             currentUserName: userObj.name,
             currentUserRole: userObj.role,
@@ -815,8 +818,8 @@ export default function Header({ title, subtitle }: Props) {
           typeText: isVehicleBooking ? "Đăng ký xe" : "Đăng ký phòng họp",
           message: `${b.requester_name} đăng ký ${isVehicleBooking ? "xe" : ""} ${b.resource_name} lúc ${timeStr}${
             b.status === "pending_hcns"
-              ? (bookingSkipCap1 ? " (chờ Hành chính điều phối)" : " (đã qua Trưởng phòng phê duyệt, chờ phòng HCNS xác nhận)")
-              : (bookingSkipCap1 ? " (đơn cũ còn ở bước Trưởng phòng — nay điều phối thẳng được)" : "")
+              ? (bookingSkipCap1(b.booking_type) ? " (chờ Hành chính điều phối)" : " (đã qua Trưởng phòng phê duyệt, chờ phòng HCNS xác nhận)")
+              : (bookingSkipCap1(b.booking_type) ? " (đơn cũ còn ở bước Trưởng phòng — nay điều phối thẳng được)" : "")
           }`,
           time: b.created_at ? new Date(b.created_at).toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit' }) + " " + new Date(b.created_at).toLocaleDateString("vi-VN") : "",
           timestamp: b.created_at ? new Date(b.created_at).getTime() : 0

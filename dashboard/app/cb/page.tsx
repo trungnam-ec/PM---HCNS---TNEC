@@ -4517,11 +4517,19 @@ export default function CBPage() {
     if (!canDeleteRegime) return;
     if (!(await askConfirm("Bạn có chắc chắn muốn xóa đơn nghỉ chế độ này không?"))) return;
     try {
-      const { error } = await supabase
+      // `.select()` + đếm dòng như nút xoá bên tab Nghỉ phép: RLS chặn thì
+      // Supabase trả error = null và 0 dòng. Không đếm thì đơn biến mất trên màn
+      // hình rồi F5 lại hiện ra — người dùng tưởng đã xoá.
+      const { data, error } = await supabase
         .from("tasks")
         .delete()
-        .eq("id", leaveId);
+        .eq("id", leaveId)
+        .select("id");
       if (error) throw error;
+      if (!data || data.length === 0) {
+        alert("Bạn không có quyền xóa đơn nghỉ chế độ này!");
+        return;
+      }
       setLeaves(prev => prev.filter(l => l.id !== leaveId));
     } catch (err: any) {
       console.error("Error deleting regime leave:", err);

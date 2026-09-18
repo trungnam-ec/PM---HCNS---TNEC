@@ -5,6 +5,8 @@ import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import { useDepartments } from "@/lib/departments";
+import { normalizeDepartment, isProjectBlock } from "@/lib/recruitDept";
 import LatestNewsSection from "@/components/news/LatestNewsSection";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import {
@@ -26,33 +28,6 @@ const CHART_COLORS = ["#10B981", "#3B82F6", "#8B5CF6", "#F59E0B", "#06B6D4", "#E
 const PLACEHOLDER_COLOR = "#E2E8F0";
 
 const formatMoney = (n: number) => new Intl.NumberFormat("vi-VN").format(n || 0);
-
-// ─── Department helpers (aligned with recruitment page) ───────────────────────
-const normalizeDepartment = (dept: string): string => {
-  if (!dept) return "Chưa xác định";
-  const trim = dept.trim();
-  const lower = trim.toLowerCase();
-  if (lower.includes("atlđ") || lower.includes("atld") || lower.includes("an toàn")) return "ATLĐ";
-  if (lower.includes("kỹ thuật")) return "Kỹ thuật";
-  if (lower.includes("hành chính") || lower.includes("nhân sự") || lower === "hcns") return "HCNS";
-  if (lower.includes("vật tư") || lower.includes("thiết bị")) return "VT-TB";
-  if (lower.includes("kế toán") || lower.includes("tài chính")) return "Kế toán";
-  if (lower.includes("kế hoạch")) return "Kế hoạch";
-  if (lower.includes("đấu thầu")) return "Đấu thầu";
-  if (lower.includes("thị trường")) return "Thị trường";
-  if (lower.includes("qlda") || lower.includes("quản lí dự án") || lower.includes("quản lý dự án")) return "Phòng QLDA";
-  return trim.charAt(0).toUpperCase() + trim.slice(1);
-};
-
-const isProjectBlock = (deptName: string): boolean => {
-  const name = (deptName || "").trim().toUpperCase();
-  if (
-    name.startsWith("DA.") || name.startsWith("DA ") || name.startsWith("DỰ ÁN") || name.startsWith("DA") ||
-    name.includes("DỰ ÁN") || name.includes("CÔNG TRƯỜNG") || name.includes("BAN ĐIỀU HÀNH") || name.includes("BDH")
-  ) return true;
-  const projectKeywords = ["VÀM LẼO", "RXT", "RẠCH XUYÊN TÂM", "MÃ ĐÀ", "TRÀ VINH", "THƯỜNG PHƯỚC", "TỈNH LỘ", "CHỐNG HẠN", "TÂY NINH", "ĐMT"];
-  return projectKeywords.some((k) => name.includes(k));
-};
 
 // Parse a date string (dd/mm/yyyy or yyyy-mm-dd) → Date | null
 const parseDate = (s: string): Date | null => {
@@ -253,6 +228,9 @@ export default function DashboardPage() {
   const [isHcnsViewer, setIsHcnsViewer] = useState(false);
   const [myInvoices, setMyInvoices] = useState<any[]>([]);
   const user = useCurrentUser();
+  // Danh sách BĐH từ bảng `departments` — dùng để phân khối Dự án đúng như
+  // trang /recruitment (BĐH mới thêm trong DB vẫn vào đúng Khối Dự Án).
+  const departments = useDepartments();
 
   // Bộ lọc thời gian khối Tuyển dụng — mặc định tháng hiện tại, cho phép chỉnh từ ngày/đến ngày.
   const nowD = new Date();
@@ -396,8 +374,8 @@ export default function DashboardPage() {
       if (isHiredInRange(c)) byDept[dept].hired++;
     });
     const deptEntries = Object.entries(byDept).sort((a, b) => b[1].total - a[1].total) as [string, { total: number; hired: number }][];
-    const officeEntries = deptEntries.filter(([d]) => !isProjectBlock(d));
-    const projectEntries = deptEntries.filter(([d]) => isProjectBlock(d));
+    const officeEntries = deptEntries.filter(([d]) => !isProjectBlock(d, departments.bdh));
+    const projectEntries = deptEntries.filter(([d]) => isProjectBlock(d, departments.bdh));
     const officeHired = officeEntries.reduce((s, [, v]) => s + v.hired, 0);
     const projectHired = projectEntries.reduce((s, [, v]) => s + v.hired, 0);
     const officeNeed = Object.values(officeNeeds).reduce((a, b) => a + b, 0);
@@ -414,7 +392,7 @@ export default function DashboardPage() {
       probationInRange,
       acceptedHires,
     };
-  }, [candidates, officeNeeds, projectNeeds, recruitFrom, recruitTo]);
+  }, [candidates, officeNeeds, projectNeeds, recruitFrom, recruitTo, departments]);
 
   // ─── HR stats ───────────────────────────────────────────────────────────────
   // Headcount từ danh sách nhân viên; HĐ chính thức lấy từ bảng hợp đồng (loại HĐLĐ)

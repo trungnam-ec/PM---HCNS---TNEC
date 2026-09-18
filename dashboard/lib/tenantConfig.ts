@@ -28,7 +28,14 @@ export type TenantConfig = {
   company_short: string;
   system_title: string;
   system_subtitle: string;
+  // Dòng chữ lớn màu xanh trên MÀN HÌNH ĐĂNG NHẬP. Tách riêng khỏi
+  // system_subtitle (dòng nhỏ dưới logo ở Sidebar) vì hai chỗ này cần độ dài
+  // và cách xưng tên khác nhau.
+  login_subtitle: string;
   logo_text: string;
+  // Đường dẫn ẢNH logo ("/logo.png" trong thư mục public, hoặc URL đầy đủ).
+  // Để rỗng = dùng 2 chữ cái logo_text như cũ. Xem components/BrandLogo.tsx.
+  logo_url: string;
   contract_no_suffix: string;
   email_sender_name: string;
   chairman_name: string;
@@ -77,7 +84,9 @@ export const TENANT_DEFAULTS: TenantConfig = {
   company_short: "TNEC",
   system_title: "PM - HCNS - TNEC",
   system_subtitle: "Hệ thống HCNS",
+  login_subtitle: "Hệ thống EOP Trungnam E&C",
   logo_text: "TN",
+  logo_url: "", // mặc định rỗng -> giữ nguyên ô 2 chữ cái
   contract_no_suffix: "TNE&C",
   email_sender_name: "Phòng HCNS TNEC",
   chairman_name: "Huỳnh Giáp Nhân",

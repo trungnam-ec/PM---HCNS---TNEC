@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { Loader2, ShieldAlert, Lock } from "lucide-react";
 import { SidebarProvider } from "./SidebarContext";
 import ActivityTracker from "./ActivityTracker";
+import BrandLogo from "./BrandLogo";
 import { usePathname } from "next/navigation";
 import { useTenantConfig } from "@/lib/tenantConfig";
 import { normalizePlan, getMinPlanForPath, PLAN_LABELS } from "@/lib/planShared";
@@ -23,6 +24,8 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
   const [checkingAdmin, setCheckingAdmin] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  // Nút Microsoft mới chỉ là chỗ đặt sẵn, chưa đấu nối nhà cung cấp
+  const [msNotice, setMsNotice] = useState(false);
   // Cho GATE GÓI (theo phòng + cấp phép riêng): admin thực sự bỏ qua gate;
   // người khác gate theo gói hiệu lực của phòng + cờ approval_permissions.
   const [strictAdmin, setStrictAdmin] = useState(false);
@@ -176,52 +179,109 @@ export default function AuthWrapper({ children }: { children: React.ReactNode })
   // 1. Not Logged In -> Show Login Page
   if (!session) {
     return (
-      <div className="relative flex items-center justify-center min-h-screen bg-[#090D1A] overflow-hidden">
-        {/* Glow Spheres */}
-        <div className="absolute top-1/4 left-1/4 w-[350px] h-[350px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-1/4 right-1/4 w-[350px] h-[350px] bg-purple-600/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="relative flex items-center justify-center min-h-screen bg-[#060A16] overflow-hidden px-4 py-10">
+        {/* Nền: các dải sáng xanh thương hiệu chạy chéo, làm mờ sâu */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute -top-1/4 -left-1/4 w-[150%] h-[45%] rotate-[-16deg] blur-[70px] bg-[linear-gradient(90deg,transparent,rgba(0,91,172,0.85),rgba(0,174,239,0.55),transparent)]" />
+          <div className="absolute top-[38%] -right-1/3 w-[140%] h-[30%] rotate-[12deg] blur-[60px] bg-[linear-gradient(90deg,transparent,rgba(0,174,239,0.7),rgba(125,211,252,0.45),transparent)]" />
+          <div className="absolute -bottom-[15%] -left-1/4 w-[150%] h-[40%] rotate-[-9deg] blur-[80px] bg-[linear-gradient(90deg,transparent,rgba(30,64,175,0.8),rgba(0,91,172,0.5),transparent)]" />
+          {/* Hai vệt sáng mảnh cho cảm giác kim loại bóng */}
+          <div className="absolute top-[30%] -left-[10%] w-[120%] h-[2px] rotate-[-15deg] blur-[2px] bg-[linear-gradient(90deg,transparent,rgba(125,211,252,0.6),transparent)]" />
+          <div className="absolute bottom-[26%] -left-[10%] w-[120%] h-px rotate-[-9deg] blur-[1px] bg-[linear-gradient(90deg,transparent,rgba(0,174,239,0.5),transparent)]" />
+          {/* Tối 4 góc để khối kính nổi lên */}
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_18%,rgba(6,10,22,0.82)_78%)]" />
+        </div>
 
-        <div className="relative max-w-md w-full mx-4 p-10 bg-slate-900/80 border border-slate-800/80 rounded-[2rem] shadow-2xl flex flex-col items-center text-center space-y-7 backdrop-blur-xl">
-          {/* Logo công ty (đọc từ tenant_config, fallback TNEC) */}
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#005BAC] to-[#00AEEF] flex items-center justify-center font-heading font-extrabold text-white text-2xl shadow-lg ring-4 ring-blue-500/10">
-            {tenant.logo_text}
+        <div className="relative w-full max-w-[34rem]">
+          {/* Khối kính chính */}
+          <div className="relative overflow-hidden rounded-[2.25rem] border border-white/15 bg-white/[0.07] backdrop-blur-2xl shadow-[0_30px_70px_-20px_rgba(0,91,172,0.55)] px-7 py-10 sm:px-12">
+            {/* Vệt sáng chạy dọc viền trên */}
+            <div className="pointer-events-none absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent" />
+            {/* Hai góc kính trang trí */}
+            <div className="pointer-events-none absolute top-4 left-4 w-11 h-11 rounded-tl-[1.4rem] border-t border-l border-white/25" />
+            <div className="pointer-events-none absolute bottom-4 right-4 w-11 h-11 rounded-br-[1.4rem] border-b border-r border-white/25" />
+
+            <div className="relative flex flex-col items-center text-center">
+              {/* Logo công ty (đọc từ tenant_config, fallback TNEC) */}
+              <BrandLogo
+                className="w-16 h-16 rounded-2xl ring-4 ring-[#00AEEF]/15"
+                tileClassName="bg-gradient-to-br from-[#005BAC] to-[#00AEEF] shadow-lg"
+                textClassName="text-2xl"
+              />
+
+              <h1 className="mt-6 font-heading font-extrabold text-[1.65rem] leading-tight tracking-tight text-white">
+                Chào mừng <span className="text-[#00AEEF]">trở lại</span>
+              </h1>
+              <p className="mt-3 text-[#00AEEF] text-[0.78rem] sm:text-sm font-extrabold uppercase tracking-[0.1em] sm:tracking-[0.14em] leading-snug">
+                {tenant.login_subtitle}
+              </p>
+
+              {/* Gạch ngăn */}
+              <div className="mt-8 mb-5 w-full flex items-center gap-3">
+                <div className="h-px flex-1 bg-white/15" />
+                <span className="text-[0.6rem] font-bold uppercase tracking-[0.2em] text-slate-400">
+                  Tiếp tục với
+                </span>
+                <div className="h-px flex-1 bg-white/15" />
+              </div>
+
+              {/* Hai nút đăng nhập */}
+              <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  onClick={handleLogin}
+                  className="group flex items-center justify-center gap-2.5 rounded-2xl border border-white/80 bg-[#FFFFFF] px-3 py-3.5 text-[#0F172A] shadow-xl transition-all hover:shadow-[0_12px_30px_-10px_rgba(0,174,239,0.6)] active:scale-[0.97] cursor-pointer"
+                >
+                  {/* Google Icon */}
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.48 14.97 1 12 1 7.37 1 3.42 3.66 1.5 7.57l3.92 3.04c.92-2.76 3.51-4.57 6.58-4.57z"
+                    />
+                    <path
+                      fill="#4285F4"
+                      d="M23.49 12.27c0-.81-.07-1.59-.2-2.34H12v4.44h6.44c-.28 1.48-1.12 2.73-2.38 3.58l3.7 2.87c2.16-1.99 3.43-4.91 3.43-8.55z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.42 15.35A7.14 7.14 0 0 1 5 12c0-1.18.2-2.31.57-3.37L1.65 5.59A11.96 11.96 0 0 0 0 12c0 2.45.62 4.76 1.7 6.81l3.72-3.46z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c3.24 0 5.97-1.07 7.96-2.91l-3.7-2.87c-1.03.69-2.34 1.1-4.26 1.1-3.07 0-5.66-1.81-6.58-4.57L1.5 16.79C3.42 20.34 7.37 23 12 23z"
+                    />
+                  </svg>
+                  <span className="text-[0.72rem] font-bold whitespace-nowrap">Đăng nhập bằng Google</span>
+                </button>
+
+                <button
+                  onClick={() => setMsNotice(true)}
+                  className="group relative flex items-center justify-center gap-2.5 rounded-2xl border border-white/80 bg-[#FFFFFF] px-3 py-3.5 text-[#0F172A] shadow-xl opacity-60 transition-all hover:opacity-80 active:scale-[0.97] cursor-pointer"
+                >
+                  <span className="absolute -top-1.5 right-2 rounded-full bg-[#00AEEF] px-1.5 py-0.5 text-[0.5rem] font-bold uppercase tracking-wider text-white shadow">
+                    Sắp có
+                  </span>
+                  {/* Microsoft Icon */}
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#F25022" d="M2 2h9.2v9.2H2z" />
+                    <path fill="#7FBA00" d="M12.8 2H22v9.2h-9.2z" />
+                    <path fill="#00A4EF" d="M2 12.8h9.2V22H2z" />
+                    <path fill="#FFB900" d="M12.8 12.8H22V22h-9.2z" />
+                  </svg>
+                  <span className="text-[0.72rem] font-bold whitespace-nowrap">Đăng nhập bằng Microsoft</span>
+                </button>
+              </div>
+
+              {msNotice && (
+                <p className="mt-4 w-full rounded-xl border border-[#00AEEF]/25 bg-[#00AEEF]/10 px-3 py-2.5 text-[0.7rem] font-semibold leading-relaxed text-[#7FD8F7]">
+                  Đăng nhập bằng tài khoản Microsoft đang được chuẩn bị. Hiện tại vui lòng dùng tài khoản Google.
+                </p>
+              )}
+
+              <p className="mt-7 text-[0.68rem] leading-relaxed text-slate-400/80 font-medium">
+                Tài khoản đã cấp quyền mới vào được hệ thống
+              </p>
+            </div>
           </div>
-
-          <div className="space-y-2.5">
-            <h1 className="font-heading font-extrabold text-2xl tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
-              {tenant.system_title}
-            </h1>
-            <p className="text-[#00AEEF] text-xs font-bold uppercase tracking-widest">
-              Hệ thống Quản lý Hành chính Nhân sự
-            </p>
-          </div>
-
-
-          <button
-            onClick={handleLogin}
-            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-900 text-xs font-bold py-3.5 rounded-2xl shadow-xl hover:shadow-blue-500/10 transition-all cursor-pointer border border-slate-200"
-          >
-            {/* Google Icon */}
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
-              <path
-                fill="#EA4335"
-                d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.48 14.97 1 12 1 7.37 1 3.42 3.66 1.5 7.57l3.92 3.04c.92-2.76 3.51-4.57 6.58-4.57z"
-              />
-              <path
-                fill="#4285F4"
-                d="M23.49 12.27c0-.81-.07-1.59-.2-2.34H12v4.44h6.44c-.28 1.48-1.12 2.73-2.38 3.58l3.7 2.87c2.16-1.99 3.43-4.91 3.43-8.55z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.42 15.35A7.14 7.14 0 0 1 5 12c0-1.18.2-2.31.57-3.37L1.65 5.59A11.96 11.96 0 0 0 0 12c0 2.45.62 4.76 1.7 6.81l3.72-3.46z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c3.24 0 5.97-1.07 7.96-2.91l-3.7-2.87c-1.03.69-2.34 1.1-4.26 1.1-3.07 0-5.66-1.81-6.58-4.57L1.5 16.79C3.42 20.34 7.37 23 12 23z"
-              />
-            </svg>
-            Đăng nhập bằng tài khoản Google
-          </button>
         </div>
       </div>
     );

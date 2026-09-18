@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import BrandLogo from "./BrandLogo";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   LayoutDashboard,
@@ -338,9 +339,11 @@ export default function Sidebar() {
         {/* Brand Logo & Header */}
         <div className="px-6 py-6 border-b border-slate-200/60 relative">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center font-heading font-extrabold text-white text-xs shadow-md shadow-blue-500/25">
-              {tenant.logo_text}
-            </div>
+            <BrandLogo
+              className="w-9 h-9 rounded-xl shrink-0"
+              tileClassName="bg-gradient-to-br from-blue-600 to-cyan-500 shadow-md shadow-blue-500/25"
+              textClassName="text-xs"
+            />
             <div className="min-w-0">
               <h1 className="text-[#1D1D1F] font-heading font-bold text-sm tracking-tight leading-tight truncate">{tenant.system_title}</h1>
               <div className="flex items-center gap-1.5 mt-0.5">

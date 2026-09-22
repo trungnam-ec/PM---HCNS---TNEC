@@ -565,6 +565,28 @@ export function canEdit(
   return own && (s.status === "nhap" || s.status === "tra_lai");
 }
 
+/**
+ * Người này có được XOÁ phiếu không.
+ *
+ * Chép ĐÚNG policy `signing_delete` (migration 050): Admin xoá được mọi phiếu;
+ * người lập chỉ xoá được phiếu CÒN Ở TAY MÌNH — nháp hoặc bị trả lại. Phiếu đã
+ * trình đi thì không, kể cả của chính mình: lúc đó nó đã nằm trong hộp việc của
+ * cấp duyệt và có thể đã có vết ký.
+ *
+ * Trùng điều kiện với `canEdit` ở thời điểm này nhưng CỐ Ý tách hàm: sửa và xoá
+ * là hai quyền khác nhau, gộp lại thì lần sau nới một bên là nới nhầm cả hai.
+ * Đây chỉ là luật dựng giao diện — chốt chặn thật vẫn là policy RLS.
+ */
+export function canDelete(
+  s: SigningSubmission,
+  email: string,
+  isAdmin: boolean
+): boolean {
+  if (isAdmin) return true;
+  const own = !!email && s.created_by.toLowerCase() === email.toLowerCase();
+  return own && (s.status === "nhap" || s.status === "tra_lai");
+}
+
 /** Các bước mà người này giữ quyền duyệt — dùng để đếm hộp việc cần xử lý. */
 export function stagesOf(perms: ApprovalPermissions): SigningStatus[] {
   return (Object.keys(STAGE_FLAGS) as SigningStatus[]).filter((st) =>

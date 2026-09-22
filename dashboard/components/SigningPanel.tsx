@@ -26,7 +26,7 @@ import {
   fetchSubmissions, canActOn, canEdit, advanceStatus, stepsOfSubmission, tinhDeNghi,
   fmtMoney, fmtDateTime, resolveDossierUrl, fetchStageApproverEmails, errText,
   normalizeStatus, pgdOpinionField, downloadSigningForm, docxPayloadFromRow, docxFileName,
-  deleteSubmission, duplicateSubmission, appendDossierFiles, removeDossierFile,
+  deleteSubmission, duplicateSubmission, appendDossierFiles, removeDossierFile, canDelete,
   pushToPaymentDossier, downloadPurchaseOrder, ddhPayloadFromRow,
   STATUS_META, ACTION_LABEL, EVENT_LABEL, FLOW, LOAI_META,
   type SigningSubmission, type SigningStatus, type SigningLoai,
@@ -202,8 +202,10 @@ export default function SigningPanel() {
     ask({
       title: `Xoá phiếu "${r.ma_phieu || "(chưa có mã)"}"?`,
       message:
-        `Hợp đồng: ${r.hop_dong_so || "—"}\n` +
-        `Toàn bộ lịch sử duyệt của phiếu cũng mất theo. Không khôi phục được.`,
+        (r.hop_dong_so ? `Hợp đồng: ${r.hop_dong_so}\n` : "") +
+        (r.status === "nhap"
+          ? "Bản nháp này chưa trình đi nên chưa ai thấy. Xoá là mất hẳn, không khôi phục được."
+          : "Toàn bộ lịch sử duyệt của phiếu cũng mất theo. Không khôi phục được."),
       onConfirm: async () => {
         setDeleting(r.id);
         setDelErr("");
@@ -633,7 +635,12 @@ export default function SigningPanel() {
                               : <CopyPlus size={14} />}
                           </button>
                         )}
-                        {user.isAdmin && (
+                        {/* Nút xoá theo ĐÚNG luật của policy `signing_delete`, không
+                            còn chỉ Admin: người lập tự dọn được bản nháp và phiếu bị
+                            trả lại của mình. Phiếu ĐANG TRÌNH thì không ai ngoài
+                            Admin xoá được — nó đã nằm trong hộp việc của cấp duyệt
+                            và có thể đã mang vết ký. */}
+                        {canDelete(r, user.email, user.isAdmin) && (
                           <button type="button"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -642,7 +649,9 @@ export default function SigningPanel() {
                               removeRow(r, e.currentTarget.closest("[data-toss-row]") as HTMLElement | null, e.currentTarget);
                             }}
                             disabled={deleting === r.id}
-                            title={`Xoá phiếu ${r.ma_phieu || ""}`.trim()}
+                            title={r.status === "nhap"
+                              ? `Xoá bản nháp ${r.ma_phieu || ""}`.trim()
+                              : `Xoá phiếu ${r.ma_phieu || ""}`.trim()}
                             className="p-1.5 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
                             {deleting === r.id
                               ? <Loader2 size={14} className="animate-spin" />

@@ -33,10 +33,16 @@ export function isPlanAtLeast(current: Plan, min: Plan): boolean {
 // Khớp theo prefix dài nhất; route không liệt kê = basic (luôn mở).
 // Basic:        Dashboard, Công việc, Lịch, Đăng ký xe/phòng họp, Hành chính & VPP,
 //                 Biên bản họp, Phòng ban, Cài đặt, Vị trí dự án, Lương & Phúc lợi (C&B),
-//                 Tin tức
+//                 Tin tức, Hồ sơ trình ký
 // Professional: + Danh sách nhân viên, Góp ý & Kiến nghị, Tuyển dụng,
 //                 Văn thư, Tổng hợp
-// Enterprise:   + Tìm kiếm AI thông minh, Báo cáo (Kế hoạch thu chi, Sản lượng, Doanh thu)
+// Enterprise:   + Tìm kiếm AI thông minh
+//
+// LƯU Ý HỒ SƠ TRÌNH KÝ: module mở từ Basic (22/09/2026) để mọi nhân viên lập được
+// phiếu trình ký. Ba nhóm BÁO CÁO QUẢN TRỊ nằm cùng trang (Kế hoạch thu chi, Sản
+// lượng, Doanh thu) vẫn khoá riêng theo cờ can_view_reports — ở CẢ giao diện
+// (app/ho-so-trinh-ky/page.tsx) lẫn CSDL (policy `reports_read_*` của migration
+// 048/058/059 dùng `can_view_reports_caller()`). Gói KHÔNG mở khoá báo cáo.
 //
 // LƯU Ý C&B: module mở từ gói Basic, nhưng dữ liệu nhạy cảm BÊN TRONG (bảng lương,
 // BHXH, hợp đồng lao động) vẫn khoá riêng theo cờ can_view_salary — gói KHÔNG mở khoá
@@ -55,7 +61,6 @@ export const ROUTE_MIN_PLAN: { prefix: string; min: Plan }[] = [
   { prefix: "/document-control", min: "professional" },
   { prefix: "/van-thu", min: "professional" },
   { prefix: "/tong-hop", min: "professional" },
-  { prefix: "/ho-so-trinh-ky", min: "enterprise" },
 ];
 
 // ─── PHÂN GÓI THEO TÍNH NĂNG (không gắn với route riêng) ───

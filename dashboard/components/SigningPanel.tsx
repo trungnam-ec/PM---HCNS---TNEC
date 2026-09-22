@@ -20,6 +20,7 @@ import SigningFormModal from "./SigningFormModal";
 import { exportTransferRequestDocx } from "./TransferRequestPreview";
 import { apiFetch } from "@/lib/apiClient";
 import { crumpleToss } from "@/lib/crumpleToss";
+import { isResignedRow } from "@/lib/resigned";
 import { useConfirmBox } from "@/components/ConfirmDialog";
 import {
   fetchSubmissions, canActOn, canEdit, advanceStatus, stepsOfSubmission, tinhDeNghi,
@@ -221,7 +222,13 @@ export default function SigningPanel() {
     });
   };
 
-  const canCreate = user.isAdmin || user.perms.canCreateSigning;
+  // Ai lập được phiếu — PHẢI khớp `can_create_signing_caller()` ở CSDL
+  // (migration 090): mọi nhân sự có hồ sơ trong danh bạ và chưa nghỉ việc, cộng
+  // với người được cấp cờ riêng (tài khoản ngoài danh bạ). Lệch với CSDL thì
+  // hoặc nút hiện ra rồi bấm báo lỗi RLS, hoặc người dùng hợp lệ mất nút.
+  const canCreate =
+    user.isAdmin || user.perms.canCreateSigning ||
+    (user.inDirectory && !isResignedRow({ status: user.status }));
 
   // Không còn tự chọn bộ lọc theo vai: bộ lọc mới không có mục "Cần tôi duyệt"
   // để nhảy vào. Mở ra là xem TẤT CẢ — số phiếu đang chờ mình xử lý đã có thẻ

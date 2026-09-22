@@ -42,6 +42,11 @@ export type CurrentUser = {
   department: string;
   status: string;
   isAdmin: boolean;      // allowed_users.role === "Admin" (admin thực sự)
+  // Có hồ sơ trong Danh sách nhân viên (employees_directory) hay không. Dùng cho
+  // các quyền mở cho "mọi nhân sự thật" thay vì theo cờ — VD lập phiếu trình ký
+  // (migration 090). Tài khoản dùng chung / cộng tác viên không có hồ sơ sẽ là
+  // false, và phải được cấp cờ riêng nếu cần.
+  inDirectory: boolean;
   isHr: boolean;         // thuộc phòng HCNS
   isDirector: boolean;   // vai trò Giám đốc / Ban lãnh đạo
   perms: ApprovalPermissions;
@@ -61,6 +66,7 @@ const LOADING_USER: CurrentUser = {
   department: "",
   status: "",
   isAdmin: false,
+  inDirectory: false,
   isHr: false,
   isDirector: false,
   perms: NO_APPROVAL_PERMISSIONS,
@@ -158,6 +164,7 @@ export function useCurrentUser(): CurrentUser {
           department,
           status,
           isAdmin,
+          inDirectory: !!emp,
           isHr: isHrDept(department),
           isDirector: isDirectorRole(role),
           perms,

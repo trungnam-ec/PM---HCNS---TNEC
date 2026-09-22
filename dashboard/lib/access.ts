@@ -103,6 +103,20 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleDef> = {
   // Module C&B mở từ Basic, NHƯNG lương/BHXH/HĐLĐ bên trong vẫn khoá theo cờ
   // can_view_salary (app/cb/page.tsx > hasFullAccess) — gói không mở khoá lương.
   cb:             { minPlan: "basic", route: "/cb", grantFlag: "canViewSalary" },
+  // Hồ sơ trình ký — chuyển từ Enterprise+cờ xuống BASIC ngày 22/09/2026 (user
+  // chốt): mọi nhân viên đều cần lập phiếu trình ký / tờ trình / đề nghị chuyển
+  // tiền, để ở gói cao nhất là khoá nhầm chính người dùng chủ yếu.
+  //
+  // ⚠ KHÔNG có nghĩa là mở luôn BÁO CÁO QUẢN TRỊ. Ba nhóm báo cáo nằm cùng trang
+  // (Kế hoạch thu chi, Sản lượng, Doanh thu) vẫn đòi cờ can_view_reports, kiểm ở
+  // app/ho-so-trinh-ky/page.tsx và — quan trọng hơn — ở RLS của finance_plans /
+  // finance_partners / finance_partner_contracts (`can_view_reports_caller()`).
+  // Vì vậy grantFlag giữ nguyên nhưng BỎ requireFlag: cờ giờ mở BÁO CÁO, không
+  // còn là điều kiện để vào trang.
+  //
+  // Phạm vi xem của từng PHIẾU không do gói quyết định mà do RLS `signing_select`
+  // (074): người lập thấy phiếu của mình, Trưởng/Phó phòng thấy cả phòng mình.
+  reports:        { minPlan: "basic", route: "/ho-so-trinh-ky", grantFlag: "canViewReports" },
   // ── Professional ──
   employees:      { minPlan: "professional", route: "/employees", grantFlag: "canViewEmployees" },
   suggestions:    { minPlan: "professional", route: "/suggestions", grantFlag: "canViewSuggestions" },
@@ -110,10 +124,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleDef> = {
   documents:      { minPlan: "professional", route: "/document-control", grantFlag: "canViewDocuments" },
   tong_hop:       { minPlan: "professional", route: "/tong-hop" },
   // ── Enterprise ──
-  // Báo cáo quản trị (Kế hoạch thu chi, Sản lượng, Doanh thu). Số liệu tài chính
-  // toàn công ty -> để ở gói cao nhất; grantFlag cho phép cấp riêng từng người
-  // (VD Trưởng phòng KHĐT) mà không phải nâng gói cả phòng.
-  reports:        { minPlan: "enterprise", route: "/ho-so-trinh-ky", grantFlag: "canViewReports", requireFlag: true },
   ai_search:      { minPlan: "enterprise" }, // tính năng, không có route riêng
 };
 

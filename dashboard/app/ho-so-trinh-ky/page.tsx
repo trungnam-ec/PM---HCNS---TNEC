@@ -1,23 +1,30 @@
 "use client";
 
 // ============================================================
-// /ho-so-trinh-ky — Module Hồ sơ trình ký (gói Enterprise)
+// /ho-so-trinh-ky — Module Hồ sơ trình ký (gói Basic từ 22/09/2026)
 //
-// Ba nhóm báo cáo quản trị: Kế hoạch thu chi, Sản lượng, Doanh thu.
+// MỘT TRANG, HAI MỨC QUYỀN KHÁC HẲN NHAU — đừng gộp lại:
 //
-// PHÂN QUYỀN (2 lớp, không được bỏ lớp nào):
-//  1. AuthWrapper chặn theo đường dẫn — /ho-so-trinh-ky khai ở ROUTE_MIN_PLAN là
-//     "enterprise" nên gõ thẳng URL cũng bị màn hình nâng gói chặn lại.
-//  2. Trang tự kiểm tra lại bằng user.can("reports") — Admin, phòng đã ở gói
-//     Enterprise, hoặc người được cấp riêng cờ can_view_reports (migration 042).
+//  A. PHIẾU TRÌNH KÝ (mặc định) — MỌI tài khoản đăng nhập đều vào được. Ai cũng
+//     phải lập được phiếu trình ký / tờ trình / đề nghị chuyển tiền, nên module
+//     nằm ở gói Basic và KHÔNG đòi cờ. Ai thấy phiếu nào thì do RLS
+//     `signing_select` (migration 074) quyết định, không do gói:
+//       · người lập      -> thấy phiếu của chính mình
+//       · Trưởng/Phó phòng -> thấy cả phòng mình (theo ô "Phòng ban" trên phiếu)
+//       · PGĐ / Kế toán  -> thấy phiếu đi qua chặng của họ
+//       · Admin / Ban lãnh đạo -> thấy tất cả
+//     Ẩn/hiện ở giao diện KHÔNG phải cơ chế bảo vệ — chốt chặn là RLS.
 //
-// Lớp 2 nhìn có vẻ thừa vì lớp 1 đã chặn, nhưng giữ để trang không phụ thuộc
-// hoàn toàn vào layout: nếu sau này ai đó render trang này ngoài AuthWrapper
-// (nhúng vào dashboard, mở bằng route khác) thì dữ liệu vẫn không rò ra.
+//  B. BA NHÓM BÁO CÁO QUẢN TRỊ (Kế hoạch thu chi, Sản lượng, Doanh thu) + Danh
+//     mục đối tác — số liệu tài chính toàn công ty, CHỈ Admin hoặc người có cờ
+//     `can_view_reports`. Cùng điều kiện với RLS của finance_plans /
+//     finance_partners / finance_partner_contracts (`can_view_reports_caller()`,
+//     migration 048/058/059), nên không cấp cờ thì dù có gọi thẳng REST API
+//     cũng không đọc được gì — ẩn ở đây chỉ để khỏi hiện ba tab trống.
 //
-// CHƯA CÓ BẢNG SỐ LIỆU: đây là bước dựng khung + phân quyền. Ba tab hiện trạng
-// thái rỗng thật, KHÔNG cắm dữ liệu giả — mock từng gây rắc rối ở VPP (3 vật tư
-// giả seed thẳng vào DB) nên không lặp lại.
+// CHƯA CÓ BẢNG SỐ LIỆU cho Sản lượng / Doanh thu: hai tab hiện trạng thái rỗng
+// thật, KHÔNG cắm dữ liệu giả — mock từng gây rắc rối ở VPP (3 vật tư giả seed
+// thẳng vào DB) nên không lặp lại.
 // ============================================================
 
 import { useState } from "react";
@@ -31,7 +38,6 @@ import {
   Wallet,
   HardHat,
   TrendingUp,
-  Lock,
   Loader2,
   Database,
 } from "lucide-react";
@@ -99,39 +105,10 @@ export default function BaoCaoPage() {
     );
   }
 
-  if (!user.can("reports")) {
-    return (
-      <div className="flex min-h-screen bg-[#F7F9FC]">
-        <Sidebar />
-        <div className="ml-60 flex-1 flex flex-col min-w-0">
-          <Header title="Hồ sơ trình ký" />
-          <main className="flex-1 flex items-center justify-center p-8">
-            <div className="max-w-md w-full bg-white border border-slate-200/60 rounded-[2rem] shadow-premium p-10 flex flex-col items-center text-center space-y-5">
-              <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500 ring-4 ring-amber-100/50">
-                <Lock size={30} />
-              </div>
-              <div className="space-y-2">
-                <h2 className="font-heading font-extrabold text-slate-800 text-base">
-                  Bạn chưa được cấp quyền xem Hồ sơ trình ký
-                </h2>
-                <p className="text-slate-500 text-xs leading-relaxed font-medium">
-                  Module Hồ sơ trình ký thuộc gói <strong>Enterprise</strong> và chỉ mở cho
-                  tài khoản được cấp cờ <strong>Hồ sơ trình ký</strong>. Liên hệ
-                  Quản trị viên nếu bạn cần truy cập.
-                </p>
-              </div>
-              <a
-                href="/"
-                className="w-full bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold py-3.5 rounded-2xl transition-all"
-              >
-                Về trang Dashboard
-              </a>
-            </div>
-          </main>
-        </div>
-      </div>
-    );
-  }
+  // Cờ mở BA NHÓM BÁO CÁO + Danh mục đối tác. KHÔNG dùng user.can("reports"):
+  // từ 22/09/2026 module đã ở gói Basic nên hàm đó trả true cho mọi người —
+  // đúng cho việc vào trang, sai cho việc mở số liệu tài chính.
+  const canFinance = user.isAdmin || user.perms.canViewReports;
 
   const current = TABS.find((t) => t.id === activeTab)!;
 
@@ -142,7 +119,11 @@ export default function BaoCaoPage() {
         <Header title="Hồ sơ trình ký" />
 
         <main className="flex-1 p-8 overflow-y-auto space-y-6">
-          {/* ─── Thanh chọn nhóm báo cáo ─── */}
+          {/* ─── Thanh chọn nhóm báo cáo ───
+              Chỉ Admin / người có cờ can_view_reports. Nhân viên thường vào đây
+              để lập phiếu trình ký, hiện thêm 3 thẻ báo cáo tài chính mà bấm vào
+              đâu cũng rỗng (RLS chặn ở CSDL) thì chỉ gây hiểu nhầm là lỗi. */}
+          {canFinance && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {TABS.map((tab) => {
               const Icon = tab.icon;
@@ -184,6 +165,7 @@ export default function BaoCaoPage() {
               );
             })}
           </div>
+          )}
 
           {/* ─── Nội dung báo cáo ───
               Kế hoạch thu chi: bước 1 là DANH MỤC ĐỐI TÁC (migration 048). Màn
@@ -193,7 +175,14 @@ export default function BaoCaoPage() {
               Tab này render THẲNG ra nền trang, KHÔNG bọc trong khung `.glass`
               như hai tab kia: nội dung của nó đã là các thẻ KPI + lưới card, bọc
               thêm một lớp card nữa thành card-lồng-card, viền chồng viền. */}
-          {activeTab === "thu-chi" ? (
+          {!canFinance ? (
+            // Không có cờ báo cáo: trang thu gọn còn ĐÚNG danh sách phiếu trình
+            // ký. Không hiện tab con — hai tab kia (Kế hoạch thu chi, Danh mục
+            // đối tác) đọc từ bảng mà RLS đã chặn, mở ra chỉ thấy rỗng.
+            <div className="space-y-5 max-w-6xl">
+              <SigningPanel />
+            </div>
+          ) : activeTab === "thu-chi" ? (
             <div className="space-y-5 max-w-6xl">
               {/* Tab con */}
               <div className="flex bg-slate-100/70 rounded-xl p-1 gap-1 w-fit">

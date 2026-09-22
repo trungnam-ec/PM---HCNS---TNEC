@@ -60,6 +60,7 @@ import {
   PARTY_TYPE_LABELS,
   type FinancePartnerContract,
 } from "@/lib/financePartners";
+import { isResignedRow } from "@/lib/resigned";
 
 const inputCls =
   "border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 font-semibold text-slate-800 text-xs bg-white transition-all w-full";
@@ -773,7 +774,10 @@ function PlanRowModal({ row, onSave, onReload, onClose }: {
   // Trình ký online: mở form phiếu trình ký điền sẵn từ dòng này (migration 075).
   const [showSigning, setShowSigning] = useState(false);
   const [signErr, setSignErr] = useState("");
-  const canSign = me.isAdmin || me.perms.canCreateSigning;
+  // Cùng luật với SigningPanel / `can_create_signing_caller()` (migration 090).
+  const canSign =
+    me.isAdmin || me.perms.canCreateSigning ||
+    (me.inDirectory && !isResignedRow({ status: me.status }));
   const [amountText, setAmountText] = useState(fmtMoney(row.amount));
   const [saving, setSaving] = useState(false);
   // Hợp đồng đang lấy nội dung — chỉ để tô đậm ô đang chọn, không lưu xuống CSDL.

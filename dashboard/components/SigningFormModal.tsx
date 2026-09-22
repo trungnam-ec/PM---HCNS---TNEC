@@ -32,8 +32,8 @@ import {
   downloadSigningForm, docxFileName, buildSigningRoute, resolveCap1,
   notifySigningSubmitted,
   type SigningSubmission, type SigningFile,
-  LOAI_META, SO_SANH_MAU,
-  type SigningLoai, type SoSanhRow,
+  LOAI_META, SO_SANH_MAU, DDH_FIELDS, downloadPurchaseOrder, hasSigningVatTuApprover,
+  type SigningLoai, type SoSanhRow, type VatTuRow, type DdhField,
 } from "@/lib/signingSubmissions";
 import {
   X, Upload, Sparkles, Loader2, Save, Send, Trash2, FileText, Plus,
@@ -70,6 +70,35 @@ const toRate = (s: string): number | null => {
 const showNum = (v: number | null | undefined): string =>
   typeof v === "number" && Number.isFinite(v) ? new Intl.NumberFormat("vi-VN").format(v) : "";
 
+// Cấu hình cột bảng vật tư (migration 091). Phiếu yêu cầu dùng 5 cột, đơn đặt
+// hàng dùng 12 — cùng một mảng `vat_tu`, khác bộ khoá. Khai ở MỘT chỗ để tiêu đề
+// cột và ô nhập không bao giờ lệch nhau.
+type VatTuCol = { key: keyof VatTuRow; label: string; w: string; hint?: string; num?: boolean };
+
+const VAT_TU_COLS = (ddh: boolean): VatTuCol[] =>
+  ddh
+    ? [
+        { key: "ten", label: "Tên vật tư hàng hoá (1)", w: "200px", hint: "Bấc thấm đứng" },
+        { key: "quyCach", label: "Quy cách (2)", w: "150px" },
+        { key: "dvt", label: "ĐVT (3)", w: "70px", hint: "M" },
+        { key: "dinhMuc", label: "Định mức KL theo dự toán (4)", w: "120px", num: true },
+        { key: "luyKeTrong", label: "Đã TH trong định mức (5a)", w: "110px", num: true },
+        { key: "luyKeNgoai", label: "Đã TH ngoài định mức (5b)", w: "110px", num: true },
+        { key: "chenhLech", label: "Chênh lệch còn lại (6)", w: "110px", num: true },
+        { key: "dexuatTrong", label: "Đề xuất trong định mức (7a)", w: "120px", num: true },
+        { key: "dexuatNgoai", label: "Đề xuất ngoài định mức (7b)", w: "120px", num: true },
+        { key: "lyDo", label: "Lý do đặt (8)", w: "150px" },
+        { key: "chiPhi", label: "Chi phí", w: "110px", hint: "Công trình" },
+        { key: "ghiChu", label: "Ghi chú / ưu tiên", w: "120px" },
+      ]
+    : [
+        { key: "ten", label: "Tên vật tư, hàng hoá, máy móc thiết bị", w: "minmax(180px,1fr)", hint: "Pano Cầu Phước An" },
+        { key: "quyCach", label: "Quy cách", w: "minmax(160px,1fr)", hint: "2M x 8M in bạt hiflex" },
+        { key: "dvt", label: "ĐVT", w: "80px", hint: "Bảng" },
+        { key: "soLuong", label: "Số lượng", w: "90px", num: true },
+        { key: "ngayCap", label: "Ngày cấp", w: "110px", hint: "25/03/2026" },
+      ];
+
 function toDraft(s: SigningSubmission | null, defaultDept = "", prefill?: Record<string, string>): Draft {
   // Phiếu mới: mặc định Phòng ban = phòng của người lập (tra danh bạ). "Chưa xếp
   // phòng" thì để trống cho họ tự chọn thay vì ghi một giá trị vô nghĩa.
@@ -94,6 +123,8 @@ function toDraft(s: SigningSubmission | null, defaultDept = "", prefill?: Record
   // migration 074 — 2 ô tích PGĐ, dẫn xuất từ route của phiếu (nguồn sự thật).
   d.pgd_qlda = s.route?.includes("cho_pgd_qlda") ? "1" : "";
   d.pgd_khdt = s.route?.includes("cho_pgd_khdt") ? "1" : "";
+  // migration 093 — ô tích "Phòng QLDA" của đơn đặt hàng, cũng dẫn xuất từ route.
+  d.phong_qlda = s.route?.includes("cho_phong_qlda") ? "1" : "";
   for (const k of NUM_FIELDS) d[k] = showNum(s[k]);
   for (const k of RATE_FIELDS) d[k] = s[k] != null ? String(s[k]) : "";
   return d;
@@ -139,6 +170,11 @@ export default function SigningFormModal({
   // Bộ ô của nó là Căn cứ → Nội dung đề nghị → Chi phí dự kiến → Kiến nghị;
   // không hợp đồng, không đợt, không tài khoản nhận.
   const laToTrinh = loai === "to_trinh";
+  // Hai biểu mẫu có BẢNG DÒNG (migration 091). Phiếu yêu cầu 6 cột in ra Word;
+  // đơn đặt hàng 13 cột in ra EXCEL và có thêm ~14 ô đầu phiếu riêng.
+  const laPhieuYeuCau = loai === "phieu_yeu_cau";
+  const laDonDatHang = loai === "don_dat_hang";
+  const coBangVatTu = laPhieuYeuCau || laDonDatHang;
   // Ba loại kia mỗi loại một bộ ô riêng, nên rất nhiều khối chỉ dành cho phiếu
   // hồ sơ/văn bản. Đặt tên thẳng thay vì viết `!laHopDong && !laChuyenTien && …`
   // ở chục chỗ — thêm loại thứ năm mà quên một chỗ là ô của loại khác lòi ra.
@@ -149,6 +185,17 @@ export default function SigningFormModal({
   const [soSanh, setSoSanh] = useState<SoSanhRow[]>(
     () => (existing?.so_sanh?.length ? existing.so_sanh : SO_SANH_MAU).map((r) => ({ ...r }))
   );
+  // Bảng vật tư (migration 091) — cùng khuôn `soSanh`: mảng riêng, số dòng
+  // thêm/bớt được. Phiếu mới mở sẵn 3 dòng trống cho đỡ phải bấm "Thêm dòng".
+  const [vatTu, setVatTu] = useState<VatTuRow[]>(
+    () => (existing?.vat_tu?.length ? existing.vat_tu.map((r) => ({ ...r }))
+                                    : [{}, {}, {}])
+  );
+  // Các ô đầu phiếu riêng của đơn đặt hàng — object phẳng, lưu vào cột `chi_tiet`.
+  const [chiTiet, setChiTiet] = useState<Partial<Record<DdhField, string>>>(
+    () => ({ ...(existing?.chi_tiet || {}) })
+  );
+  const setCt = (k: DdhField, v: string) => setChiTiet((p) => ({ ...p, [k]: v }));
   // MỘT danh sách duy nhất. Trước đây tách làm hai — `files` để hiển thị/lưu và
   // `pending` để gửi cho AI — nhưng nút thùng rác chỉ xoá khỏi `files`, nên tệp
   // đã xoá VẪN được gửi lên OpenAI ở lần bóc kế tiếp. Hậu quả thật: xoá một PDF
@@ -338,6 +385,14 @@ export default function SigningFormModal({
       so_to_trinh: d.so_to_trinh?.trim() || null,
       can_cu: d.can_cu?.trim() || null,
       kien_nghi: d.kien_nghi?.trim() || null,
+      // migration 091 — bảng vật tư + ô đầu phiếu của đơn đặt hàng.
+      // Bỏ dòng trống trước khi lưu: form mở sẵn 3 dòng, phần lớn phiếu không
+      // dùng hết, lưu nguyên thì phiếu in ra có hàng rỗng.
+      vat_tu: vatTu.filter((r) =>
+        Object.entries(r).some(([k, v]) => k !== "stt" && String(v || "").trim() !== "")),
+      chi_tiet: Object.fromEntries(
+        DDH_FIELDS.map((k) => [k, (chiTiet[k] || "").trim()]).filter(([, v]) => v !== "")
+      ),
       // Bỏ dòng trống trước khi lưu — người lập hay để lại vài dòng mẫu chưa điền.
       so_sanh: soSanh.filter((r) => [r.muc, r.ab, r.bb].some((v) => (v || "").trim() !== "")),
       // migration 074 — ghi lại lựa chọn PGĐ (route dựng ở save()); route mới là
@@ -347,7 +402,7 @@ export default function SigningFormModal({
     for (const k of NUM_FIELDS) if (k !== "de_nghi_thanh_toan") p[k] = toNum(d[k] || "");
     for (const k of RATE_FIELDS) p[k] = toRate(d[k] || "");
     return p;
-  }, [d, projects, deNghiCuoi, aiGhiChu, aiThieu, files, loai, laToTrinh, soSanh]);
+  }, [d, projects, deNghiCuoi, aiGhiChu, aiThieu, files, loai, laToTrinh, soSanh, vatTu, chiTiet]);
 
   // ─── Tải tệp lên kho ───
   const doUpload = async (picked: File[]) => {
@@ -472,7 +527,18 @@ export default function SigningFormModal({
       // Tờ trình: bắt buộc phải có ĐỦ 3 phần làm nên một tờ trình — trình việc
       // gì, đề nghị cái gì, kiến nghị ra sao. Thiếu một phần thì Ban Giám đốc
       // nhận về một tờ giấy không ký được.
-      if (submit && laToTrinh) {
+      // Hai biểu mẫu bảng dòng: thứ bắt buộc là CÓ ÍT NHẤT MỘT DÒNG VẬT TƯ —
+      // phiếu yêu cầu / đơn đặt hàng mà bảng rỗng thì cấp trên không ký được gì.
+      if (submit && coBangVatTu) {
+        const rows = payload.vat_tu as VatTuRow[];
+        if (!rows.length) throw new Error("Phải nhập ít nhất một dòng vật tư / hàng hoá.");
+        if (laPhieuYeuCau && !payload.noi_dung_trinh) {
+          throw new Error("Phải ghi Nội dung yêu cầu trước khi trình.");
+        }
+        if (laDonDatHang && !payload.du_an) {
+          throw new Error("Phải ghi Dự án trước khi trình.");
+        }
+      } else if (submit && laToTrinh) {
         if (!payload.ve_viec) throw new Error("Phải ghi “Về việc” trước khi trình.");
         if (!payload.noi_dung_trinh) throw new Error("Phải ghi Nội dung đề nghị trước khi trình.");
         if (!payload.kien_nghi) throw new Error("Phải ghi Kiến nghị trước khi trình.");
@@ -492,7 +558,12 @@ export default function SigningFormModal({
       // Dựng luồng riêng của phiếu + tính người duyệt cấp 1 (theo Phòng ban trên
       // phiếu + người lập). Bước đầu luôn là 'cho_cap1'. Tính cả khi lưu nháp để
       // lúc "Trình" ở màn chi tiết cũng đi đúng luồng.
-      const route = buildSigningRoute(loai, d.pgd_qlda === "1", d.pgd_khdt === "1");
+      // Đơn đặt hàng: hỏi MỘT LẦN ở đây xem có ai giữ cờ Phòng Vật tư không,
+      // rồi chốt vào route của chính đơn. Không ai giữ -> Giám đốc duyệt là xong.
+      const coPvt = laDonDatHang ? await hasSigningVatTuApprover() : false;
+      const route = buildSigningRoute(
+        loai, d.pgd_qlda === "1", d.pgd_khdt === "1", coPvt, d.phong_qlda === "1"
+      );
       const cap1 = await resolveCap1({
         submitterName: currentName || "",
         submitterEmail: currentEmail || "",
@@ -596,6 +667,47 @@ export default function SigningFormModal({
           bankNameBranch: d.ngan_hang || "",
           amount: deNghiCuoi || 0,
         });
+        return;
+      }
+      // ĐƠN ĐẶT HÀNG in ra EXCEL — route riêng, KHÔNG phải downloadSigningForm.
+      if (laDonDatHang) {
+        const boQua = await downloadPurchaseOrder(
+          {
+            duAn: d.du_an, congTrinh: chiTiet.congTrinh || d.goi_thau,
+            hangMuc: d.hang_muc, soDdh: chiTiet.soDdh, lanThu: d.dot_so,
+            ngayDatHang: existing?.created_at || new Date().toISOString(),
+            ngayDuKien: chiTiet.ngayDuKien,
+            nguoiYeuCau: existing?.created_by_name || currentName || "",
+            donViYeuCau: chiTiet.donViYeuCau, donViNhanNo: chiTiet.donViNhanNo,
+            diaChiNhan: chiTiet.diaChiNhan,
+            nguoiNhanHang: chiTiet.nguoiNhanHang, sdtNhanHang: chiTiet.sdtNhanHang,
+            canBoKyThuat: chiTiet.canBoKyThuat, sdtKyThuat: chiTiet.sdtKyThuat,
+            taiLieuKemTheo: chiTiet.taiLieuKemTheo,
+            cdtThanhToan: chiTiet.cdtThanhToan,
+            lyDoKhongThanhToan: chiTiet.lyDoKhongThanhToan,
+            nguyenNhanPhatSinh: chiTiet.nguyenNhanPhatSinh,
+            vatTu,
+          },
+          docxFileName({ ...(existing || {}), loai: "don_dat_hang", chi_tiet: chiTiet })
+        );
+        if (boQua > 0) {
+          setErr(`Biểu mẫu Excel chỉ có 15 dòng vật tư — đơn này bị cắt mất ${boQua} dòng cuối. Tách thành 2 đơn hoặc tự chèn thêm dòng vào file tải về.`);
+        }
+        return;
+      }
+      // PHIẾU YÊU CẦU — Word, đi chung route với hồ sơ / hợp đồng / tờ trình.
+      if (laPhieuYeuCau) {
+        await downloadSigningForm(
+          {
+            loai: "phieu_yeu_cau",
+            nguoiYeuCau: existing?.created_by_name || currentName || "",
+            boPhan: d.don_vi || currentDepartment || "",
+            noiDungYeuCau: d.noi_dung_trinh || d.ve_viec,
+            ngayLap: existing?.created_at || new Date().toISOString(),
+            vatTu,
+          },
+          docxFileName({ ...(existing || {}), loai: "phieu_yeu_cau" })
+        );
         return;
       }
       // Tờ trình đi chung route /api/export-signing-form (mẫu thứ ba của route
@@ -884,7 +996,9 @@ export default function SigningFormModal({
             <h5 className={labelCls}>2. Đầu phiếu (tự gõ)</h5>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
               <label className="flex flex-col gap-1.5">
-                <span className={labelCls}>{laToTrinh ? "Bộ phận trình" : "Phòng ban"}</span>
+                <span className={labelCls}>
+                  {laToTrinh || laPhieuYeuCau ? "Bộ phận" : "Phòng ban"}
+                </span>
                 {/* Lấy danh sách phòng ban/BĐH từ danh bạ (bảng departments), mặc
                     định theo phòng của người lập; nhân viên BĐH thì mặc định đúng
                     BĐH đó. Vẫn cho chọn phòng ban khác trong danh sách. */}
@@ -912,6 +1026,9 @@ export default function SigningFormModal({
                     className={`${inputCls} font-mono`} />
                 </label>
               )}
+              {/* Phiếu yêu cầu / đơn đặt hàng không có dòng "Về việc" trên tờ
+                  giấy — nội dung nằm ở ô bên dưới và ở bảng vật tư. */}
+              {!coBangVatTu && (
               <label className={`flex flex-col gap-1.5 ${laToTrinh ? "md:col-span-3" : "md:col-span-2"}`}>
                 <span className={labelCls}>Về việc {laToTrinh && "*"}</span>
                 <input value={d.ve_viec || ""} onChange={(e) => set("ve_viec", e.target.value)}
@@ -920,6 +1037,7 @@ export default function SigningFormModal({
                     : 'Kính trình BGĐ phê duyệt: "Hồ sơ thanh toán Đợt 02 (thanh toán A-B)".'}
                   className={inputCls} />
               </label>
+              )}
               {/* Căn cứ — dòng in nghiêng mở đầu tờ trình, nêu cơ sở của đề nghị. */}
               {laToTrinh && (
                 <label className="flex flex-col gap-1.5 md:col-span-3">
@@ -931,35 +1049,53 @@ export default function SigningFormModal({
               )}
               <label className="flex flex-col gap-1.5 md:col-span-3">
                 <span className={labelCls}>
-                  {laToTrinh ? "Nội dung đề nghị *" : "Nội dung trình"}
+                  {laToTrinh ? "Nội dung đề nghị *"
+                    : laPhieuYeuCau ? "Nội dung yêu cầu *"
+                    : laDonDatHang ? "Ghi chú chung (tuỳ chọn)"
+                    : "Nội dung trình"}
                 </span>
                 {/* Tờ trình là một lá thư nên phần thân dài và xuống dòng nhiều
                     lần; ô một dòng của ba loại kia không đủ. Xuống dòng ở đây in
                     ra Word cũng xuống dòng đúng chỗ. */}
-                {laToTrinh ? (
+                {laToTrinh || laPhieuYeuCau ? (
                   <textarea value={d.noi_dung_trinh || ""} onChange={(e) => set("noi_dung_trinh", e.target.value)}
-                    rows={4}
-                    placeholder="Kính đề nghị Ban Giám đốc phê duyệt… (Enter để xuống dòng)"
+                    rows={laPhieuYeuCau ? 2 : 4}
+                    placeholder={laPhieuYeuCau
+                      ? "Yêu cầu làm bảng hiệu logo TNE&C mới cho dự án Cầu Phước An"
+                      : "Kính đề nghị Ban Giám đốc phê duyệt… (Enter để xuống dòng)"}
                     className={`${inputCls} resize-y leading-relaxed`} />
                 ) : (
                   <input value={d.noi_dung_trinh || ""} onChange={(e) => set("noi_dung_trinh", e.target.value)}
                     className={inputCls} />
                 )}
               </label>
-              {/* Tham vấn Phó Giám đốc — TÙY CHỌN, tích tự do 0/1/2 vị. Không tích
-                  thì cấp 1 xong lên thẳng Giám đốc; tích vị nào thì chèn vị đó vào
-                  luồng (route dựng lúc lưu theo lựa chọn này).
-                  TỜ TRÌNH không có ô này: tờ TTr/TNE&C chỉ in 3 ô ký (Người trình
-                  · Trưởng bộ phận · Ban Lãnh đạo), luồng cố định 2 cấp. Cho tích
-                  PGĐ ở đây thì phiếu đi qua một cấp không có chỗ ký trên giấy. */}
+              {/* Ô TÍCH CHỌN CẤP DUYỆT — tích vị nào thì chèn cấp đó vào luồng
+                  (route dựng lúc lưu theo lựa chọn này).
+                  · Phiếu hồ sơ / hợp đồng / chuyển tiền: hai ô THAM VẤN Phó Giám
+                    đốc, không tích thì cấp 1 xong lên thẳng Giám đốc.
+                  · ĐƠN ĐẶT HÀNG: đây là các CẤP DUYỆT THẬT trên tờ KD/BM/001
+                    (Phòng QLDA rồi PGĐ QLDA), không phải tham vấn — nên đổi nhãn
+                    và bỏ ô KHĐT, tờ đó không có ô ký nào cho KHĐT.
+                  · TỜ TRÌNH không có khối này: TTr/TNE&C chỉ in 3 ô ký, luồng cố
+                    định 2 cấp; cho tích thêm là phiếu đi qua cấp không có chỗ ký. */}
               {!laToTrinh && (
               <div className="flex flex-col gap-1.5 md:col-span-3">
-                <span className={labelCls}>Tham vấn Phó Giám đốc (Tùy chọn - nếu cần)</span>
+                <span className={labelCls}>
+                  {laDonDatHang
+                    ? "Trình duyệt qua các cấp (tích để đưa vào luồng)"
+                    : "Tham vấn Phó Giám đốc (Tùy chọn - nếu cần)"}
+                </span>
                 <div className="flex flex-wrap gap-2">
-                  {([
-                    ["pgd_qlda", "Phó Giám đốc phụ trách Dự án (QLDA)"],
-                    ["pgd_khdt", "Phó Giám đốc phụ trách Kế hoạch Đấu thầu (KHĐT)"],
-                  ] as const).map(([k, lb]) => {
+                  {(laDonDatHang
+                    ? ([
+                        ["phong_qlda", "Phòng QLDA (Trưởng / Phó phòng)"],
+                        ["pgd_qlda", "Phó Giám đốc phụ trách Dự án (QLDA)"],
+                      ] as const)
+                    : ([
+                        ["pgd_qlda", "Phó Giám đốc phụ trách Dự án (QLDA)"],
+                        ["pgd_khdt", "Phó Giám đốc phụ trách Kế hoạch Đấu thầu (KHĐT)"],
+                      ] as const)
+                  ).map(([k, lb]) => {
                     const on = d[k] === "1";
                     return (
                       <button key={k} type="button" onClick={() => set(k, on ? "" : "1")}
@@ -982,6 +1118,10 @@ export default function SigningFormModal({
             </div>
           </section>
 
+          {/* Mục 3 là bộ ô của HỢP ĐỒNG (đối tác, số HĐ, gói thầu, đợt).
+              Phiếu yêu cầu và đơn đặt hàng không có khái niệm nào trong số đó —
+              chúng có mục 3 riêng bên dưới. */}
+          {!coBangVatTu && (<>
           {/* ─── 3. Thông tin hợp đồng ─── */}
           <section className="space-y-3">
             <h5 className={labelCls}>
@@ -1172,6 +1312,221 @@ export default function SigningFormModal({
               )}
             </div>
           </section>
+          </>)}
+
+          {/* ─── 3. Thông tin đơn đặt hàng (chỉ đơn đặt hàng) ─── */}
+          {laDonDatHang && (
+            <section className="space-y-3">
+              <h5 className={labelCls}>3. Thông tin đơn đặt hàng</h5>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {/* Dự án chọn từ DANH MỤC (bảng `projects`, migration 037 — 16 dự án
+                    seed ở 048), không gõ tay: gõ tay thì mỗi người viết một kiểu
+                    ("Cầu Ba Lai 8" / "Xây dựng cầu Ba Lai 8") và không đối chiếu
+                    được với các module khác.
+                    Ô select bám theo TÊN dự án chứ không phải mã, vì tên mới là
+                    thứ in ra file Excel; `project_code` điền kèm để liên kết
+                    danh mục. Cùng khuôn ô "Phòng ban" ở mục 2. */}
+                <label className="flex flex-col gap-1.5">
+                  <span className={labelCls}>Dự án *</span>
+                  {projects.length > 0 ? (
+                    <select
+                      value={d.du_an || ""}
+                      onChange={(e) => {
+                        const ten = e.target.value;
+                        const p = projects.find((x) => x.name === ten);
+                        setD((prev) => ({ ...prev, du_an: ten, project_code: p?.code || "" }));
+                      }}
+                      className={`${inputCls} cursor-pointer`}>
+                      <option value="">— Chọn dự án —</option>
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.name}>{p.code} — {p.name}</option>
+                      ))}
+                      {/* Đơn cũ trỏ vào dự án đã gỡ khỏi danh mục vẫn hiện được,
+                          không bị xoá mất khi mở ra sửa. */}
+                      {d.du_an && !projects.some((p) => p.name === d.du_an) && (
+                        <option value={d.du_an}>{d.du_an} (ngoài danh mục)</option>
+                      )}
+                    </select>
+                  ) : (
+                    // LƯỚI AN TOÀN: danh mục dự án có thể đang RỖNG (bảng `projects`
+                    // cố ý không seed mẫu — xem lib/projectCatalog.ts). Đổi hẳn sang
+                    // select thì lúc đó ô này thành ngõ cụt: Dự án là trường bắt
+                    // buộc, không chọn được là không trình nổi đơn nào.
+                    <>
+                      <input value={d.du_an || ""} onChange={(e) => set("du_an", e.target.value)}
+                        placeholder="Xây dựng cầu Ba Lai 8" className={inputCls} />
+                      <span className="text-[10px] font-semibold text-amber-600">
+                        Danh mục dự án đang rỗng — thêm ở Cài đặt → Danh mục công việc
+                        để lần sau chọn từ danh sách.
+                      </span>
+                    </>
+                  )}
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className={labelCls}>Công trình</span>
+                  <input value={chiTiet.congTrinh || ""} onChange={(e) => setCt("congTrinh", e.target.value)}
+                    placeholder="Gói thầu số 1A" className={inputCls} />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className={labelCls}>Cấp cho hạng mục</span>
+                  <input value={d.hang_muc || ""} onChange={(e) => set("hang_muc", e.target.value)}
+                    placeholder="Thép xây dựng" className={inputCls} />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex flex-col gap-1.5">
+                    <span className={labelCls}>Số ĐĐH</span>
+                    <input value={chiTiet.soDdh || ""} onChange={(e) => setCt("soDdh", e.target.value)}
+                      placeholder="809" className={`${inputCls} font-mono`} />
+                  </label>
+                  {/* "Yêu cầu lần thứ" dùng lại cột `dot_so` — cùng nghĩa "đợt
+                      thứ mấy", không đẻ thêm cột chỉ để chứa một con số. */}
+                  <label className="flex flex-col gap-1.5">
+                    <span className={labelCls}>Yêu cầu lần thứ</span>
+                    <input value={d.dot_so || ""} onChange={(e) => set("dot_so", e.target.value)}
+                      inputMode="numeric" placeholder="1" className={`${inputCls} font-mono`} />
+                  </label>
+                </div>
+                <label className="flex flex-col gap-1.5">
+                  <span className={labelCls}>Đơn vị yêu cầu (sử dụng cuối)</span>
+                  <input value={chiTiet.donViYeuCau || ""} onChange={(e) => setCt("donViYeuCau", e.target.value)}
+                    className={inputCls} />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className={labelCls}>Đơn vị nhận nợ từ TNG</span>
+                  <input value={chiTiet.donViNhanNo || ""} onChange={(e) => setCt("donViNhanNo", e.target.value)}
+                    className={inputCls} />
+                </label>
+                <label className="flex flex-col gap-1.5 md:col-span-2">
+                  <span className={labelCls}>Địa chỉ nhận hàng</span>
+                  <input value={chiTiet.diaChiNhan || ""} onChange={(e) => setCt("diaChiNhan", e.target.value)}
+                    placeholder="Xã Thạnh Phước, tỉnh Vĩnh Long" className={inputCls} />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className={labelCls}>Ngày dự kiến sử dụng</span>
+                  <input value={chiTiet.ngayDuKien || ""} onChange={(e) => setCt("ngayDuKien", e.target.value)}
+                    placeholder="30/09/2026" className={inputCls} />
+                </label>
+                <div className="grid grid-cols-[1fr_140px] gap-2">
+                  <label className="flex flex-col gap-1.5">
+                    <span className={labelCls}>Người nhận hàng</span>
+                    <input value={chiTiet.nguoiNhanHang || ""} onChange={(e) => setCt("nguoiNhanHang", e.target.value)}
+                      className={inputCls} />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className={labelCls}>Điện thoại</span>
+                    <input value={chiTiet.sdtNhanHang || ""} onChange={(e) => setCt("sdtNhanHang", e.target.value)}
+                      inputMode="tel" className={`${inputCls} font-mono`} />
+                  </label>
+                </div>
+                <div className="grid grid-cols-[1fr_140px] gap-2 md:col-span-2">
+                  <label className="flex flex-col gap-1.5">
+                    <span className={labelCls}>Cán bộ kỹ thuật</span>
+                    <input value={chiTiet.canBoKyThuat || ""} onChange={(e) => setCt("canBoKyThuat", e.target.value)}
+                      className={inputCls} />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className={labelCls}>Điện thoại</span>
+                    <input value={chiTiet.sdtKyThuat || ""} onChange={(e) => setCt("sdtKyThuat", e.target.value)}
+                      inputMode="tel" className={`${inputCls} font-mono`} />
+                  </label>
+                </div>
+                <label className="flex flex-col gap-1.5 md:col-span-2">
+                  <span className={labelCls}>Yêu cầu tài liệu kèm theo</span>
+                  <input value={chiTiet.taiLieuKemTheo || ""} onChange={(e) => setCt("taiLieuKemTheo", e.target.value)}
+                    placeholder="Cung cấp đầy đủ hoá đơn, hồ sơ, chứng chỉ chất lượng liên quan"
+                    className={inputCls} />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className={labelCls}>Khối lượng có được CĐT thanh toán</span>
+                  <select value={chiTiet.cdtThanhToan || ""} onChange={(e) => setCt("cdtThanhToan", e.target.value)}
+                    className={`${inputCls} cursor-pointer`}>
+                    <option value="">— Chưa xác định —</option>
+                    <option value="Có">Có</option>
+                    <option value="Không">Không</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className={labelCls}>Nguyên nhân phát sinh</span>
+                  <input value={chiTiet.nguyenNhanPhatSinh || ""} onChange={(e) => setCt("nguyenNhanPhatSinh", e.target.value)}
+                    placeholder="Phát sinh ngoài hợp đồng" className={inputCls} />
+                </label>
+                {/* Chỉ hỏi lý do khi đã chọn "Không" — hiện sẵn lúc chưa chọn gì
+                    là bắt người lập đoán xem có phải điền hay không. */}
+                {chiTiet.cdtThanhToan === "Không" && (
+                  <label className="flex flex-col gap-1.5 md:col-span-2">
+                    <span className={labelCls}>Nếu không được thanh toán, nêu rõ lý do</span>
+                    <input value={chiTiet.lyDoKhongThanhToan || ""} onChange={(e) => setCt("lyDoKhongThanhToan", e.target.value)}
+                      className={inputCls} />
+                  </label>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* ─── 4. Bảng vật tư (phiếu yêu cầu · đơn đặt hàng) ─── */}
+          {coBangVatTu && (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h5 className={labelCls}>
+                  {laDonDatHang ? "4. Bảng vật tư đặt hàng" : "4. Bảng vật tư / hàng hoá"}
+                  {" "}({vatTu.length} dòng)
+                </h5>
+                <button type="button" onClick={() => setVatTu((v) => [...v, {}])}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-blue-300 hover:text-blue-600 text-slate-600 font-bold rounded-lg text-[10px] transition-all cursor-pointer">
+                  <Plus size={12} /> Thêm dòng
+                </button>
+              </div>
+
+              {/* Bảng 12 cột không vừa bề ngang modal -> CUỘN NGANG, không thu
+                  nhỏ ô nhập. Không có ô "STT": số thứ tự do hệ thống đánh lúc
+                  xuất file, bắt gõ tay chỉ sinh ra phiếu đánh số nhảy cóc. */}
+              <div className="overflow-x-auto -mx-1 px-1">
+                <div style={{ minWidth: laDonDatHang ? 1560 : 740 }} className="space-y-2">
+                  <div className="grid gap-2 px-1"
+                    style={{ gridTemplateColumns: VAT_TU_COLS(laDonDatHang).map((c) => c.w).join(" ") + " 28px" }}>
+                    {VAT_TU_COLS(laDonDatHang).map((c) => (
+                      <span key={c.key} className={`${labelCls} leading-tight`}>{c.label}</span>
+                    ))}
+                    <span />
+                  </div>
+                  {vatTu.map((r, i) => (
+                    <div key={i} className="grid gap-2 items-start"
+                      style={{ gridTemplateColumns: VAT_TU_COLS(laDonDatHang).map((c) => c.w).join(" ") + " 28px" }}>
+                      {VAT_TU_COLS(laDonDatHang).map((c) => (
+                        <input key={c.key}
+                          value={r[c.key] || ""}
+                          onChange={(e) => setVatTu((prev) =>
+                            prev.map((x, j) => (j === i ? { ...x, [c.key]: e.target.value } : x)))}
+                          placeholder={c.hint}
+                          inputMode={c.num ? "decimal" : undefined}
+                          className={`${inputCls} ${c.num ? "font-mono text-right" : ""}`} />
+                      ))}
+                      <button type="button" onClick={() => setVatTu((prev) => prev.filter((_, j) => j !== i))}
+                        title="Xoá dòng"
+                        className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer mt-0.5">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-[11px] font-semibold text-slate-400">
+                {laDonDatHang
+                  ? "Biểu mẫu Excel có sẵn 15 dòng — nhập quá 15 thì phần thừa bị cắt khi xuất file và hệ thống sẽ báo."
+                  : "Dòng để trống tự bỏ khi lưu; số thứ tự do hệ thống đánh lúc in."}
+                {" "}{laDonDatHang ? (
+                  <>Đơn đi: BĐH dự án (Chỉ huy trưởng / phó)
+                  {d.phong_qlda === "1" ? " → Phòng QLDA" : ""}
+                  {d.pgd_qlda === "1" ? " → PGĐ QLDA" : ""}
+                  {" → Phòng Vật tư xác nhận"}. Hai cấp giữa bật/tắt bằng ô tích ở mục 2;
+                  chưa cấp cờ “Xác nhận — Phòng Vật tư” cho ai thì đơn xong ở cấp trước đó.</>
+                ) : (
+                  <>Phiếu đi <strong className="text-slate-500">2 cấp</strong>: Phụ trách bộ phận{" → "}Thủ trưởng đơn vị.</>
+                )}
+              </p>
+            </section>
+          )}
 
           {/* ─── 4b. Chủ thể + giá trị + bảng so sánh (chỉ phiếu hợp đồng) ─── */}
           {laHopDong && (

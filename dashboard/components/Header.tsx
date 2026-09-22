@@ -413,7 +413,11 @@ export default function Header({ title, subtitle }: Props) {
           // nó ở đây thì Trưởng bộ phận/Tổ trưởng không bao giờ nghe chuông và
           // phiếu nằm im ở bước 1 cho tới khi họ tự mở trang ra xem.
           .in("status", ["cho_cap1", "cho_pho_giam_doc", "cho_giam_doc", "cho_ke_toan", "tra_lai",
-                         "cho_pgd_qlda", "cho_pgd_khdt"]);
+                         "cho_pgd_qlda", "cho_pgd_khdt",
+                         // migration 092 — chặng Phòng Vật tư của Đơn đặt hàng.
+                         // Thiếu ở đây thì cấp đó KHÔNG BAO GIỜ nhận chuông,
+                         // đúng lỗi đã xảy ra với 'cho_cap1' hồi 15/09.
+                         "cho_phong_qlda", "cho_phong_vat_tu"]);
         if (!error && data) signingData = data;
         // Trước đây `error` bị nuốt hoàn toàn: truy vấn hỏng (thiếu cột, RLS đổi)
         // thì chuông lặng thinh và không có cách nào lần ra. Nói ra ở Console.
@@ -505,6 +509,7 @@ export default function Header({ title, subtitle }: Props) {
       // ngay dưới đây và không bao giờ thấy thông báo trả lại.
       const hasSigningRole =
         perms.canApproveSigningQlda || perms.canApproveSigningKhdt ||
+        perms.canApproveSigningPhongQlda || perms.canApproveSigningVatTu ||
         perms.canApproveSigningDirector || perms.canApproveSigningAccounting ||
         perms.canCreateSigning;
 
@@ -890,6 +895,8 @@ export default function Header({ title, subtitle }: Props) {
         // Phiếu cũ trước migration 053
         cho_pgd_qlda: "Phó Giám đốc xem xét",
         cho_pgd_khdt: "Phó Giám đốc xem xét",
+        cho_phong_qlda: "Phòng QLDA duyệt",
+        cho_phong_vat_tu: "Phòng Vật tư xác nhận",
       };
       // Chỉ MỘT chặng Phó Giám đốc — giữ cờ QLDA hay KHĐT đều nhận thông báo,
       // vì chỉ cần một trong hai vị xem xét là phiếu đi tiếp (migration 053).
@@ -899,6 +906,8 @@ export default function Header({ title, subtitle }: Props) {
         mySigningStages.add("cho_pgd_qlda");
         mySigningStages.add("cho_pgd_khdt");
       }
+      if (perms.canApproveSigningPhongQlda) mySigningStages.add("cho_phong_qlda");
+      if (perms.canApproveSigningVatTu) mySigningStages.add("cho_phong_vat_tu");
       if (perms.canApproveSigningDirector) mySigningStages.add("cho_giam_doc");
       if (perms.canApproveSigningAccounting) mySigningStages.add("cho_ke_toan");
 

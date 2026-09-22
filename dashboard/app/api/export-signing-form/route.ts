@@ -26,8 +26,23 @@ const TEMPLATE_HOP_DONG = "phieu_trinh_ky_hop_dong_template.docx";
 // Tờ trình TTr/TNE&C (migration 088). Bản đã gắn tag sinh ra từ to_trinh.doc của
 // công ty — letterhead, footer, khung 3 ô ký giữ nguyên 100%.
 const TEMPLATE_TO_TRINH = "to_trinh_template.docx";
+// Phiếu yêu cầu HC-BM 023/PYC (migration 091). Bảng vật tư dùng VÒNG LẶP HÀNG
+// `{#vatTu}` nên số dòng in ra do dữ liệu quyết định, không phải do file mẫu.
+const TEMPLATE_PHIEU_YEU_CAU = "phieu_yeu_cau_template.docx";
 
 const fmt = (n: number) => new Intl.NumberFormat("vi-VN").format(Math.round(n));
+
+// "ngày 22 tháng 09 năm 2026" theo NGÀY LẬP PHIẾU. BẮT BUỘC ghi timeZone: route
+// chạy giờ UTC nên phiếu lập sau 17h giờ VN sẽ in ra ngày hôm trước.
+function ngayVN(iso: unknown): string {
+  const d = iso ? new Date(String(iso)) : new Date();
+  const ok = Number.isNaN(d.getTime()) ? new Date() : d;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric",
+  }).formatToParts(ok);
+  const g = (t: string) => parts.find((p) => p.type === t)?.value || "";
+  return `ngày ${g("day")} tháng ${g("month")} năm ${g("year")}`;
+}
 
 // Số tiền -> "1.234.000 đồng (A)". Chuỗi rỗng khi không có số: để trống trong
 // phiếu vẫn hơn in ra "0 đồng" ở một dòng mà kế toán chưa chốt được con số.
@@ -76,10 +91,12 @@ export async function POST(request: NextRequest) {
 
     const loai =
       body.loai === "hop_dong" ? "hop_dong" :
-      body.loai === "to_trinh" ? "to_trinh" : "ho_so";
+      body.loai === "to_trinh" ? "to_trinh" :
+      body.loai === "phieu_yeu_cau" ? "phieu_yeu_cau" : "ho_so";
     const templateFile =
       loai === "hop_dong" ? TEMPLATE_HOP_DONG :
-      loai === "to_trinh" ? TEMPLATE_TO_TRINH : TEMPLATE_HO_SO;
+      loai === "to_trinh" ? TEMPLATE_TO_TRINH :
+      loai === "phieu_yeu_cau" ? TEMPLATE_PHIEU_YEU_CAU : TEMPLATE_HO_SO;
     const templatePath = path.join(process.cwd(), "public", "templates", templateFile);
     if (!fs.existsSync(templatePath)) {
       return NextResponse.json(
@@ -90,6 +107,45 @@ export async function POST(request: NextRequest) {
 
     const zip = new PizZip(fs.readFileSync(templatePath, "binary"));
     const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+
+    // ─── PHIẾU YÊU CẦU (HC-BM 023/PYC, migration 091) ───
+    // Ba ô chữ + một bảng vật tư 6 cột. Lọc dòng trống và tự đánh số thứ tự để
+    // phiếu in ra không có hàng thừa, cũng không phải bắt người lập gõ số TT.
+    if (loai === "phieu_yeu_cau") {
+      const vatTu = (Array.isArray(body.vatTu) ? body.vatTu : [])
+        .filter((r: Record<string, unknown>) =>
+          ["ten", "quyCach", "dvt", "soLuong", "ngayCap"]
+            .some((k) => String(r?.[k] || "").trim() !== ""))
+        .map((r: Record<string, unknown>, i: number) => ({
+          stt: String(r?.stt || "").trim() || String(i + 1),
+          ten: String(r?.ten || ""),
+          quyCach: String(r?.quyCach || ""),
+          dvt: String(r?.dvt || ""),
+          soLuong: String(r?.soLuong || ""),
+          ngayCap: String(r?.ngayCap || ""),
+        }));
+
+      doc.render({
+        nguoiYeuCau: String(body.nguoiYeuCau || "").trim(),
+        boPhan: String(body.boPhan || "").trim(),
+        noiDungYeuCau: String(body.noiDungYeuCau || "").trim(),
+        ngayThang: ngayVN(body.ngayLap),
+        vatTu,
+      });
+
+      const buf = doc.getZip().generate({ type: "nodebuffer", compression: "DEFLATE" });
+      return new NextResponse(new Uint8Array(buf), {
+        status: 200,
+        headers: {
+          "Content-Type":
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "Content-Disposition": `attachment; filename="${encodeURIComponent(
+            String(body.fileName || "Phieu_Yeu_Cau.docx")
+          )}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
 
     // ─── TỜ TRÌNH (TTr/TNE&C, migration 088) ───
     // Tờ này là một LÁ THƯ, không có bảng số liệu: mọi câu chữ do route ghép rồi

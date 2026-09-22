@@ -60,6 +60,10 @@ export type ApprovalPermissions = {
                                 // kế toán/giám đốc cần duyệt nhưng không phải người lập.
   canApproveSigningQlda: boolean;
   canApproveSigningKhdt: boolean;
+  // Hai cấp CHỈ nằm trong luồng Đơn đặt hàng: Phòng QLDA (093) duyệt trước
+  // Phó Giám đốc QLDA, Phòng Vật tư (092) xác nhận sau cùng.
+  canApproveSigningPhongQlda: boolean;
+  canApproveSigningVatTu: boolean;
   canApproveSigningDirector: boolean;
   canApproveSigningAccounting: boolean;
   // Quan hệ giám sát: tên hiển thị (khớp cột `assignee` dạng text) của người mà chủ
@@ -92,6 +96,8 @@ export const NO_APPROVAL_PERMISSIONS: ApprovalPermissions = {
   canCreateSigning: false,
   canApproveSigningQlda: false,
   canApproveSigningKhdt: false,
+  canApproveSigningPhongQlda: false,
+  canApproveSigningVatTu: false,
   canApproveSigningDirector: false,
   canApproveSigningAccounting: false,
   supervisesName: null,
@@ -705,6 +711,8 @@ export async function fetchApprovalPermissions(email?: string | null): Promise<A
       canCreateSigning: !!row.can_create_signing,
       canApproveSigningQlda: !!row.can_approve_signing_qlda,
       canApproveSigningKhdt: !!row.can_approve_signing_khdt,
+      canApproveSigningPhongQlda: !!row.can_approve_signing_phong_qlda,
+      canApproveSigningVatTu: !!row.can_approve_signing_vat_tu,
       canApproveSigningDirector: !!row.can_approve_signing_director,
       canApproveSigningAccounting: !!row.can_approve_signing_accounting,
       supervisesName: row.supervises_name || null,

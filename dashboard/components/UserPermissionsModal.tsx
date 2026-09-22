@@ -85,6 +85,8 @@ const FLAG_GROUPS: { title: string; note?: string; flags: { key: string; label: 
       { key: "can_create_signing", label: "Lập phiếu trình ký", desc: "Tải hồ sơ lên, bóc tách số liệu và trình phiếu đi (chuyên viên KHĐT)" },
       { key: "can_approve_signing_qlda", label: "Duyệt — PGĐ QLDA", desc: "Bước 1: Phó Giám đốc phụ trách Quản lý dự án cho ý kiến" },
       { key: "can_approve_signing_khdt", label: "Duyệt — PGĐ KHĐT", desc: "Bước 2: Phó Giám đốc phụ trách Kế hoạch Đấu thầu cho ý kiến" },
+      { key: "can_approve_signing_phong_qlda", label: "Duyệt — Phòng QLDA", desc: "CHỈ dùng cho Đơn đặt hàng (KD/BM/001): TP/PP Quản lý dự án duyệt, trước PGĐ QLDA" },
+      { key: "can_approve_signing_vat_tu", label: "Xác nhận — Phòng Vật tư", desc: "CHỈ dùng cho Đơn đặt hàng: bước XÁC NHẬN CUỐI, sau PGĐ QLDA. Không cấp cho ai thì đơn xong ở bước trước" },
       { key: "can_approve_signing_director", label: "Duyệt — Giám đốc", desc: "Bước 3: Giám đốc phê duyệt" },
       { key: "can_approve_signing_accounting", label: "Kế toán — Xác nhận chi", desc: "Bước 4: nhận phiếu đã duyệt và xác nhận đã thanh toán" },
     ],

@@ -27,7 +27,7 @@ import {
   fmtMoney, fmtDateTime, resolveDossierUrl, fetchStageApproverEmails, errText,
   normalizeStatus, pgdOpinionField, downloadSigningForm, docxPayloadFromRow, docxFileName,
   deleteSubmission, duplicateSubmission, appendDossierFiles, removeDossierFile,
-  pushToPaymentDossier,
+  pushToPaymentDossier, downloadPurchaseOrder, ddhPayloadFromRow,
   STATUS_META, ACTION_LABEL, EVENT_LABEL, FLOW, LOAI_META,
   type SigningSubmission, type SigningStatus, type SigningLoai,
 } from "@/lib/signingSubmissions";
@@ -61,7 +61,9 @@ const inputCls =
 // MỘT bộ lọc duy nhất thay cho hai nhóm nút (trạng thái + loại) trước đây.
 // Hai nhóm nằm cạnh nhau trông như hai thứ độc lập nhưng thực tế người dùng chỉ
 // bấm một cái mỗi lần, và tổng 6 nút chiếm gần nửa chiều ngang thanh công cụ.
-type Filter = "tat_ca" | "ho_so" | "hop_dong" | "chuyen_tien" | "to_trinh" | "cua_toi";
+type Filter =
+  | "tat_ca" | "ho_so" | "hop_dong" | "chuyen_tien" | "to_trinh"
+  | "phieu_yeu_cau" | "don_dat_hang" | "cua_toi";
 
 // `created_at` là timestamptz — cắt 10 ký tự đầu là lấy ngày theo giờ UTC, nên
 // phiếu lập sau 7 giờ tối giờ VN sẽ bị tính sang ngày hôm sau và rơi ra ngoài
@@ -244,13 +246,12 @@ export default function SigningPanel() {
   );
 
   const visible = useMemo(() => {
+    // Mọi mục lọc TRỪ "tat_ca"/"cua_toi" đều trùng tên với một giá trị `loai`,
+    // nên so thẳng — thêm loại phiếu thứ bảy không phải nối thêm một nhánh nữa.
     const base =
       filter === "cua_toi" ? cuaToi
-      : filter === "ho_so" ? rows.filter((r) => r.loai === "ho_so")
-      : filter === "hop_dong" ? rows.filter((r) => r.loai === "hop_dong")
-      : filter === "chuyen_tien" ? rows.filter((r) => r.loai === "chuyen_tien")
-      : filter === "to_trinh" ? rows.filter((r) => r.loai === "to_trinh")
-      : rows;
+      : filter === "tat_ca" ? rows
+      : rows.filter((r) => r.loai === (filter as SigningLoai));
     const q = search.trim().toLowerCase();
     const list = !q ? base : base.filter((r) =>
       // Thêm Bên A / Bên B / hạng mục vào diện tìm — với phiếu hợp đồng thì đó
@@ -417,24 +418,24 @@ export default function SigningPanel() {
               `title` — nhãn dài làm cụm nút rộng hơn cột phải của lưới.
               Ô lưới LUÔN được vẽ kể cả khi không có quyền lập phiếu, nếu không
               hàng tab bên dưới sẽ nhảy sang cột 2. */}
-          <div className="flex items-center gap-2 flex-nowrap justify-end">
+          <div className="grid grid-cols-3 gap-2">
             {canCreate && (
               <>
               <button type="button" onClick={() => setCreating("ho_so")}
                 title="Trình duyệt một đợt thanh toán của hợp đồng đã ký (TL/BM/011)"
-                className="flex items-center gap-1.5 shrink-0 whitespace-nowrap bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-blue-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
+                className="flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-blue-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
                 <Plus size={14} /> Hồ sơ / Văn bản
               </button>
               <button type="button" onClick={() => setCreating("hop_dong")}
                 title="Trình duyệt nội dung hợp đồng trước khi ký (KHKT/BM/001)"
-                className="flex items-center gap-1.5 shrink-0 whitespace-nowrap bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-violet-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
+                className="flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-violet-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
                 <Plus size={14} /> Hợp đồng
               </button>
               {/* Đề nghị chuyển tiền — cũng chính là tờ mà nút "Trình ký online"
                   bên Kế hoạch thu chi mở ra. Cùng một loại phiếu, hai lối vào. */}
               <button type="button" onClick={() => setCreating("chuyen_tien")}
                 title="Đề nghị chuyển tiền cho một khoản chi (HC-BM021/ĐNCT)"
-                className="flex items-center gap-1.5 shrink-0 whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-emerald-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
+                className="flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-emerald-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
                 <Plus size={14} /> Chuyển tiền
               </button>
               {/* Tờ trình — xin CHỦ TRƯƠNG của Ban Giám đốc (mua sắm, nâng cấp,
@@ -442,8 +443,20 @@ export default function SigningPanel() {
                   đề nghị chuyển tiền riêng. */}
               <button type="button" onClick={() => setCreating("to_trinh")}
                 title="Trình Ban Giám đốc một đề xuất / xin chủ trương (TTr/TNE&C)"
-                className="flex items-center gap-1.5 shrink-0 whitespace-nowrap bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-indigo-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
+                className="flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-indigo-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
                 <Plus size={14} /> Tờ trình
+              </button>
+              {/* Phiếu yêu cầu — xin cấp vật tư / hàng hoá / thiết bị. */}
+              <button type="button" onClick={() => setCreating("phieu_yeu_cau")}
+                title="Yêu cầu cấp vật tư, hàng hoá, máy móc thiết bị (HC-BM 023/PYC)"
+                className="flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-amber-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
+                <Plus size={14} /> Phiếu yêu cầu
+              </button>
+              {/* Đơn đặt hàng — in ra EXCEL, không phải Word như năm loại kia. */}
+              <button type="button" onClick={() => setCreating("don_dat_hang")}
+                title="Đơn đặt hàng vật tư cho dự án — xuất Excel (KD/BM/001)"
+                className="flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-teal-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
+                <Plus size={14} /> Đơn đặt hàng
               </button>
               </>
             )}
@@ -458,6 +471,8 @@ export default function SigningPanel() {
               ["hop_dong", `Hợp đồng (${rows.filter((r) => r.loai === "hop_dong").length})`],
               ["chuyen_tien", `Chuyển tiền (${rows.filter((r) => r.loai === "chuyen_tien").length})`],
               ["to_trinh", `Tờ trình (${rows.filter((r) => r.loai === "to_trinh").length})`],
+              ["phieu_yeu_cau", `Phiếu yêu cầu (${rows.filter((r) => r.loai === "phieu_yeu_cau").length})`],
+              ["don_dat_hang", `Đơn đặt hàng (${rows.filter((r) => r.loai === "don_dat_hang").length})`],
               ["cua_toi", `Phiếu của tôi (${cuaToi.length})`],
             ] as [Filter, string][]).map(([k, lb]) => (
               <button key={k} type="button" onClick={() => setFilter(k)}
@@ -492,6 +507,8 @@ export default function SigningPanel() {
               : filter === "ho_so" ? "Chưa có phiếu trình ký hồ sơ / văn bản nào"
               : filter === "hop_dong" ? "Chưa có phiếu trình ký hợp đồng nào"
               : filter === "to_trinh" ? "Chưa có tờ trình nào"
+              : filter === "phieu_yeu_cau" ? "Chưa có phiếu yêu cầu nào"
+              : filter === "don_dat_hang" ? "Chưa có đơn đặt hàng nào"
               : "Chưa có phiếu trình ký nào"}
           </p>
           {canCreate && (
@@ -544,9 +561,11 @@ export default function SigningPanel() {
                         {/* Phiếu chuyển tiền không gắn hợp đồng — "(chưa có số HĐ)"
                             ở đây đọc như phiếu nhập thiếu, trong khi đúng ra là
                             không có khái niệm đó. Hiện nội dung chi thay vào. */}
-                        {r.loai === "chuyen_tien" || r.loai === "to_trinh"
-                          ? (r.ve_viec || r.noi_dung_trinh || "(chưa ghi nội dung)")
-                          : (r.hop_dong_so || "(chưa có số HĐ)")}
+                        {r.loai === "ho_so" || r.loai === "hop_dong"
+                          ? (r.hop_dong_so || "(chưa có số HĐ)")
+                          : r.loai === "don_dat_hang"
+                          ? (r.du_an || r.hang_muc || "(chưa ghi dự án)")
+                          : (r.ve_viec || r.noi_dung_trinh || "(chưa ghi nội dung)")}
                       </span>
                       <span className="flex items-center gap-1.5 mt-0.5 min-w-0">
                         <span className={`shrink-0 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${LOAI_META[r.loai].chip}`}>
@@ -937,6 +956,15 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
         });
         return;
       }
+      // Đơn đặt hàng in ra EXCEL — route riêng (/api/export-purchase-order),
+      // downloadSigningForm chỉ biết ba mẫu Word.
+      if (row.loai === "don_dat_hang") {
+        const boQua = await downloadPurchaseOrder(ddhPayloadFromRow(row), docxFileName(row));
+        if (boQua > 0) {
+          setErr(`Biểu mẫu Excel chỉ có 15 dòng vật tư — đơn này bị cắt mất ${boQua} dòng cuối.`);
+        }
+        return;
+      }
       await downloadSigningForm(docxPayloadFromRow(row), docxFileName(row));
     } catch (e) {
       setErr(errText(e));
@@ -1069,6 +1097,10 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
         Object.assign(patch, { ykien_qlda: ykien || null, qlda_by: who, qlda_at: now });
       } else if (cur === "cho_pgd_khdt") {
         Object.assign(patch, { ykien_khdt: ykien || null, khdt_by: who, khdt_at: now });
+      } else if (cur === "cho_phong_qlda") {
+        Object.assign(patch, { ykien_pqlda: ykien || null, pqlda_by: who, pqlda_at: now });
+      } else if (cur === "cho_phong_vat_tu") {
+        Object.assign(patch, { ykien_pvt: ykien || null, pvt_by: who, pvt_at: now });
       } else if (cur === "cho_pho_giam_doc") {
         // Phiếu CŨ: chặng PGĐ gộp — ghi vào ô của vị đang ký (theo cờ).
         if (pgdOpinionField(user.perms) === "qlda") {
@@ -1157,13 +1189,42 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
   const laHopDong = row.loai === "hop_dong";
   const laChuyenTien = row.loai === "chuyen_tien";
   const laToTrinh = row.loai === "to_trinh";
+  const laPhieuYeuCau = row.loai === "phieu_yeu_cau";
+  const laDonDatHang = row.loai === "don_dat_hang";
 
   // Ba bộ dòng khác hẳn nhau. Trước đây phiếu hợp đồng cũng đổ ra bộ của phiếu
   // thanh toán: 7 dòng "— đồng (A)/(B)/(C)/(D)" và một dòng "Đề nghị thanh toán
   // 0 đồng" — vừa vô nghĩa vừa dễ làm người duyệt tưởng phiếu nhập thiếu số.
   // Giấy đề nghị chuyển tiền cũng vậy: người duyệt cần thấy TIỀN ĐI ĐÂU, nên
   // số tài khoản + ngân hàng phải nằm ngay đây chứ không nằm trong file Word.
-  const rowInfo: [string, string][] = laToTrinh
+  const ct = row.chi_tiet || {};
+  const rowInfo: [string, string][] = laPhieuYeuCau
+    ? [
+        ["Bộ phận", row.don_vi || "—"],
+        ["Nội dung yêu cầu", row.noi_dung_trinh || row.ve_viec || "—"],
+        ["Số dòng vật tư", `${row.vat_tu.length} dòng`],
+      ]
+    : laDonDatHang
+    ? [
+        ["Dự án", row.du_an || "—"],
+        ["Công trình", ct.congTrinh || row.goi_thau || "—"],
+        ["Cấp cho hạng mục", row.hang_muc || "—"],
+        ["Số ĐĐH", ct.soDdh || "(chưa cấp số)"],
+        ["Yêu cầu lần thứ", row.dot_so != null ? String(row.dot_so) : "—"],
+        ["Đơn vị yêu cầu", ct.donViYeuCau || "—"],
+        ["Đơn vị nhận nợ từ TNG", ct.donViNhanNo || "—"],
+        ["Địa chỉ nhận hàng", ct.diaChiNhan || "—"],
+        ["Ngày dự kiến sử dụng", ct.ngayDuKien || "—"],
+        ["Người nhận hàng", [ct.nguoiNhanHang, ct.sdtNhanHang].filter(Boolean).join(" · ") || "—"],
+        ["Cán bộ kỹ thuật", [ct.canBoKyThuat, ct.sdtKyThuat].filter(Boolean).join(" · ") || "—"],
+        ["CĐT có thanh toán", ct.cdtThanhToan
+          ? ct.cdtThanhToan + (ct.cdtThanhToan === "Không" && ct.lyDoKhongThanhToan
+              ? ` — ${ct.lyDoKhongThanhToan}` : "")
+          : "—"],
+        ["Nguyên nhân phát sinh", ct.nguyenNhanPhatSinh || "—"],
+        ["Số dòng vật tư", `${row.vat_tu.length} dòng`],
+      ]
+    : laToTrinh
     ? [
         ["Số tờ trình", row.so_to_trinh || "(chưa cấp số)"],
         ["Bộ phận trình", row.don_vi || "—"],
@@ -1230,6 +1291,10 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
         return { name: "Phó Giám đốc (Dự án)", by: row.qlda_by, at: row.qlda_at, yk: row.ykien_qlda };
       case "cho_pgd_khdt":
         return { name: "Phó Giám đốc (KHĐT)", by: row.khdt_by, at: row.khdt_at, yk: row.ykien_khdt };
+      case "cho_phong_qlda":
+        return { name: "Phòng QLDA", by: row.pqlda_by, at: row.pqlda_at, yk: row.ykien_pqlda };
+      case "cho_phong_vat_tu":
+        return { name: "Phòng Vật tư (xác nhận)", by: row.pvt_by, at: row.pvt_at, yk: row.ykien_pvt };
       case "cho_pho_giam_doc": // phiếu cũ — chặng PGĐ gộp
         return {
           name: "Phó Giám đốc",
@@ -1315,7 +1380,7 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
                     {fmtMoney(row.de_nghi_thanh_toan)} đồng
                   </span>
                 </div>
-              ) : !laHopDong && !laToTrinh && (
+              ) : !laHopDong && !laToTrinh && !laPhieuYeuCau && !laDonDatHang && (
                 <div className="flex gap-3 px-3.5 py-2.5 bg-blue-50/70">
                   <span className="text-[11px] font-extrabold text-blue-900 w-52 shrink-0">
                     Đề nghị thanh toán (A−B−C−D)
@@ -1327,6 +1392,50 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
               )}
             </div>
           </section>
+
+          {/* Bảng vật tư — người duyệt cần đọc ngay tại đây, không phải tải
+              file về mới biết đang ký cho cái gì. Chỉ hiện những cột CÓ dữ liệu
+              để đơn đặt hàng 12 cột không thành một bảng toàn dấu gạch. */}
+          {(laPhieuYeuCau || laDonDatHang) && row.vat_tu.length > 0 && (() => {
+            const cols: [keyof typeof row.vat_tu[number], string][] = laDonDatHang
+              ? [["ten", "Tên vật tư"], ["quyCach", "Quy cách"], ["dvt", "ĐVT"],
+                 ["dinhMuc", "Định mức (4)"], ["luyKeTrong", "Đã TH (5a)"],
+                 ["luyKeNgoai", "Đã TH (5b)"], ["chenhLech", "Còn lại (6)"],
+                 ["dexuatTrong", "Đề xuất (7a)"], ["dexuatNgoai", "Đề xuất (7b)"],
+                 ["lyDo", "Lý do"], ["chiPhi", "Chi phí"], ["ghiChu", "Ghi chú"]]
+              : [["ten", "Tên vật tư"], ["quyCach", "Quy cách"], ["dvt", "ĐVT"],
+                 ["soLuong", "Số lượng"], ["ngayCap", "Ngày cấp"]];
+            const dung = cols.filter(([k]) =>
+              row.vat_tu.some((r) => String(r[k] || "").trim() !== ""));
+            if (!dung.length) return null;
+            return (
+              <section className="space-y-2">
+                <h5 className={labelCls}>Bảng vật tư ({row.vat_tu.length} dòng)</h5>
+                <div className="border border-slate-200/60 rounded-xl overflow-x-auto">
+                  <div className="min-w-max">
+                    <div className="flex gap-2 px-3 py-2 bg-slate-100/70">
+                      <span className={`${labelCls} w-8 shrink-0`}>TT</span>
+                      {dung.map(([k, lb]) => (
+                        <span key={k} className={`${labelCls} w-28 shrink-0`}>{lb}</span>
+                      ))}
+                    </div>
+                    <div className="divide-y divide-slate-200/70">
+                      {row.vat_tu.map((r, i) => (
+                        <div key={i} className="flex gap-2 px-3 py-2 items-start">
+                          <span className="text-[11px] font-bold text-slate-400 w-8 shrink-0">{r.stt || i + 1}</span>
+                          {dung.map(([k]) => (
+                            <span key={k} className="text-[11px] font-semibold text-slate-700 w-28 shrink-0 break-words">
+                              {String(r[k] || "") || "—"}
+                            </span>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            );
+          })()}
 
           {/* Bảng so sánh A-B ↔ B-B′ — thứ quan trọng nhất của phiếu hợp đồng,
               người duyệt cần đọc ngay chứ không phải mở file Word ra xem. */}

@@ -34,7 +34,9 @@ export type SigningStatus =
   | "hoan_tat"
   | "tra_lai"
   | "cho_pgd_qlda"       // migration 074 — PGĐ Dự án (được chọn)
-  | "cho_pgd_khdt";      // migration 074 — PGĐ KHĐT (được chọn)
+  | "cho_pgd_khdt"       // migration 074 — PGĐ KHĐT (được chọn)
+  | "cho_phong_qlda"     // migration 093 — CHỈ có trong luồng Đơn đặt hàng
+  | "cho_phong_vat_tu";  // migration 092 — CHỈ có trong luồng Đơn đặt hàng
 
 export type SigningFile = { path: string; name: string; size?: number };
 
@@ -48,7 +50,54 @@ export type SigningFile = { path: string; name: string; size?: number };
 //               cấp, đề xuất…). Không hợp đồng, không đợt, không tài khoản nhận;
 //               chỉ có Căn cứ → Nội dung đề nghị → Chi phí dự kiến → Kiến nghị.
 //               Luồng ĐÚNG 2 CẤP theo 3 ô ký trên tờ giấy (xem buildSigningRoute).
-export type SigningLoai = "ho_so" | "hop_dong" | "chuyen_tien" | "to_trinh";
+// phieu_yeu_cau : HC-BM 023/PYC — yêu cầu cấp vật tư/hàng hoá/thiết bị. Bảng 6
+//                 cột, in ra Word.
+// don_dat_hang  : KD/BM/001     — đơn đặt hàng cho dự án. Bảng 13 cột + ~15 ô
+//                 đầu phiếu riêng, in ra EXCEL (route riêng, xem exportDocx).
+export type SigningLoai =
+  | "ho_so" | "hop_dong" | "chuyen_tien" | "to_trinh"
+  | "phieu_yeu_cau" | "don_dat_hang";
+
+// Hai loại dưới đây dùng CHUNG một luồng 2 cấp — gom lại một chỗ để thêm loại
+// thứ ba không phải đi sửa 5 hàm rải rác. Đơn đặt hàng KHÔNG nằm trong nhóm này:
+// luồng của nó dài hơn và bật/tắt được từng cấp (xem buildSigningRoute).
+export const LOAI_HAI_CAP: SigningLoai[] = ["to_trinh", "phieu_yeu_cau"];
+
+// ─── LUỒNG ĐƠN ĐẶT HÀNG (migration 092 + 093) — ROUTE_DON_DAT_HANG ───
+// Khớp đúng 5 ô ký đánh số trên tờ KD/BM/001:
+//   ➊ Người yêu cầu (người lập)
+//   ➋ BĐH dự án — Chỉ huy trưởng / Chỉ huy phó   -> 'cho_cap1'        (LUÔN CÓ)
+//   ➌ Phòng QLDA — TP/PP Quản lý dự án           -> 'cho_phong_qlda'  (ô tích)
+//   ➍ Phó Giám đốc QLDA — ô "DUYỆT" trên giấy    -> 'cho_pgd_qlda'    (ô tích)
+//   ➎ Phòng Vật tư xác nhận cuối                  -> 'cho_phong_vat_tu' (tự có
+//      khi công ty đã cấp cờ cho ai đó)
+//
+// ⚠ KHÔNG có chặng Giám đốc: user chốt ô "DUYỆT" của tờ này là PHÓ Giám đốc phụ
+// trách Dự án. Đừng thấy chữ "DUYỆT" mà nối vào 'cho_giam_doc'.
+//
+// ➋ không cần cờ mới: `resolveCap1` + `signing_is_dept_manager` vốn đã nhận
+// "chỉ huy trưởng" / "chỉ huy phó", nên nhân viên thuộc một BĐH thì cấp 1 tự ra
+// đúng người.
+
+/**
+ * Công ty có ai được cấp cờ xác nhận Phòng Vật tư không.
+ *
+ * Hỏi ĐÚNG MỘT LẦN lúc trình đơn rồi chốt vào `route` của chính đơn đó. Không
+ * hỏi lại ở mỗi bước duyệt: cấp/gỡ cờ giữa chừng mà luồng đổi theo thì đơn đang
+ * chạy sẽ nhảy bước, và người duyệt sẽ thấy tiến trình khác với lúc họ ký.
+ *
+ * Lỗi mạng -> trả false: thà đơn dừng ở Giám đốc (vẫn hoàn tất được) còn hơn
+ * chèn một chặng mà có thể không ai giữ, khiến đơn treo vĩnh viễn.
+ */
+export async function hasSigningVatTuApprover(): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("approval_permissions")
+    .select("email")
+    .eq("can_approve_signing_vat_tu", true)
+    .limit(1);
+  if (error) return false;
+  return !!data?.length;
+}
 
 export const LOAI_META: Record<SigningLoai, { label: string; short: string; bieuMau: string; chip: string }> = {
   ho_so: {
@@ -75,7 +124,38 @@ export const LOAI_META: Record<SigningLoai, { label: string; short: string; bieu
     bieuMau: "TTr/TNE&C",
     chip: "bg-indigo-50 text-indigo-700",
   },
+  phieu_yeu_cau: {
+    label: "Phiếu yêu cầu",
+    short: "Yêu cầu",
+    bieuMau: "HC-BM 023/PYC",
+    chip: "bg-amber-50 text-amber-700",
+  },
+  don_dat_hang: {
+    label: "Đơn đặt hàng",
+    short: "Đặt hàng",
+    bieuMau: "KD/BM/001",
+    chip: "bg-teal-50 text-teal-700",
+  },
 };
+
+/** Một dòng trong bảng vật tư. Phiếu yêu cầu dùng 6 khoá đầu, đơn đặt hàng dùng
+ *  cả 13 — cùng một cột `vat_tu` (migration 091), khác bộ khoá theo loại phiếu. */
+export type VatTuRow = {
+  stt?: string; ten?: string; quyCach?: string; dvt?: string;
+  // phiếu yêu cầu
+  soLuong?: string; ngayCap?: string;
+  // đơn đặt hàng
+  dinhMuc?: string; luyKeTrong?: string; luyKeNgoai?: string; chenhLech?: string;
+  dexuatTrong?: string; dexuatNgoai?: string; lyDo?: string; chiPhi?: string; ghiChu?: string;
+};
+
+/** Các ô đầu phiếu riêng của Đơn đặt hàng — lưu trong cột jsonb `chi_tiet`. */
+export const DDH_FIELDS = [
+  "soDdh", "congTrinh", "donViYeuCau", "donViNhanNo", "diaChiNhan", "ngayDuKien",
+  "nguoiNhanHang", "sdtNhanHang", "canBoKyThuat", "sdtKyThuat",
+  "taiLieuKemTheo", "cdtThanhToan", "lyDoKhongThanhToan", "nguyenNhanPhatSinh",
+] as const;
+export type DdhField = (typeof DDH_FIELDS)[number];
 
 /** Một dòng trong bảng so sánh A-B ↔ B-B′. Số dòng THÊM/BỚT được, không cố định 6. */
 export type SoSanhRow = { stt: string; muc: string; ab: string; bb: string };
@@ -139,6 +219,22 @@ export type SigningSubmission = {
   can_cu: string | null;
   kien_nghi: string | null;
 
+  // ─── migration 091: riêng 'phieu_yeu_cau' / 'don_dat_hang' ───
+  vat_tu: VatTuRow[];
+  chi_tiet: Partial<Record<DdhField, string>>;
+
+  // ─── migration 092 + 093: vết ký hai cấp riêng của đơn đặt hàng ───
+  // `pvt_`  = Phòng VẬT TƯ. KHÔNG phải `vat_tu_`: cột `vat_tu` ngay trên đã là
+  //           bảng dòng vật tư, trùng tiền tố là đọc nhầm ngay.
+  // `pqlda_`= PHÒNG QLDA. Khác hẳn `qlda_by`/`ykien_qlda` (có từ 050) — bộ đó
+  //           là vết ký của PHÓ GIÁM ĐỐC QLDA, một cấp khác.
+  ykien_pvt: string | null;
+  pvt_by: string | null;
+  pvt_at: string | null;
+  ykien_pqlda: string | null;
+  pqlda_by: string | null;
+  pqlda_at: string | null;
+
   status: SigningStatus;
 
   // ─── migration 074: luồng động + cấp 1 ───
@@ -188,12 +284,16 @@ export const STATUS_META: Record<
   // Phiếu cũ từ trước migration 053 — vẫn phải hiển thị được.
   cho_pgd_qlda:     { label: "Chờ Phó Giám đốc",  short: "Phó GĐ",    chip: "bg-amber-50 text-amber-700" },
   cho_pgd_khdt:     { label: "Chờ Phó Giám đốc",  short: "Phó GĐ",    chip: "bg-amber-50 text-amber-700" },
+  cho_phong_qlda:   { label: "Chờ Phòng QLDA",     short: "P.QLDA",   chip: "bg-sky-50 text-sky-700" },
+  cho_phong_vat_tu: { label: "Chờ Phòng Vật tư xác nhận", short: "P.Vật tư", chip: "bg-teal-50 text-teal-700" },
 };
 
 // Nhãn nút hành động của TỪNG CẤP. Hai Phó Giám đốc "xem xét" chứ không "phê
 // duyệt" — phê duyệt là thẩm quyền của Giám đốc, còn Kế toán thì xác nhận đã
 // chi. Gọi đúng tên theo quy trình giấy để người ký không hiểu nhầm thẩm quyền.
 export const ACTION_LABEL: Partial<Record<SigningStatus, string>> = {
+  cho_phong_qlda: "Đã duyệt",
+  cho_phong_vat_tu: "Đã xác nhận",
   cho_pho_giam_doc: "Đã xem xét",
   cho_giam_doc: "Phê duyệt",
   cho_ke_toan: "Đã xác nhận",
@@ -203,6 +303,8 @@ export const ACTION_LABEL: Partial<Record<SigningStatus, string>> = {
 
 // Câu mô tả việc vừa xảy ra, dùng cho email báo người lập.
 export const EVENT_LABEL: Partial<Record<SigningStatus, string>> = {
+  cho_phong_qlda: "Phòng QLDA đã duyệt",
+  cho_phong_vat_tu: "Phòng Vật tư đã xác nhận",
   cho_pho_giam_doc: "Phó Giám đốc đã xem xét",
   cho_giam_doc: "Giám đốc đã phê duyệt",
   cho_ke_toan: "Kế toán đã xác nhận chi",
@@ -238,9 +340,11 @@ export const FLOW_HOP_DONG: SigningStatus[] = [
 // Chỉ dùng cho PHIẾU CŨ (route rỗng, lập trước 074). Phiếu 'chuyen_tien' và
 // 'to_trinh' sinh sau 074 nên luôn có route — nhánh này không bao giờ chạm tới
 // chúng, nhưng vẫn phải trả đúng luồng để không có góc nào trả undefined.
-// Tờ trình xếp cùng nhóm hợp đồng: dừng ở Giám đốc, không có chặng Kế toán.
+// Tờ trình / phiếu yêu cầu / đơn đặt hàng xếp cùng nhóm hợp đồng: dừng ở Giám
+// đốc, không có chặng Kế toán.
 export function flowOf(loai: SigningLoai): SigningStatus[] {
-  return loai === "hop_dong" || loai === "to_trinh" ? FLOW_HOP_DONG : FLOW;
+  return loai === "hop_dong" || loai === "don_dat_hang" || LOAI_HAI_CAP.includes(loai)
+    ? FLOW_HOP_DONG : FLOW;
 }
 
 // Phiếu cũ nằm ở trạng thái trước 053 thì quy về chặng Phó Giám đốc, để
@@ -267,13 +371,30 @@ export function nextStatus(cur: SigningStatus, loai: SigningLoai): SigningStatus
 export function buildSigningRoute(
   loai: SigningLoai,
   pgdQlda: boolean,
-  pgdKhdt: boolean
+  pgdKhdt: boolean,
+  /** Chỉ dùng cho `don_dat_hang`: công ty có ai giữ cờ Phòng Vật tư không. */
+  coPhongVatTu = false,
+  /** Chỉ dùng cho `don_dat_hang`: người lập có tích ô "Phòng QLDA" không. */
+  phongQlda = false
 ): SigningStatus[] {
-  // TỜ TRÌNH — luồng CỐ ĐỊNH 2 cấp, đúng 3 ô ký trên tờ giấy TTr/TNE&C:
-  // NGƯỜI TRÌNH KÝ (người lập) → TRƯỞNG BỘ PHẬN (cấp 1) → BAN LÃNH ĐẠO (Giám
-  // đốc). Không nhận 2 ô tích PGĐ và không có chặng Kế toán: tờ trình chỉ xin
-  // chủ trương, tiền chi sau đó đi bằng phiếu đề nghị chuyển tiền riêng.
-  if (loai === "to_trinh") return ["cho_cap1", "cho_giam_doc"];
+  // TỜ TRÌNH · PHIẾU YÊU CẦU — luồng CỐ ĐỊNH 2 cấp, đúng các ô ký trên tờ giấy:
+  // NGƯỜI LẬP → TRƯỞNG/PHỤ TRÁCH BỘ PHẬN (cấp 1) → THỦ TRƯỞNG ĐƠN VỊ / BAN LÃNH
+  // ĐẠO (Giám đốc). Không nhận 2 ô tích PGĐ và không có chặng Kế toán — hai tờ
+  // này không phát sinh chi tiền ngay.
+  if (LOAI_HAI_CAP.includes(loai)) return ["cho_cap1", "cho_giam_doc"];
+
+  // ĐƠN ĐẶT HÀNG — xem khối chú thích của ROUTE_DON_DAT_HANG ở trên:
+  //   BĐH dự án (luôn có) → [Phòng QLDA] → [PGĐ QLDA] → [Phòng Vật tư xác nhận]
+  // Hai cấp giữa bật/tắt bằng ô tích trên form; cấp cuối tự có khi công ty đã
+  // cấp cờ cho ai đó (tra bằng hasSigningVatTuApprover ở nơi gọi).
+  // KHÔNG có 'cho_giam_doc': ô "DUYỆT" trên tờ này là PHÓ Giám đốc QLDA.
+  if (loai === "don_dat_hang") {
+    const r: SigningStatus[] = ["cho_cap1"];
+    if (phongQlda) r.push("cho_phong_qlda");
+    if (pgdQlda) r.push("cho_pgd_qlda");
+    if (coPhongVatTu) r.push("cho_phong_vat_tu");
+    return r;
+  }
 
   const r: SigningStatus[] = ["cho_cap1"];
   if (pgdQlda) r.push("cho_pgd_qlda");
@@ -356,6 +477,8 @@ export async function resolveCap1(params: {
 //  - cho_cap1: KHÔNG theo cờ mà theo email lưu trên phiếu (xử lý riêng trong canActOn).
 const STAGE_FLAGS: Partial<Record<SigningStatus, (keyof ApprovalPermissions)[]>> = {
   cho_pho_giam_doc: ["canApproveSigningQlda", "canApproveSigningKhdt"],
+  cho_phong_qlda: ["canApproveSigningPhongQlda"],
+  cho_phong_vat_tu: ["canApproveSigningVatTu"],
   cho_pgd_qlda: ["canApproveSigningQlda"],
   cho_pgd_khdt: ["canApproveSigningKhdt"],
   cho_giam_doc: ["canApproveSigningDirector"],
@@ -365,6 +488,8 @@ const STAGE_FLAGS: Partial<Record<SigningStatus, (keyof ApprovalPermissions)[]>>
 // Tên cột trong approval_permissions, để tra email người giữ chặng kế tiếp.
 const STAGE_COLUMNS: Partial<Record<SigningStatus, string[]>> = {
   cho_pho_giam_doc: ["can_approve_signing_qlda", "can_approve_signing_khdt"],
+  cho_phong_qlda: ["can_approve_signing_phong_qlda"],
+  cho_phong_vat_tu: ["can_approve_signing_vat_tu"],
   cho_pgd_qlda: ["can_approve_signing_qlda"],
   cho_pgd_khdt: ["can_approve_signing_khdt"],
   cho_giam_doc: ["can_approve_signing_director"],
@@ -661,6 +786,10 @@ function normalizeRow(r: Record<string, unknown>): SigningSubmission {
     // để mọi chỗ đọc `s.loai` / `s.so_sanh` không phải kiểm null.
     loai: (r.loai as SigningLoai) || "ho_so",
     so_sanh: Array.isArray(r.so_sanh) ? (r.so_sanh as SoSanhRow[]) : [],
+    // migration 091 — phiếu cũ không có 2 cột này.
+    vat_tu: Array.isArray(r.vat_tu) ? (r.vat_tu as VatTuRow[]) : [],
+    chi_tiet: (r.chi_tiet && typeof r.chi_tiet === "object" && !Array.isArray(r.chi_tiet))
+      ? (r.chi_tiet as Partial<Record<DdhField, string>>) : {},
     // migration 074 — phiếu cũ không có route/cap1: về mặc định để mọi chỗ đọc
     // s.route/s.pgd_chon không phải kiểm null.
     route: Array.isArray(r.route) ? (r.route as SigningStatus[]) : [],
@@ -742,11 +871,97 @@ export async function downloadSigningForm(
 }
 
 /**
+ * Xuất ĐƠN ĐẶT HÀNG ra Excel. Đường riêng vì tờ này là .xlsx — route
+ * /api/export-signing-form chỉ biết mở .docx bằng docxtemplater.
+ *
+ * Trả về số dòng vật tư bị cắt (file mẫu chỉ có 15 dòng). Nơi gọi PHẢI hiển thị
+ * cảnh báo khi > 0: đơn tải về thiếu dòng mà không ai biết là lỗi tệ nhất.
+ */
+export async function downloadPurchaseOrder(
+  payload: Record<string, unknown>,
+  filename: string
+): Promise<number> {
+  const res = await apiFetch("/api/export-purchase-order", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j.error || `Lỗi xuất đơn đặt hàng (${res.status})`);
+  }
+  const boQua = Number(res.headers.get("X-Rows-Dropped") || "0") || 0;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return boQua;
+}
+
+/**
  * Dựng payload xuất Word từ một phiếu ĐÃ LƯU.
  * Khác màn hình soạn thảo ở chỗ CÓ kèm ý kiến 3 cấp — xuất từ màn hình chi tiết
  * là để lấy bản phiếu đã có chữ ký/ý kiến, đó mới là bản đem đi lưu hồ sơ.
  */
+/** Ngày trên đầu phiếu: luôn theo NGÀY LẬP, luôn kèm múi giờ VN. Route chạy giờ
+ *  UTC nên phiếu lập sau 17h giờ VN mà quên `timeZone` là in ra ngày hôm trước. */
+export function ngayVietNam(iso: string | null | undefined): string {
+  const d = iso ? new Date(iso) : new Date();
+  const ok = Number.isNaN(d.getTime()) ? new Date() : d;
+  const p = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric",
+  }).formatToParts(ok);
+  const g = (t: string) => p.find((x) => x.type === t)?.value || "";
+  return `ngày ${g("day")} tháng ${g("month")} năm ${g("year")}`;
+}
+
+/** Payload cho ĐƠN ĐẶT HÀNG — đi route Excel riêng, không qua docxtemplater. */
+export function ddhPayloadFromRow(s: SigningSubmission): Record<string, unknown> {
+  const c = s.chi_tiet || {};
+  return {
+    duAn: s.du_an,
+    congTrinh: c.congTrinh || s.goi_thau,
+    hangMuc: s.hang_muc,
+    soDdh: c.soDdh,
+    lanThu: s.dot_so,
+    ngayDatHang: s.created_at,
+    ngayDuKien: c.ngayDuKien,
+    nguoiYeuCau: s.created_by_name || "",
+    donViYeuCau: c.donViYeuCau || s.ben_a,
+    donViNhanNo: c.donViNhanNo || s.ben_b,
+    diaChiNhan: c.diaChiNhan,
+    nguoiNhanHang: c.nguoiNhanHang,
+    sdtNhanHang: c.sdtNhanHang,
+    canBoKyThuat: c.canBoKyThuat,
+    sdtKyThuat: c.sdtKyThuat,
+    taiLieuKemTheo: c.taiLieuKemTheo,
+    cdtThanhToan: c.cdtThanhToan,
+    lyDoKhongThanhToan: c.lyDoKhongThanhToan,
+    nguyenNhanPhatSinh: c.nguyenNhanPhatSinh,
+    vatTu: s.vat_tu,
+    fileName: docxFileName(s),
+  };
+}
+
 export function docxPayloadFromRow(s: SigningSubmission): Record<string, unknown> {
+  // PHIẾU YÊU CẦU: một bảng vật tư 6 cột + 3 ô chữ. Không có số tiền nào.
+  if (s.loai === "phieu_yeu_cau") {
+    return {
+      loai: "phieu_yeu_cau",
+      nguoiYeuCau: s.created_by_name || "",
+      boPhan: s.don_vi,
+      noiDungYeuCau: s.noi_dung_trinh || s.ve_viec,
+      ngayLap: s.created_at,
+      vatTu: s.vat_tu,
+      fileName: docxFileName(s),
+    };
+  }
+
   // TỜ TRÌNH: tờ TTr/TNE&C là một lá thư, không có bảng số liệu nào. Chỉ mấy ô
   // chữ + một dòng chi phí; `ngayLap` để route ghi đúng "ngày … tháng … năm"
   // theo NGÀY LẬP PHIẾU chứ không phải ngày bấm nút xuất.
@@ -822,7 +1037,16 @@ export function docxPayloadFromRow(s: SigningSubmission): Record<string, unknown
 export function docxFileName(s: {
   ma_phieu?: string | null; hop_dong_so?: string | null; dot_so?: number | null;
   loai?: SigningLoai; so_to_trinh?: string | null;
+  chi_tiet?: Partial<Record<DdhField, string>>;
 }): string {
+  const ma = String(s.ma_phieu || "phieu").replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 60);
+  if (s.loai === "phieu_yeu_cau") return `Phieu_Yeu_Cau_${ma}.docx`;
+  // Đơn đặt hàng in ra EXCEL — đuôi .xlsx, đặt tên theo Số ĐĐH nếu đã có.
+  if (s.loai === "don_dat_hang") {
+    const so = String(s.chi_tiet?.soDdh || s.ma_phieu || "ddh")
+      .replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 60);
+    return `Don_Dat_Hang_${so}.xlsx`;
+  }
   // Tờ trình không gắn hợp đồng — đặt tên theo số tờ trình, không có thì mã phiếu.
   if (s.loai === "to_trinh") {
     const tt = String(s.so_to_trinh || s.ma_phieu || "to_trinh")
@@ -855,7 +1079,8 @@ export async function pushToPaymentDossier(
 ): Promise<void> {
   // Chỉ phiếu chi tiền mới có bước Kế toán; phiếu hợp đồng và tờ trình dừng ở
   // Giám đốc nên không bao giờ gọi tới đây — chặn sẵn cho chắc.
-  if (row.loai === "hop_dong" || row.loai === "to_trinh") return;
+  if (row.loai === "hop_dong" || row.loai === "don_dat_hang"
+      || LOAI_HAI_CAP.includes(row.loai)) return;
 
   const ddmmyyyy = (d: Date) =>
     new Intl.DateTimeFormat("en-GB", {

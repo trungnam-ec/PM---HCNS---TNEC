@@ -23,6 +23,9 @@ import Docxtemplater from "docxtemplater";
 // sinh ra từ file gốc của công ty — letterhead, khung viền, ô ký giữ nguyên.
 const TEMPLATE_HO_SO = "phieu_trinh_ky_ho_so_van_ban_template.docx";
 const TEMPLATE_HOP_DONG = "phieu_trinh_ky_hop_dong_template.docx";
+// Tờ trình TTr/TNE&C (migration 088). Bản đã gắn tag sinh ra từ to_trinh.doc của
+// công ty — letterhead, footer, khung 3 ô ký giữ nguyên 100%.
+const TEMPLATE_TO_TRINH = "to_trinh_template.docx";
 
 const fmt = (n: number) => new Intl.NumberFormat("vi-VN").format(Math.round(n));
 
@@ -71,8 +74,12 @@ export async function POST(request: NextRequest) {
       ykienGiamDoc,
     } = body;
 
-    const loai = body.loai === "hop_dong" ? "hop_dong" : "ho_so";
-    const templateFile = loai === "hop_dong" ? TEMPLATE_HOP_DONG : TEMPLATE_HO_SO;
+    const loai =
+      body.loai === "hop_dong" ? "hop_dong" :
+      body.loai === "to_trinh" ? "to_trinh" : "ho_so";
+    const templateFile =
+      loai === "hop_dong" ? TEMPLATE_HOP_DONG :
+      loai === "to_trinh" ? TEMPLATE_TO_TRINH : TEMPLATE_HO_SO;
     const templatePath = path.join(process.cwd(), "public", "templates", templateFile);
     if (!fs.existsSync(templatePath)) {
       return NextResponse.json(
@@ -83,6 +90,71 @@ export async function POST(request: NextRequest) {
 
     const zip = new PizZip(fs.readFileSync(templatePath, "binary"));
     const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+
+    // ─── TỜ TRÌNH (TTr/TNE&C, migration 088) ───
+    // Tờ này là một LÁ THƯ, không có bảng số liệu: mọi câu chữ do route ghép rồi
+    // đổ vào đúng 9 tag. Rẽ nhánh sớm rồi trả về luôn, như nhánh hợp đồng.
+    if (loai === "to_trinh") {
+      // Ngày trên đầu tờ trình = NGÀY LẬP PHIẾU (body.ngayLap), không phải ngày
+      // bấm nút xuất. Bắt buộc ghi rõ timeZone: route chạy giờ UTC nên phiếu lập
+      // sau 17h giờ VN sẽ in ra ngày hôm trước.
+      const dLap = body.ngayLap ? new Date(String(body.ngayLap)) : new Date();
+      const ngay = Number.isNaN(dLap.getTime()) ? new Date() : dLap;
+      const phan = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Ho_Chi_Minh",
+        day: "2-digit", month: "2-digit", year: "numeric",
+      }).formatToParts(ngay);
+      const lay = (t: string) => phan.find((p) => p.type === t)?.value || "";
+      const nam = lay("year");
+
+      // Số hiệu do văn thư cấp sau khi ký. Bỏ trống thì in khung sẵn "………/26/TTr/
+      // TNE&C" đúng như tờ giấy, để điền tay — hơn hẳn in ra một ô trắng.
+      const soToTrinh =
+        String(body.soToTrinh || "").trim() || `………/${nam.slice(-2)}/TTr/TNE&C`;
+
+      // Khối chi phí: 2 dòng trong CÙNG một đoạn (template bật linebreaks).
+      // Tờ trình không xin tiền thì cả khối rỗng — không in dòng "0 đồng".
+      const gia = body.chiPhiDuKien;
+      const coGia = gia !== null && gia !== undefined && gia !== "" && Number.isFinite(Number(gia));
+      const vat = body.vatPercent;
+      const dienGiai = String(body.dienGiaiChiPhi || "").trim();
+      const donViBaoGia = String(body.donViBaoGia || "").trim();
+      const dongChiPhi = [
+        donViBaoGia ? `Chi phí đơn vị ${donViBaoGia} báo giá` : coGia ? "Chi phí dự kiến" : "",
+        coGia
+          ? `Giá dự kiến: ${money(gia)}`
+            + (vat === null || vat === undefined || vat === "" ? "" : ` (đã bao gồm thuế VAT ${vat}%)`)
+            + (dienGiai ? ` — ${dienGiai}` : "")
+          : dienGiai,
+      ].filter(Boolean).join("\n");
+
+      doc.render({
+        soToTrinh,
+        ngayThang: `Tp.HCM, ngày ${lay("day")} tháng ${lay("month")} năm ${nam}`,
+        veViec: String(body.veViec || "").trim(),
+        canCu: String(body.canCu || "").trim(),
+        boPhan: String(body.donVi || "").trim(),
+        noiDung: String(body.noiDung || "").trim(),
+        chiPhi: dongChiPhi,
+        kienNghi: String(body.kienNghi || "").trim(),
+        // Ô "NGƯỜI TRÌNH KÝ" điền sẵn tên người lập; hai ô "TRƯỞNG BỘ PHẬN" và
+        // "BAN LÃNH ĐẠO" để trắng cho người ký tự ghi, như hai mẫu kia.
+        nguoiTrinh: String(body.nguoiTrinh || "").trim(),
+      });
+
+      const buf = doc.getZip().generate({ type: "nodebuffer", compression: "DEFLATE" });
+      return new NextResponse(new Uint8Array(buf), {
+        status: 200,
+        headers: {
+          "Content-Type":
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "Content-Disposition": `attachment; filename="${encodeURIComponent(
+            String(body.fileName || "To_Trinh.docx")
+          )}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
 
     // ─── PHIẾU TRÌNH KÝ HỢP ĐỒNG (KHKT/BM/001) ───
     // Rẽ nhánh sớm rồi trả về luôn: bộ tag khác hẳn phiếu hồ sơ/văn bản, gộp

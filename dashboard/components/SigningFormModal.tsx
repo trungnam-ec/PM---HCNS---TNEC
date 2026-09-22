@@ -84,7 +84,9 @@ function toDraft(s: SigningSubmission | null, defaultDept = "", prefill?: Record
     // migration 060 — chỉ dùng cho phiếu hợp đồng
     "hang_muc", "ben_a", "ben_b",
     // migration 079 — chỉ dùng cho phiếu đề nghị chuyển tiền
-    "so_tai_khoan", "ngan_hang"] as const) {
+    "so_tai_khoan", "ngan_hang",
+    // migration 088 — chỉ dùng cho tờ trình
+    "so_to_trinh", "can_cu", "kien_nghi"] as const) {
     d[k] = (s[k] as string) || "";
   }
   d.vat_percent = s.vat_percent != null ? String(s.vat_percent) : "";
@@ -133,6 +135,14 @@ export default function SigningFormModal({
   // CHUYỂN CHO AI, VÀO TÀI KHOẢN NÀO, BAO NHIÊU, VÌ VIỆC GÌ. Không hợp đồng,
   // không đợt, không A−B−C−D — mấy ô đó là của tờ TL/BM/011.
   const laChuyenTien = loai === "chuyen_tien";
+  // Tờ trình (TTr/TNE&C, migration 088): xin CHỦ TRƯƠNG, không phải xin tiền.
+  // Bộ ô của nó là Căn cứ → Nội dung đề nghị → Chi phí dự kiến → Kiến nghị;
+  // không hợp đồng, không đợt, không tài khoản nhận.
+  const laToTrinh = loai === "to_trinh";
+  // Ba loại kia mỗi loại một bộ ô riêng, nên rất nhiều khối chỉ dành cho phiếu
+  // hồ sơ/văn bản. Đặt tên thẳng thay vì viết `!laHopDong && !laChuyenTien && …`
+  // ở chục chỗ — thêm loại thứ năm mà quên một chỗ là ô của loại khác lòi ra.
+  const laHoSo = loai === "ho_so";
   const meta = LOAI_META[loai];
   const [d, setD] = useState<Draft>(() => toDraft(existing, currentDepartment, prefill));
   // Bảng so sánh A-B ↔ B-B′ — mảng riêng, không nhét vào Draft (Draft toàn chuỗi).
@@ -307,7 +317,10 @@ export default function SigningFormModal({
       goi_thau: d.goi_thau?.trim() || null,
       project_code: d.project_code || null,
       project_name: projects.find((x) => x.code === d.project_code)?.name || null,
-      de_nghi_thanh_toan: deNghiCuoi,
+      // Tờ trình: chi phí là ô TÙY CHỌN (có tờ trình chỉ xin chủ trương, không
+      // kèm tiền). Không được rơi vào `?? abcd` = 0 như hai loại kia — lưu 0 thì
+      // tờ in ra có dòng "Giá dự kiến: 0 đồng".
+      de_nghi_thanh_toan: laToTrinh ? toNum(d.de_nghi_thanh_toan || "") : deNghiCuoi,
       ai_ghi_chu: aiGhiChu || null,
       ai_thieu: aiThieu,
       // Lột bỏ File gốc trước khi lưu: cột `files` là jsonb, nhét File object
@@ -321,6 +334,10 @@ export default function SigningFormModal({
       // migration 079 — tài khoản nhận tiền, chỉ phiếu 'chuyen_tien' dùng tới.
       so_tai_khoan: d.so_tai_khoan?.trim() || null,
       ngan_hang: d.ngan_hang?.trim() || null,
+      // migration 088 — ba ô riêng của tờ trình.
+      so_to_trinh: d.so_to_trinh?.trim() || null,
+      can_cu: d.can_cu?.trim() || null,
+      kien_nghi: d.kien_nghi?.trim() || null,
       // Bỏ dòng trống trước khi lưu — người lập hay để lại vài dòng mẫu chưa điền.
       so_sanh: soSanh.filter((r) => [r.muc, r.ab, r.bb].some((v) => (v || "").trim() !== "")),
       // migration 074 — ghi lại lựa chọn PGĐ (route dựng ở save()); route mới là
@@ -330,7 +347,7 @@ export default function SigningFormModal({
     for (const k of NUM_FIELDS) if (k !== "de_nghi_thanh_toan") p[k] = toNum(d[k] || "");
     for (const k of RATE_FIELDS) p[k] = toRate(d[k] || "");
     return p;
-  }, [d, projects, deNghiCuoi, aiGhiChu, aiThieu, files, loai, soSanh]);
+  }, [d, projects, deNghiCuoi, aiGhiChu, aiThieu, files, loai, laToTrinh, soSanh]);
 
   // ─── Tải tệp lên kho ───
   const doUpload = async (picked: File[]) => {
@@ -452,7 +469,14 @@ export default function SigningFormModal({
       // Giấy đề nghị chuyển tiền KHÔNG gắn hợp đồng/đợt — nó trình một khoản
       // chi trong kế hoạch thu chi. Bắt buộc của nó là: chuyển cho ai, bao
       // nhiêu, và vì việc gì.
-      if (submit && laChuyenTien) {
+      // Tờ trình: bắt buộc phải có ĐỦ 3 phần làm nên một tờ trình — trình việc
+      // gì, đề nghị cái gì, kiến nghị ra sao. Thiếu một phần thì Ban Giám đốc
+      // nhận về một tờ giấy không ký được.
+      if (submit && laToTrinh) {
+        if (!payload.ve_viec) throw new Error("Phải ghi “Về việc” trước khi trình.");
+        if (!payload.noi_dung_trinh) throw new Error("Phải ghi Nội dung đề nghị trước khi trình.");
+        if (!payload.kien_nghi) throw new Error("Phải ghi Kiến nghị trước khi trình.");
+      } else if (submit && laChuyenTien) {
         if (!payload.chu_dau_tu) throw new Error("Phải chọn Đơn vị thụ hưởng trước khi trình.");
         if (!payload.de_nghi_thanh_toan) throw new Error("Phải có Số tiền đề nghị chuyển trước khi trình.");
         if (!payload.noi_dung_trinh && !payload.ve_viec) {
@@ -572,6 +596,31 @@ export default function SigningFormModal({
           bankNameBranch: d.ngan_hang || "",
           amount: deNghiCuoi || 0,
         });
+        return;
+      }
+      // Tờ trình đi chung route /api/export-signing-form (mẫu thứ ba của route
+      // đó), khác phiếu chuyển tiền — tờ TTr/TNE&C là mẫu riêng của module này,
+      // không dùng chung với Hành chính.
+      if (laToTrinh) {
+        await downloadSigningForm(
+          {
+            loai: "to_trinh",
+            soToTrinh: d.so_to_trinh,
+            // Phiếu chưa lưu thì lấy hôm nay; phiếu cũ giữ đúng ngày lập.
+            ngayLap: existing?.created_at || new Date().toISOString(),
+            donVi: d.don_vi || currentDepartment || "",
+            veViec: d.ve_viec,
+            canCu: d.can_cu,
+            noiDung: d.noi_dung_trinh,
+            donViBaoGia: d.chu_dau_tu,
+            chiPhiDuKien: toNum(d.de_nghi_thanh_toan || ""),
+            vatPercent: toRate(d.vat_percent || ""),
+            dienGiaiChiPhi: d.hang_muc,
+            kienNghi: d.kien_nghi,
+            nguoiTrinh: existing?.created_by_name || currentName || "",
+          },
+          docxFileName({ ...(existing || {}), so_to_trinh: d.so_to_trinh, loai: "to_trinh" })
+        );
         return;
       }
       if (laHopDong) {
@@ -714,7 +763,7 @@ export default function SigningFormModal({
                     A−B−C−D, đợt số, luỹ kế… — phiếu chuyển tiền không có ô nào
                     trong số đó, nên nút này ở đây chỉ gây hiểu nhầm. Ô đính kèm
                     thì vẫn giữ: giấy đề nghị chuyển tiền hay kèm hoá đơn/báo giá. */}
-                {!laChuyenTien && (
+                {(laHoSo || laHopDong) && (
                 <>
                 <button type="button" onClick={runAI} disabled={!!busy || pending.length === 0}
                   className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 hover:opacity-90 disabled:opacity-40 text-white font-bold rounded-xl text-[11px] transition-all cursor-pointer">
@@ -835,7 +884,7 @@ export default function SigningFormModal({
             <h5 className={labelCls}>2. Đầu phiếu (tự gõ)</h5>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
               <label className="flex flex-col gap-1.5">
-                <span className={labelCls}>Phòng ban</span>
+                <span className={labelCls}>{laToTrinh ? "Bộ phận trình" : "Phòng ban"}</span>
                 {/* Lấy danh sách phòng ban/BĐH từ danh bạ (bảng departments), mặc
                     định theo phòng của người lập; nhân viên BĐH thì mặc định đúng
                     BĐH đó. Vẫn cho chọn phòng ban khác trong danh sách. */}
@@ -852,20 +901,58 @@ export default function SigningFormModal({
                   )}
                 </select>
               </label>
-              <label className="flex flex-col gap-1.5 md:col-span-2">
-                <span className={labelCls}>Về việc</span>
+              {/* Số hiệu tờ trình do văn thư cấp SAU khi ký, nên để trống là
+                  bình thường — tờ in ra sẽ có sẵn khung "………/26/TTr/TNE&C" để
+                  điền tay. */}
+              {laToTrinh && (
+                <label className="flex flex-col gap-1.5">
+                  <span className={labelCls}>Số tờ trình</span>
+                  <input value={d.so_to_trinh || ""} onChange={(e) => set("so_to_trinh", e.target.value)}
+                    placeholder="012/026/TTr/TNE&C — để trống nếu chưa cấp số"
+                    className={`${inputCls} font-mono`} />
+                </label>
+              )}
+              <label className={`flex flex-col gap-1.5 ${laToTrinh ? "md:col-span-3" : "md:col-span-2"}`}>
+                <span className={labelCls}>Về việc {laToTrinh && "*"}</span>
                 <input value={d.ve_viec || ""} onChange={(e) => set("ve_viec", e.target.value)}
-                  placeholder='Kính trình BGĐ phê duyệt: "Hồ sơ thanh toán Đợt 02 (thanh toán A-B)".'
+                  placeholder={laToTrinh
+                    ? "Đề xuất nâng cấp giao diện website theo nhận diện thương hiệu mới."
+                    : 'Kính trình BGĐ phê duyệt: "Hồ sơ thanh toán Đợt 02 (thanh toán A-B)".'}
                   className={inputCls} />
               </label>
+              {/* Căn cứ — dòng in nghiêng mở đầu tờ trình, nêu cơ sở của đề nghị. */}
+              {laToTrinh && (
+                <label className="flex flex-col gap-1.5 md:col-span-3">
+                  <span className={labelCls}>Căn cứ</span>
+                  <input value={d.can_cu || ""} onChange={(e) => set("can_cu", e.target.value)}
+                    placeholder="Căn cứ nhu cầu đồng bộ nhận diện thương hiệu trên các nền tảng digital…"
+                    className={inputCls} />
+                </label>
+              )}
               <label className="flex flex-col gap-1.5 md:col-span-3">
-                <span className={labelCls}>Nội dung trình</span>
-                <input value={d.noi_dung_trinh || ""} onChange={(e) => set("noi_dung_trinh", e.target.value)}
-                  className={inputCls} />
+                <span className={labelCls}>
+                  {laToTrinh ? "Nội dung đề nghị *" : "Nội dung trình"}
+                </span>
+                {/* Tờ trình là một lá thư nên phần thân dài và xuống dòng nhiều
+                    lần; ô một dòng của ba loại kia không đủ. Xuống dòng ở đây in
+                    ra Word cũng xuống dòng đúng chỗ. */}
+                {laToTrinh ? (
+                  <textarea value={d.noi_dung_trinh || ""} onChange={(e) => set("noi_dung_trinh", e.target.value)}
+                    rows={4}
+                    placeholder="Kính đề nghị Ban Giám đốc phê duyệt… (Enter để xuống dòng)"
+                    className={`${inputCls} resize-y leading-relaxed`} />
+                ) : (
+                  <input value={d.noi_dung_trinh || ""} onChange={(e) => set("noi_dung_trinh", e.target.value)}
+                    className={inputCls} />
+                )}
               </label>
               {/* Tham vấn Phó Giám đốc — TÙY CHỌN, tích tự do 0/1/2 vị. Không tích
                   thì cấp 1 xong lên thẳng Giám đốc; tích vị nào thì chèn vị đó vào
-                  luồng (route dựng lúc lưu theo lựa chọn này). */}
+                  luồng (route dựng lúc lưu theo lựa chọn này).
+                  TỜ TRÌNH không có ô này: tờ TTr/TNE&C chỉ in 3 ô ký (Người trình
+                  · Trưởng bộ phận · Ban Lãnh đạo), luồng cố định 2 cấp. Cho tích
+                  PGĐ ở đây thì phiếu đi qua một cấp không có chỗ ký trên giấy. */}
+              {!laToTrinh && (
               <div className="flex flex-col gap-1.5 md:col-span-3">
                 <span className={labelCls}>Tham vấn Phó Giám đốc (Tùy chọn - nếu cần)</span>
                 <div className="flex flex-wrap gap-2">
@@ -891,13 +978,16 @@ export default function SigningFormModal({
                   })}
                 </div>
               </div>
+              )}
             </div>
           </section>
 
           {/* ─── 3. Thông tin hợp đồng ─── */}
           <section className="space-y-3">
             <h5 className={labelCls}>
-              {laChuyenTien ? "3. Người thụ hưởng & dự án" : "3. Hợp đồng & dự án"}
+              {laChuyenTien ? "3. Người thụ hưởng & dự án"
+                : laToTrinh ? "3. Đơn vị báo giá & dự án"
+                : "3. Hợp đồng & dự án"}
             </h5>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {/* Chủ đầu tư chỉ có trên phiếu hồ sơ/văn bản. Phiếu hợp đồng nói
@@ -906,7 +996,9 @@ export default function SigningFormModal({
               {!laHopDong && (
                 <div className="flex flex-col gap-1.5 md:col-span-2">
                   <span className={labelCls}>
-                    {laChuyenTien ? "Đơn vị thụ hưởng" : "Đơn vị / Đối tác"}
+                    {laChuyenTien ? "Đơn vị thụ hưởng"
+                      : laToTrinh ? "Đơn vị báo giá (nếu có)"
+                      : "Đơn vị / Đối tác"}
                   </span>
                   <div className="relative" ref={custRef}>
                     {d.chu_dau_tu ? (
@@ -993,7 +1085,7 @@ export default function SigningFormModal({
 
               {/* Nhiều hợp đồng: KHÔNG đoán bừa — cho người lập chọn để điền hộ
                   dự án + số hợp đồng đã lưu (đè lên vì là thao tác cố ý). */}
-              {!laHopDong && !laChuyenTien && partnerContracts.length > 1 && (
+              {laHoSo && partnerContracts.length > 1 && (
                 <label className="flex flex-col gap-1.5 md:col-span-2">
                   <span className={labelCls}>Lấy theo hợp đồng đã lưu</span>
                   <select value={contractId}
@@ -1033,14 +1125,14 @@ export default function SigningFormModal({
                   </label>
                 </>
               )}
-              {!laChuyenTien && (
+              {(laHoSo || laHopDong) && (
                 <label className="flex flex-col gap-1.5">
                   <span className={labelCls}>Số hợp đồng *</span>
                   <input value={d.hop_dong_so || ""} onChange={(e) => set("hop_dong_so", e.target.value)}
                     className={`${inputCls} font-mono`} />
                 </label>
               )}
-              {!laHopDong && !laChuyenTien && (
+              {laHoSo && (
                 <label className="flex flex-col gap-1.5">
                   <span className={labelCls}>Ngày ký</span>
                   <input value={d.ngay_ky_hop_dong || ""} onChange={(e) => set("ngay_ky_hop_dong", e.target.value)}
@@ -1055,7 +1147,7 @@ export default function SigningFormModal({
                     className={inputCls} />
                 </label>
               )}
-              {!laChuyenTien && (
+              {(laHoSo || laHopDong) && (
                 <label className="flex flex-col gap-1.5 md:col-span-2">
                   <span className={labelCls}>Gói thầu</span>
                   <input value={d.goi_thau || ""} onChange={(e) => set("goi_thau", e.target.value)} className={inputCls} />
@@ -1071,7 +1163,7 @@ export default function SigningFormModal({
                   ))}
                 </select>
               </label>
-              {!laHopDong && !laChuyenTien && (
+              {laHoSo && (
                 <label className="flex flex-col gap-1.5">
                   <span className={labelCls}>Đợt số *</span>
                   <input value={d.dot_so || ""} onChange={(e) => set("dot_so", e.target.value)}
@@ -1183,8 +1275,48 @@ export default function SigningFormModal({
             </section>
           )}
 
+          {/* ─── 4b. Chi phí dự kiến & kiến nghị (chỉ tờ trình) ─── */}
+          {laToTrinh && (
+            <section className="space-y-3">
+              <h5 className={labelCls}>4. Chi phí dự kiến &amp; kiến nghị</h5>
+              {/* Chi phí là ô TÙY CHỌN: có tờ trình chỉ xin chủ trương, chưa có
+                  con số nào. Bỏ trống thì tờ in ra không có dòng chi phí chứ
+                  không in "0 đồng". */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                <div className="grid grid-cols-[1fr_100px] gap-2">
+                  {num("de_nghi_thanh_toan", "Giá dự kiến (VNĐ)", "13.500.000")}
+                  <label className="flex flex-col gap-1.5">
+                    <span className={labelCls}>VAT %</span>
+                    <input value={d.vat_percent || ""} onChange={(e) => set("vat_percent", e.target.value)}
+                      inputMode="decimal" placeholder="8" className={`${inputCls} font-mono text-right`} />
+                  </label>
+                </div>
+                {/* Dùng lại cột `hang_muc` — với tờ trình nó là câu diễn giải đi
+                    kèm con số, in ngay sau "Giá dự kiến: …" trên cùng một dòng. */}
+                <label className="flex flex-col gap-1.5">
+                  <span className={labelCls}>Diễn giải kèm giá</span>
+                  <input value={d.hang_muc || ""} onChange={(e) => set("hang_muc", e.target.value)}
+                    placeholder="nâng cấp toàn bộ với 3 phiên bản Anh, Việt, Trung"
+                    className={inputCls} />
+                </label>
+                <label className="flex flex-col gap-1.5 md:col-span-2">
+                  <span className={labelCls}>Kiến nghị *</span>
+                  <textarea value={d.kien_nghi || ""} onChange={(e) => set("kien_nghi", e.target.value)}
+                    rows={3}
+                    placeholder="Bộ phận … kính đề nghị Ban Giám đốc xem xét và phê duyệt để triển khai…"
+                    className={`${inputCls} resize-y leading-relaxed`} />
+                </label>
+              </div>
+              <p className="text-[11px] font-semibold text-slate-400">
+                Tờ trình đi <strong className="text-slate-500">2 cấp</strong>: Trưởng bộ phận
+                {" → "}Ban Giám đốc. Ô “NGƯỜI TRÌNH KÝ” trên tờ in ra điền sẵn tên{" "}
+                <strong className="text-slate-500">{currentName || currentEmail}</strong>.
+              </p>
+            </section>
+          )}
+
           {/* ─── 4. Số liệu (chỉ phiếu hồ sơ/văn bản) ─── */}
-          {!laHopDong && !laChuyenTien && (
+          {laHoSo && (
           <section className="space-y-3">
             <h5 className={labelCls}>4. Số liệu đợt thanh toán</h5>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">

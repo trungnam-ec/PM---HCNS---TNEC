@@ -38,13 +38,17 @@ export type SigningStatus =
 
 export type SigningFile = { path: string; name: string; size?: number };
 
-// ─── Ba loại phiếu (migration 060 + 079) ───
+// ─── Bốn loại phiếu (migration 060 + 079 + 088) ───
 // ho_so       : TL/BM/011    — trình MỘT ĐỢT THANH TOÁN của hợp đồng đã ký.
 // hop_dong    : KHKT/BM/001  — trình NỘI DUNG HỢP ĐỒNG trước khi ký.
 // chuyen_tien : HC-BM021/ĐNCT — đề nghị CHUYỂN TIỀN cho một dòng kế hoạch thu
 //               chi. Không gắn hợp đồng/đợt, không có bảng A−B−C−D; thứ nó cần
 //               mà hai loại kia không có là số tài khoản + ngân hàng người nhận.
-export type SigningLoai = "ho_so" | "hop_dong" | "chuyen_tien";
+// to_trinh    : TTr/TNE&C    — xin CHỦ TRƯƠNG của Ban Giám đốc (mua sắm, nâng
+//               cấp, đề xuất…). Không hợp đồng, không đợt, không tài khoản nhận;
+//               chỉ có Căn cứ → Nội dung đề nghị → Chi phí dự kiến → Kiến nghị.
+//               Luồng ĐÚNG 2 CẤP theo 3 ô ký trên tờ giấy (xem buildSigningRoute).
+export type SigningLoai = "ho_so" | "hop_dong" | "chuyen_tien" | "to_trinh";
 
 export const LOAI_META: Record<SigningLoai, { label: string; short: string; bieuMau: string; chip: string }> = {
   ho_so: {
@@ -64,6 +68,12 @@ export const LOAI_META: Record<SigningLoai, { label: string; short: string; bieu
     short: "Chuyển tiền",
     bieuMau: "HC-BM021/ĐNCT",
     chip: "bg-emerald-50 text-emerald-700",
+  },
+  to_trinh: {
+    label: "Tờ trình",
+    short: "Tờ trình",
+    bieuMau: "TTr/TNE&C",
+    chip: "bg-indigo-50 text-indigo-700",
   },
 };
 
@@ -123,6 +133,11 @@ export type SigningSubmission = {
   // ─── migration 079: riêng phiếu 'chuyen_tien' ───
   so_tai_khoan: string | null;
   ngan_hang: string | null;
+
+  // ─── migration 088: riêng phiếu 'to_trinh' ───
+  so_to_trinh: string | null;
+  can_cu: string | null;
+  kien_nghi: string | null;
 
   status: SigningStatus;
 
@@ -220,11 +235,12 @@ export const FLOW_HOP_DONG: SigningStatus[] = [
   "hoan_tat",
 ];
 
-// Chỉ dùng cho PHIẾU CŨ (route rỗng, lập trước 074). Phiếu 'chuyen_tien' sinh
-// sau 074 nên luôn có route — nhánh này không bao giờ chạm tới nó, nhưng vẫn
-// trả về FLOW (có chặng Kế toán) để không có góc nào trả undefined.
+// Chỉ dùng cho PHIẾU CŨ (route rỗng, lập trước 074). Phiếu 'chuyen_tien' và
+// 'to_trinh' sinh sau 074 nên luôn có route — nhánh này không bao giờ chạm tới
+// chúng, nhưng vẫn phải trả đúng luồng để không có góc nào trả undefined.
+// Tờ trình xếp cùng nhóm hợp đồng: dừng ở Giám đốc, không có chặng Kế toán.
 export function flowOf(loai: SigningLoai): SigningStatus[] {
-  return loai === "hop_dong" ? FLOW_HOP_DONG : FLOW;
+  return loai === "hop_dong" || loai === "to_trinh" ? FLOW_HOP_DONG : FLOW;
 }
 
 // Phiếu cũ nằm ở trạng thái trước 053 thì quy về chặng Phó Giám đốc, để
@@ -253,6 +269,12 @@ export function buildSigningRoute(
   pgdQlda: boolean,
   pgdKhdt: boolean
 ): SigningStatus[] {
+  // TỜ TRÌNH — luồng CỐ ĐỊNH 2 cấp, đúng 3 ô ký trên tờ giấy TTr/TNE&C:
+  // NGƯỜI TRÌNH KÝ (người lập) → TRƯỞNG BỘ PHẬN (cấp 1) → BAN LÃNH ĐẠO (Giám
+  // đốc). Không nhận 2 ô tích PGĐ và không có chặng Kế toán: tờ trình chỉ xin
+  // chủ trương, tiền chi sau đó đi bằng phiếu đề nghị chuyển tiền riêng.
+  if (loai === "to_trinh") return ["cho_cap1", "cho_giam_doc"];
+
   const r: SigningStatus[] = ["cho_cap1"];
   if (pgdQlda) r.push("cho_pgd_qlda");
   if (pgdKhdt) r.push("cho_pgd_khdt");
@@ -725,6 +747,28 @@ export async function downloadSigningForm(
  * là để lấy bản phiếu đã có chữ ký/ý kiến, đó mới là bản đem đi lưu hồ sơ.
  */
 export function docxPayloadFromRow(s: SigningSubmission): Record<string, unknown> {
+  // TỜ TRÌNH: tờ TTr/TNE&C là một lá thư, không có bảng số liệu nào. Chỉ mấy ô
+  // chữ + một dòng chi phí; `ngayLap` để route ghi đúng "ngày … tháng … năm"
+  // theo NGÀY LẬP PHIẾU chứ không phải ngày bấm nút xuất.
+  if (s.loai === "to_trinh") {
+    return {
+      loai: "to_trinh",
+      soToTrinh: s.so_to_trinh,
+      ngayLap: s.created_at,
+      donVi: s.don_vi,
+      veViec: s.ve_viec,
+      canCu: s.can_cu,
+      noiDung: s.noi_dung_trinh,
+      donViBaoGia: s.chu_dau_tu,
+      chiPhiDuKien: s.de_nghi_thanh_toan,
+      vatPercent: s.vat_percent,
+      dienGiaiChiPhi: s.hang_muc,
+      kienNghi: s.kien_nghi,
+      nguoiTrinh: s.created_by_name || "",
+      fileName: docxFileName(s),
+    };
+  }
+
   // Phiếu HỢP ĐỒNG: bộ trường khác hẳn, route cũng render bằng nhánh riêng.
   if (s.loai === "hop_dong") {
     return {
@@ -777,8 +821,14 @@ export function docxPayloadFromRow(s: SigningSubmission): Record<string, unknown
 
 export function docxFileName(s: {
   ma_phieu?: string | null; hop_dong_so?: string | null; dot_so?: number | null;
-  loai?: SigningLoai;
+  loai?: SigningLoai; so_to_trinh?: string | null;
 }): string {
+  // Tờ trình không gắn hợp đồng — đặt tên theo số tờ trình, không có thì mã phiếu.
+  if (s.loai === "to_trinh") {
+    const tt = String(s.so_to_trinh || s.ma_phieu || "to_trinh")
+      .replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 60);
+    return `To_Trinh_${tt}.docx`;
+  }
   const safe = String(s.hop_dong_so || s.ma_phieu || "phieu").replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 60);
   // Phiếu hợp đồng không có "đợt" — gắn đuôi _Dot_x vào là sai nghiệp vụ.
   if (s.loai === "hop_dong") return `Phieu_Trinh_Ky_Hop_Dong_${safe}.docx`;
@@ -803,8 +853,9 @@ export async function pushToPaymentDossier(
   row: SigningSubmission,
   actorEmail: string
 ): Promise<void> {
-  // Chỉ phiếu hồ sơ/văn bản mới có bước Kế toán; phiếu hợp đồng dừng ở Giám đốc.
-  if (row.loai === "hop_dong") return;
+  // Chỉ phiếu chi tiền mới có bước Kế toán; phiếu hợp đồng và tờ trình dừng ở
+  // Giám đốc nên không bao giờ gọi tới đây — chặn sẵn cho chắc.
+  if (row.loai === "hop_dong" || row.loai === "to_trinh") return;
 
   const ddmmyyyy = (d: Date) =>
     new Intl.DateTimeFormat("en-GB", {

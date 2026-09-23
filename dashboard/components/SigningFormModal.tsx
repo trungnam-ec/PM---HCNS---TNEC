@@ -115,7 +115,9 @@ function toDraft(s: SigningSubmission | null, defaultDept = "", prefill?: Record
     // migration 079 — chỉ dùng cho phiếu đề nghị chuyển tiền
     "so_tai_khoan", "ngan_hang",
     // migration 088 — chỉ dùng cho tờ trình
-    "so_to_trinh", "can_cu", "kien_nghi"] as const) {
+    "so_to_trinh", "can_cu", "kien_nghi",
+    // migration 094 — ngày thanh toán / cấp phát của đợt này
+    "ngay_dot"] as const) {
     d[k] = (s[k] as string) || "";
   }
   d.vat_percent = s.vat_percent != null ? String(s.vat_percent) : "";
@@ -385,6 +387,10 @@ export default function SigningFormModal({
       so_to_trinh: d.so_to_trinh?.trim() || null,
       can_cu: d.can_cu?.trim() || null,
       kien_nghi: d.kien_nghi?.trim() || null,
+      // migration 094 — ngày của đợt. Chỉ hai loại có đợt mới có ô này; loại
+      // khác luôn gửi null để không đọng lại ngày cũ khi người lập đổi loại phiếu.
+      ngay_dot: (loai === "ho_so" || loai === "don_dat_hang")
+        ? (d.ngay_dot?.trim() || null) : null,
       // migration 091 — bảng vật tư + ô đầu phiếu của đơn đặt hàng.
       // Bỏ dòng trống trước khi lưu: form mở sẵn 3 dòng, phần lớn phiếu không
       // dùng hết, lưu nguyên thì phiếu in ra có hàng rỗng.
@@ -1310,6 +1316,17 @@ export default function SigningFormModal({
                     inputMode="numeric" placeholder="2" className={`${inputCls} font-mono`} />
                 </label>
               )}
+              {/* 094 — ngày của ĐỢT NÀY, người lập chọn. Khác ô "Ngày chi" mà Kế
+                  toán ghi ở chặng cuối: ngày đó chỉ có sau khi tiền đã ra khỏi
+                  tài khoản, còn cột "đã thanh toán" ngoài danh sách phải đọc
+                  được ngay từ lúc phiếu còn đang trình. */}
+              {laHoSo && (
+                <label className="flex flex-col gap-1.5">
+                  <span className={labelCls}>Ngày thanh toán đợt này</span>
+                  <input type="date" value={d.ngay_dot || ""} onChange={(e) => set("ngay_dot", e.target.value)}
+                    className={`${inputCls} cursor-pointer`} />
+                </label>
+              )}
             </div>
           </section>
           </>)}
@@ -1386,6 +1403,18 @@ export default function SigningFormModal({
                       inputMode="numeric" placeholder="1" className={`${inputCls} font-mono`} />
                   </label>
                 </div>
+                {/* KHÔNG có ô "Tổng dự toán" ở đây. Ba cột Dự toán · Cấp phát ·
+                    Còn lại ngoài danh sách đọc thẳng từ BẢNG VẬT TƯ bên dưới —
+                    cột (4) và (5a)/(5b) — nên bắt gõ lại một lần nữa ở đầu phiếu
+                    chỉ đẻ ra hai con số có thể lệch nhau. */}
+                <label className="flex flex-col gap-1.5">
+                  <span className={labelCls}>Ngày cấp phát lần này</span>
+                  <input type="date" value={d.ngay_dot || ""} onChange={(e) => set("ngay_dot", e.target.value)}
+                    className={`${inputCls} cursor-pointer`} />
+                  <span className="text-[10px] font-semibold text-slate-400 leading-snug">
+                    Để trống thì lấy ngày lập phiếu.
+                  </span>
+                </label>
                 <label className="flex flex-col gap-1.5">
                   <span className={labelCls}>Đơn vị yêu cầu (sử dụng cuối)</span>
                   <input value={chiTiet.donViYeuCau || ""} onChange={(e) => setCt("donViYeuCau", e.target.value)}
@@ -1511,20 +1540,15 @@ export default function SigningFormModal({
                 </div>
               </div>
 
-              <p className="text-[11px] font-semibold text-slate-400">
-                {laDonDatHang
-                  ? "Biểu mẫu Excel có sẵn 15 dòng — nhập quá 15 thì phần thừa bị cắt khi xuất file và hệ thống sẽ báo."
-                  : "Dòng để trống tự bỏ khi lưu; số thứ tự do hệ thống đánh lúc in."}
-                {" "}{laDonDatHang ? (
-                  <>Đơn đi: BĐH dự án (Chỉ huy trưởng / phó)
-                  {d.phong_qlda === "1" ? " → Phòng QLDA" : ""}
-                  {d.pgd_qlda === "1" ? " → PGĐ QLDA" : ""}
-                  {" → Phòng Vật tư xác nhận"}. Hai cấp giữa bật/tắt bằng ô tích ở mục 2;
-                  chưa cấp cờ “Xác nhận — Phòng Vật tư” cho ai thì đơn xong ở cấp trước đó.</>
-                ) : (
-                  <>Phiếu đi <strong className="text-slate-500">2 cấp</strong>: Phụ trách bộ phận{" → "}Thủ trưởng đơn vị.</>
-                )}
-              </p>
+              {/* Đơn đặt hàng KHÔNG có dòng mô tả này (user chốt 23/09/2026):
+                  form đã dài, đoạn chữ xám cuối trang không ai đọc. Phiếu yêu
+                  cầu vẫn giữ — form của nó ngắn, câu này còn nói được việc. */}
+              {!laDonDatHang && (
+                <p className="text-[11px] font-semibold text-slate-400">
+                  Dòng để trống tự bỏ khi lưu; số thứ tự do hệ thống đánh lúc in.{" "}
+                  Phiếu đi <strong className="text-slate-500">2 cấp</strong>: Phụ trách bộ phận{" → "}Thủ trưởng đơn vị.
+                </p>
+              )}
             </section>
           )}
 

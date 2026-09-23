@@ -24,6 +24,8 @@ import { isResignedRow } from "@/lib/resigned";
 import { useConfirmBox } from "@/components/ConfirmDialog";
 import {
   fetchSubmissions, canActOn, canEdit, advanceStatus, stepsOfSubmission, tinhDeNghi,
+  soLieuChinh, conLai, deNghiCapPhat, tienDoBuoc, fmtNgayNgan,
+  fetchDotList, khoaNhomDot, type DotRow,
   fmtMoney, fmtDateTime, resolveDossierUrl, fetchStageApproverEmails, errText,
   normalizeStatus, pgdOpinionField, downloadSigningForm, docxPayloadFromRow, docxFileName,
   deleteSubmission, duplicateSubmission, appendDossierFiles, removeDossierFile, canDelete,
@@ -194,6 +196,50 @@ export default function SigningPanel() {
 
   useEffect(() => { load(); }, [load]);
 
+  // ─── Các đợt thanh toán / cấp phát (migration 094) ───
+  //
+  // Nạp RIÊNG một lượt sau khi có danh sách phiếu, KHÔNG gộp vào `load()`:
+  // · hàm SQL đọc xuyên RLS nên phải gọi qua RPC, không lấy được bằng cách
+  //   gom `rows` đang có (nhân viên thường chỉ thấy phiếu của chính mình);
+  // · hỏng thì bảng vẫn hiện đủ, chỉ hai cột đợt/còn lại trống — chặn cả bảng
+  //   vì một cột phụ là đánh đổi sai.
+  const [dot, setDot] = useState<Map<string, DotRow[]>>(new Map());
+  const [dotErr, setDotErr] = useState("");
+
+  // Khoá nhóm rút từ `rows`, gộp trùng. Ký vào chuỗi để useEffect không chạy lại
+  // mỗi lần `rows` đổi tham chiếu mà nội dung khoá y hệt.
+  const khoaNhom = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of rows) { const k = khoaNhomDot(r); if (k) s.add(k); }
+    return [...s].sort();
+  }, [rows]);
+  const khoaKy = khoaNhom.join("\u0001");
+
+  useEffect(() => {
+    let huy = false;
+    const keys = khoaKy ? khoaKy.split("\u0001") : [];
+    if (!keys.length) { setDot(new Map()); setDotErr(""); return; }
+    (async () => {
+      try {
+        const m = await fetchDotList(keys);
+        if (!huy) { setDot(m); setDotErr(""); }
+      } catch (e) {
+        if (!huy) {
+          setDot(new Map());
+          setDotErr(
+            /function .*signing_dot_list|does not exist|PGRST202/i.test(errText(e))
+              // Cột "Đề nghị TT / Cấp phát" tính tại chỗ nên vẫn chạy; thiếu hàm
+              // SQL thì chỉ mất phần CÁC ĐỢT KHÁC, và "Còn lại" sẽ báo cao hơn
+              // thực tế. Phải nói đúng cái mất, đừng doạ là hỏng cả hai cột.
+              ? "Chưa chạy migrations/094_signing_dot_payments.sql: cột \"Còn lại\" mới chỉ trừ đợt trên chính dòng này, CHƯA trừ các đợt khác của cùng hợp đồng."
+              : `Không đọc được các đợt thanh toán: ${errText(e)}`
+          );
+        }
+      }
+    })();
+    return () => { huy = true; };
+  }, [khoaKy]);
+
   // Xoá phiếu — CHỈ Admin thấy nút này (RLS migration 050 chặn lần hai ở DB).
   // Xoá xong nạp lại cả bảng thay vì gỡ dòng khỏi state: KPI phía trên đếm từ
   // `rows`, gỡ tay thì phải nhớ trừ đúng ô KPI tương ứng, nạp lại là chắc.
@@ -329,6 +375,19 @@ export default function SigningPanel() {
             <p className="text-[11px] font-medium text-amber-700 mt-0.5 break-words">{mailWarn}</p>
           </div>
           <button type="button" onClick={() => setMailWarn("")}
+            className="p-1 text-amber-400 hover:text-amber-600 hover:bg-amber-100 rounded-lg cursor-pointer">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Hai cột đợt/còn lại rỗng thì phải nói rõ VÌ SAO — không thì người dùng
+          tưởng hợp đồng chưa thanh toán đồng nào. */}
+      {dotErr && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-start gap-3">
+          <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />
+          <p className="flex-1 min-w-0 text-[11px] font-bold text-amber-800 break-words">{dotErr}</p>
+          <button type="button" onClick={() => setDotErr("")}
             className="p-1 text-amber-400 hover:text-amber-600 hover:bg-amber-100 rounded-lg cursor-pointer">
             <X size={14} />
           </button>
@@ -530,10 +589,21 @@ export default function SigningPanel() {
             <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-[#005BAC] to-blue-500 shadow-sm">
               <span className={`${headCls} w-24 shrink-0`}>Mã phiếu</span>
               <span className={`${headCls} flex-1 min-w-0`}>Hợp đồng / Dự án</span>
-              <span className={`${headCls} w-14 shrink-0 text-center hidden sm:block`}>Đợt</span>
-              {/* pr-6: số tiền căn phải, chip trạng thái căn trái — không chừa lề
-                  thì hai cột dính vào nhau thành một khối chữ. */}
-              <span className={`${headCls} w-36 shrink-0 text-right pr-6 hidden md:block`}>Đề nghị TT</span>
+              {/* "Đợt / Lần": phiếu hồ sơ gọi là ĐỢT thanh toán, đơn đặt hàng gọi
+                  là YÊU CẦU LẦN THỨ — hai tên gọi của cùng một cột `dot_so`. */}
+              <span className={`${headCls} w-14 shrink-0 text-center hidden sm:block`}>Đợt / Lần</span>
+              {/* BA CỘT ĐỌC LIỀN MẠCH: tổng − đã chi = còn lại. Nhãn nhỏ ngay
+                  dưới mỗi con số nói rõ đó là số gì, vì mỗi loại phiếu đổ một
+                  thứ khác nhau vào cột đầu (xem `soLieuChinh`).
+                  pr-*: số căn phải, chip trạng thái căn trái — không chừa lề thì
+                  hai cột dính vào nhau thành một khối chữ. */}
+              <span className={`${headCls} w-36 shrink-0 text-right pr-4 hidden md:block leading-tight`}>
+                Tổng giá trị HĐ / Dự toán
+              </span>
+              <span className={`${headCls} w-28 shrink-0 text-right pr-3 hidden lg:block leading-tight`}>
+                Đề nghị TT / Cấp phát
+              </span>
+              <span className={`${headCls} w-28 shrink-0 text-right pr-4 hidden lg:block`}>Còn lại</span>
               <span className={`${headCls} w-20 shrink-0 text-center hidden md:block`}>File gốc</span>
               <span className={`${headCls} w-32 shrink-0 hidden lg:block`}>Trạng thái</span>
               {(user.isAdmin || canCreate) && (
@@ -543,6 +613,7 @@ export default function SigningPanel() {
             <div className="divide-y divide-slate-100">
               {visible.map((r) => {
                 const meta = STATUS_META[r.status];
+                const buoc = tienDoBuoc(r);
                 const mine = canActOn(r, user.perms, user.isAdmin, user.email) &&
                   !["hoan_tat", "nhap", "tra_lai"].includes(r.status);
                 return (
@@ -575,21 +646,49 @@ export default function SigningPanel() {
                         </span>
                         <span className="block text-[10px] font-medium text-slate-400 truncate">
                           {/* Phiếu hợp đồng thì thứ đáng nhớ là hai bên ký, không
-                              phải chủ đầu tư (ô đó bỏ trống ở loại này). */}
+                              phải chủ đầu tư (ô đó bỏ trống ở loại này). Đơn đặt
+                              hàng thì là SỐ ĐĐH — dòng trên đã hiện dự án rồi, lặp
+                              lại chủ đầu tư ở đây chỉ tốn chỗ. */}
                           {r.loai === "hop_dong"
                             ? [r.ben_b, r.du_an].filter(Boolean).join(" · ") || "—"
+                            : r.loai === "don_dat_hang"
+                            ? [r.chi_tiet?.soDdh ? `ĐĐH ${r.chi_tiet.soDdh}` : null,
+                               r.hang_muc, r.chi_tiet?.congTrinh].filter(Boolean).join(" · ") || "—"
                             : r.chu_dau_tu || r.du_an || "—"}
+                        </span>
+                        {/* Ngày lập + người lập. Nhét vào dòng phụ thay vì thêm hai
+                            cột: bảng đã 7 cột, thêm nữa là vỡ ở màn hình hẹp. Trưởng
+                            phòng thấy phiếu của cả phòng nên "ai lập" là thứ phải
+                            đọc được ngay, không phải mở phiếu ra mới biết. */}
+                        <span className="shrink-0 flex items-center gap-1 text-[10px] font-medium text-slate-300">
+                          <span className="whitespace-nowrap">· {fmtNgayNgan(r.created_at)}</span>
+                          {r.created_by_name && (
+                            <span className="max-w-[110px] truncate" title={r.created_by_name}>
+                              · {r.created_by_name}
+                            </span>
+                          )}
                         </span>
                       </span>
                     </span>
+                    {/* Đợt / Lần — CÙNG một cột `dot_so` cho cả hai loại có khái
+                        niệm này. Trước đây chặn cứng `loai === "ho_so"` nên đơn đặt
+                        hàng luôn hiện "—" dù ô "Yêu cầu lần thứ" đã nhập và đã lưu. */}
                     <span className="w-14 shrink-0 text-center text-[11px] font-bold text-slate-500 hidden sm:block">
-                      {r.loai === "ho_so"
-                        ? (r.dot_so ?? "—")
+                      {(r.loai === "ho_so" || r.loai === "don_dat_hang") && r.dot_so != null
+                        ? r.dot_so
                         : <span className="text-slate-300">—</span>}
                     </span>
-                    <span className="w-36 shrink-0 text-right pr-6 font-mono font-bold text-[11px] text-slate-700 hidden md:block">
-                      {fmtMoney(r.de_nghi_thanh_toan ?? tinhDeNghi(r))}
-                    </span>
+                    {/* Ba ô của phép tính. Dựng chung một khuôn `O` để ba cột
+                        cùng cỡ chữ, cùng cách căn — đọc ngang là ra phép trừ. */}
+                    <O w="w-36" pr="pr-4" hep="md" v={soLieuChinh(r)} />
+                    <O w="w-28" pr="pr-3" hep="lg" v={deNghiCapPhat(r, dot)} mau="text-slate-500" />
+                    {(() => {
+                      const cl = conLai(r, dot);
+                      return (
+                        <O w="w-28" pr="pr-4" hep="lg" v={cl}
+                          mau={cl.am ? "text-rose-600" : "text-emerald-700"} dam />
+                      );
+                    })()}
                     {/* File gốc — xem tệp đã có và đính kèm thêm ngay tại dòng */}
                     <span className="w-20 shrink-0 hidden md:flex items-center justify-center gap-0.5">
                       {r.files.length > 0 && (
@@ -620,6 +719,16 @@ export default function SigningPanel() {
                       <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full ${meta.chip}`}>
                         {meta.short}
                       </span>
+                      {/* Bước mấy / tổng mấy bước. Số cấp duyệt KHÔNG cố định —
+                          cùng chip "Phó GĐ" có thể là 2/3 (hợp đồng) hay 2/4
+                          (hồ sơ có chặng Kế toán), nhìn chip không thể biết còn
+                          bao nhiêu chặng nữa. Rỗng với nháp / trả lại / hoàn tất. */}
+                      {buoc && (
+                        <span className="text-[9px] font-mono font-bold text-slate-400 shrink-0"
+                          title={`Phiếu đang ở bước ${buoc} của luồng duyệt`}>
+                          {buoc}
+                        </span>
+                      )}
                       {mine && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" title="Chờ bạn xử lý" />}
                     </span>
                     {(user.isAdmin || canCreate) && (
@@ -905,6 +1014,40 @@ function FilePreviewModal({ row, canDelete, onChanged, onClose }: {
       {confirmNode}
     </div>,
     document.body
+  );
+}
+
+/**
+ * Một ô số của bộ ba "Tổng − Đã chi = Còn lại": con số ở trên, nhãn nhỏ nói đó
+ * là số gì ở dưới. Gói thành component để ba cột không thể lệch cỡ chữ hay lệch
+ * cách căn — ba cột đọc ngang phải ra một phép trừ, lệch một nhịp là mất mạch.
+ */
+function O({ w, pr, hep, v, mau = "text-slate-700", dam = false }: {
+  w: string; pr: string;
+  /** Ngưỡng bắt đầu hiện cột — cột càng phụ thì ẩn càng sớm ở màn hình hẹp. */
+  hep: "md" | "lg";
+  v: { so: string; nhan: string; tip?: string };
+  mau?: string; dam?: boolean;
+}) {
+  const rong = v.so === "—";
+  return (
+    <span
+      className={`${w} shrink-0 text-right ${pr} leading-tight ${
+        hep === "md" ? "hidden md:block" : "hidden lg:block"
+      }`}
+      title={v.tip}
+    >
+      <span className={`block font-mono ${dam ? "font-extrabold" : "font-bold"} text-[11px] ${
+        rong ? "text-slate-300" : mau
+      }`}>
+        {v.so}
+      </span>
+      {v.nhan && (
+        <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide truncate">
+          {v.nhan}
+        </span>
+      )}
+    </span>
   );
 }
 

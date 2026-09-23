@@ -150,6 +150,8 @@ export type VatTuRow = {
 };
 
 /** Các ô đầu phiếu riêng của Đơn đặt hàng — lưu trong cột jsonb `chi_tiet`. */
+// `chi_tiet` là cột jsonb tự do nên thêm khoá mới không cần migration — chỉ nối
+// tên vào đây.
 export const DDH_FIELDS = [
   "soDdh", "congTrinh", "donViYeuCau", "donViNhanNo", "diaChiNhan", "ngayDuKien",
   "nguoiNhanHang", "sdtNhanHang", "canBoKyThuat", "sdtKyThuat",
@@ -257,6 +259,12 @@ export type SigningSubmission = {
   ke_toan_by: string | null;
   ke_toan_at: string | null;
   ngay_chi: string | null;
+
+  // ─── migration 094 ───
+  // Ngày thanh toán / cấp phát của CHÍNH đợt này, người lập chọn trên form.
+  // KHÁC `ngay_chi` ngay trên: đó là ngày Kế toán bấm xác nhận đã chi, chỉ phiếu
+  // hồ sơ mới đi qua chặng Kế toán nên đơn đặt hàng không bao giờ có.
+  ngay_dot: string | null;
 
   tra_lai_tu: string | null;
   tra_lai_boi: string | null;
@@ -653,6 +661,368 @@ export const fmtDateTime = (iso: string | null): string =>
       })
     : "—";
 
+/** Ngày-tháng gọn cho danh sách (03/09). Luôn ép về giờ VN — `created_at` là
+ *  timestamptz, để máy tự chọn múi giờ thì phiếu lập tối muộn nhảy sang hôm sau. */
+export const fmtNgayNgan = (iso: string | null): string =>
+  iso
+    ? new Intl.DateTimeFormat("vi-VN", {
+        day: "2-digit", month: "2-digit", timeZone: "Asia/Ho_Chi_Minh",
+      }).format(new Date(iso))
+    : "—";
+
+// ─── BA CỘT SỐ LIỆU CỦA DANH SÁCH ───
+//
+//     Tổng giá trị HĐ / Dự toán  −  đã TT / cấp phát  =  Còn lại
+//
+// Chỉ HAI loại phiếu đi hết công thức này, vì chỉ hai loại đó có khái niệm ĐỢT:
+//
+//   hồ sơ        -> Giá trị HĐ  − tổng các đợt thanh toán của cùng số HĐ
+//   đơn đặt hàng -> Tổng dự toán − tổng các lần cấp phát của cùng dự án+hạng mục
+//
+// Bốn loại còn lại KHÔNG có hợp đồng nhiều đợt, nên cột đầu vẫn hiện con số
+// đáng nhớ của riêng chúng và hai cột sau để trống:
+//
+//   hợp đồng     -> Giá trị HĐ       · `gia_tri_hd`
+//   chuyển tiền  -> Số tiền chuyển   · `de_nghi_thanh_toan`
+//   tờ trình     -> Chi phí dự kiến  · `de_nghi_thanh_toan`
+//   phiếu yêu cầu-> số dòng vật tư   · không có ô tiền nào trong form
+//
+// (Trước 23/09/2026 cột đầu luôn gọi `tinhDeNghi()` — hàm cộng trừ 4 ô tiền của
+// RIÊNG phiếu hồ sơ. Năm loại kia không có 4 ô đó nên cả bốn đều null và hàm
+// trả về đúng số 0, in ra bảng thành "0", đọc như phiếu 0 đồng.)
+
+/** Định dạng KHỐI LƯỢNG — khác `fmtMoney` ở chỗ GIỮ phần lẻ. fmtMoney gọi
+ *  Math.round vì tiền Việt không có hào, dùng lại cho khối lượng thì 12,5 m3
+ *  in ra thành 13. */
+const fmtKhoiLuong = (v: number): string =>
+  new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 }).format(v);
+
+/** Đọc một ô số lưu dạng CHỮ (bảng vật tư, ô Tổng dự toán). Theo đúng quy ước
+ *  gõ số của form: dấu chấm là phân cách nghìn, dấu phẩy là thập phân.
+ *
+ *  ⚠ Phải KHỚP với phép đọc số trong `signing_dot_list()` (migration 094) —
+ *  lệch nhau thì cột "còn lại" tính ở đây khác con số hàm SQL trả về. */
+export function docSoVN(s: string | undefined | null): number | null {
+  const t = (s || "").replace(/[^\d.,-]/g, "").replace(/\./g, "").replace(",", ".");
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+const soVatTu = docSoVN;
+
+/**
+ * Cộng các cột số của BẢNG VẬT TƯ, gom theo ĐƠN VỊ TÍNH.
+ *
+ * ⚠ KHÔNG dồn tất cả vào một số: đây là KHỐI LƯỢNG, mỗi dòng mang đơn vị riêng
+ * (kg thép, m3 bê tông, mét cọc cừ…). Cộng chung thì ra một con số vô nghĩa.
+ * Nên gom theo ĐVT, lấy nhóm nhiều dòng nhất làm số hiện ra, phần còn lại đẩy
+ * vào tooltip — người xem vẫn biết có bao nhiêu nhóm mà không bị đọc nhầm.
+ *
+ * `cong` / `tru` nhận danh sách khoá cột để ba cột của danh sách dùng CHUNG một
+ * phép gom: dự toán = (4), cấp phát = (5a)+(5b), còn lại = (4)−(5a)−(5b). Cùng
+ * một hàm nên ba cột chắc chắn gom cùng kiểu, đọc ngang ra đúng phép trừ.
+ */
+export function gomTheoDvt(
+  rows: VatTuRow[],
+  cong: (keyof VatTuRow)[],
+  tru: (keyof VatTuRow)[] = []
+): { tong: number | null; dvt: string; soNhom: number; chiTiet: string } {
+  const nhom = new Map<string, { tong: number; dong: number }>();
+  for (const r of rows || []) {
+    let v = 0;
+    let co = false;
+    for (const k of cong) { const x = soVatTu(r[k]); if (x !== null) { v += x; co = true; } }
+    for (const k of tru)  { const x = soVatTu(r[k]); if (x !== null) { v -= x; co = true; } }
+    if (!co) continue;
+    const dvt = (r.dvt || "").trim();
+    const cu = nhom.get(dvt) || { tong: 0, dong: 0 };
+    nhom.set(dvt, { tong: cu.tong + v, dong: cu.dong + 1 });
+  }
+  if (nhom.size === 0) return { tong: null, dvt: "", soNhom: 0, chiTiet: "" };
+  const xep = [...nhom.entries()].sort((a, b) => b[1].dong - a[1].dong);
+  const chiTiet = xep
+    .map(([dvt, v]) => `${fmtKhoiLuong(v.tong)}${dvt ? ` ${dvt}` : ""} (${v.dong} dòng)`)
+    .join("\n");
+  return { tong: xep[0][1].tong, dvt: xep[0][0], soNhom: nhom.size, chiTiet };
+}
+
+/** Ba cột của đơn đặt hàng, theo đúng số hiệu cột trên tờ biểu mẫu KD/BM/001. */
+const DDH_DU_TOAN: (keyof VatTuRow)[] = ["dinhMuc"];                   // (4)
+const DDH_CAP_PHAT: (keyof VatTuRow)[] = ["luyKeTrong", "luyKeNgoai"]; // (5a) + (5b)
+
+/** Ô số + nhãn cho một phép gom theo ĐVT. Nhãn mang luôn ĐVT vì con số này là
+ *  khối lượng — thiếu đơn vị thì "50" không nói được gì. */
+function oKhoiLuong(
+  g: ReturnType<typeof gomTheoDvt>,
+  nhanGoc: string,
+  tenCot: string
+): SoLieuChinh {
+  if (g.tong === null) return O_TRONG;
+  const dvt = g.dvt ? ` · ${g.dvt}` : "";
+  return {
+    so: fmtKhoiLuong(g.tong),
+    nhan: g.soNhom > 1 ? `${nhanGoc}${dvt} · +${g.soNhom - 1} ĐVT` : `${nhanGoc}${dvt}`,
+    tip: g.soNhom > 1
+      ? `${tenCot} theo từng đơn vị tính:\n${g.chiTiet}`
+      : `${tenCot}: ${g.chiTiet}`,
+  };
+}
+
+/** Một ô "số liệu chính": con số + nhãn nhỏ nói đó là số gì + tooltip (nếu có). */
+export type SoLieuChinh = { so: string; nhan: string; tip?: string };
+
+const O_TRONG: SoLieuChinh = { so: "—", nhan: "" };
+
+/** Hai loại phiếu chạy đủ công thức "tổng − các đợt = còn lại". */
+export const LOAI_CO_DOT: SigningLoai[] = ["ho_so", "don_dat_hang"];
+
+/**
+ * Tổng giá trị của hợp đồng / hạng mục mà phiếu này thuộc về — MẪU SỐ của cả
+ * phép tính. Không phải số tiền của riêng đợt này.
+ *
+ * ⚠ HAI LOẠI PHIẾU DÙNG HAI ĐƠN VỊ KHÁC NHAU, cố ý:
+ *   · hồ sơ        -> TIỀN     (`gia_tri_hd`)
+ *   · đơn đặt hàng -> KHỐI LƯỢNG, cộng cột "(4) Định mức KL theo dự toán" của
+ *                     bảng vật tư. Tờ KD/BM/001 quản theo khối lượng chứ không
+ *                     theo tiền — không có ô tiền nào ở đầu phiếu.
+ * Mỗi DÒNG của danh sách tự nhất quán (tổng, cấp phát, còn lại cùng đơn vị),
+ * nên không bao giờ có chuyện trừ tiền cho khối lượng.
+ */
+export function tongGiaTri(s: SigningSubmission): number | null {
+  if (s.loai === "don_dat_hang") return gomTheoDvt(s.vat_tu || [], DDH_DU_TOAN).tong;
+  return typeof s.gia_tri_hd === "number" && Number.isFinite(s.gia_tri_hd)
+    ? s.gia_tri_hd : null;
+}
+
+/** Cột 1 — "Tổng giá trị HĐ / Dự toán". */
+export function soLieuChinh(s: SigningSubmission): SoLieuChinh {
+  // Không có số thì KHÔNG kèm nhãn: một dấu gạch kèm chữ "GIÁ TRỊ HĐ" bên dưới
+  // đọc như giá trị hợp đồng bằng 0.
+  const tien = (v: number | null | undefined, nhan: string): SoLieuChinh =>
+    typeof v === "number" && Number.isFinite(v)
+      ? { so: fmtMoney(v), nhan }
+      : O_TRONG;
+
+  switch (s.loai) {
+    case "don_dat_hang":
+      return oKhoiLuong(gomTheoDvt(s.vat_tu || [], DDH_DU_TOAN),
+        "Dự toán", "Định mức KL theo dự toán (4)");
+    case "chuyen_tien":
+      return tien(s.de_nghi_thanh_toan, "Số chuyển");
+    case "to_trinh":
+      return tien(s.de_nghi_thanh_toan, "Chi phí DK");
+    case "phieu_yeu_cau": {
+      const n = (s.vat_tu || []).length;
+      return n ? { so: String(n), nhan: "dòng vật tư" } : O_TRONG;
+    }
+    default:
+      // 'ho_so' và 'hop_dong' — cùng một ô Giá trị hợp đồng.
+      return tien(s.gia_tri_hd, "Giá trị HĐ");
+  }
+}
+
+// ─── CÁC ĐỢT THANH TOÁN / CẤP PHÁT (migration 094) ───
+
+/** Một đợt = một phiếu anh em, do hàm SQL `signing_dot_list` trả về. */
+export type DotRow = {
+  khoa: string;
+  id: string;
+  ma_phieu: string | null;
+  loai: SigningLoai;
+  dot_so: number | null;
+  so_tien: number | null;
+  ngay: string | null;
+  status: SigningStatus;
+};
+
+/** Gom các đợt về cùng một hợp đồng / hạng mục.
+ *
+ *  ⚠ Phải sinh ra ĐÚNG chuỗi mà `signing_dot_list()` sinh ở phía SQL — lệch một
+ *  dấu cách là không khớp nhóm nào và cột đợt rỗng trắng. */
+export function khoaNhomDot(s: SigningSubmission): string | null {
+  // CHỈ phiếu hồ sơ. Đơn đặt hàng KHÔNG gom theo phiếu anh em: cột (5a)/(5b)
+  // trên chính phiếu đã là luỹ kế đã thực hiện của cả hạng mục, cộng thêm các
+  // lần đặt hàng trước là đếm hai lần.
+  //
+  // Hàm SQL `signing_dot_list` (094) vẫn có nhánh tính cho đơn đặt hàng, nhưng
+  // vì `p_keys` không bao giờ chứa khoá 'DDH|…' nữa nên nhánh đó nằm im. Cố ý
+  // KHÔNG sửa lại migration đã chạy chỉ để dọn một nhánh vô hại.
+  if (s.loai !== "ho_so") return null;
+  const hd = (s.hop_dong_so || "").trim().toLowerCase();
+  return hd ? `HS|${hd}` : null;
+}
+
+/**
+ * Nạp các đợt cho cả bảng trong MỘT lần gọi.
+ *
+ * Gọi hàm SQL chứ không gom từ `rows` đã tải về: policy `signing_select` (074)
+ * cho nhân viên thường chỉ thấy phiếu của chính mình, gom ở client thì đợt do
+ * người khác lập bị bỏ sót và "còn lại" báo cao hơn thực tế. Cùng lý do khiến
+ * `luy_ke_da_thanh_toan` phải là SECURITY DEFINER.
+ */
+export async function fetchDotList(keys: string[]): Promise<Map<string, DotRow[]>> {
+  const m = new Map<string, DotRow[]>();
+  if (!keys.length) return m;
+  const { data, error } = await supabase.rpc("signing_dot_list", { p_keys: keys });
+  if (error) throw error;
+  for (const r of (data || []) as DotRow[]) {
+    const arr = m.get(r.khoa);
+    if (arr) arr.push(r); else m.set(r.khoa, [r]);
+  }
+  return m;
+}
+
+const tongDot = (ds: DotRow[]): number =>
+  ds.reduce((t, d) => t + (typeof d.so_tien === "number" && Number.isFinite(d.so_tien) ? d.so_tien : 0), 0);
+
+/**
+ * Số tiền của CHÍNH phiếu này — đề nghị thanh toán đợt này, hoặc giá trị đặt
+ * hàng lần này.
+ *
+ * Tính TẠI CHỖ từ dòng đang hiển thị, KHÔNG lấy từ `signing_dot_list`. Hàm SQL
+ * đó cố ý bỏ phiếu `nhap` và `tra_lai` (chưa trình thì chưa tiêu tiền hợp đồng),
+ * nên nếu lấy từ đó thì phiếu đang soạn dở sẽ hiện ô trống — mà đó lại đúng lúc
+ * người lập cần thấy nhất: nhập xong số tiền là muốn biết ngay hợp đồng còn lại
+ * bao nhiêu.
+ */
+export function deNghiDot(s: SigningSubmission): number | null {
+  // Đơn đặt hàng: cộng "(5a) Đã TH trong định mức" + "(5b) Đã TH ngoài định
+  // mức". Hai cột này đã là LUỸ KẾ ĐÃ THỰC HIỆN của cả hạng mục — người lập
+  // chép sang mỗi lần đặt hàng — nên KHÔNG cộng thêm các lần đặt hàng trước
+  // nữa, cộng là đếm hai lần.
+  if (s.loai === "don_dat_hang") return gomTheoDvt(s.vat_tu || [], DDH_CAP_PHAT).tong;
+  if (s.loai !== "ho_so") return null;
+  const v = s.de_nghi_thanh_toan ?? tinhDeNghi(s);
+  return Number.isFinite(v) && v !== 0 ? v : null;
+}
+
+/** Danh sách đợt ANH EM — các đợt khác của cùng hợp đồng, đã bỏ chính dòng này
+ *  ra để không cộng đôi khi phiếu đã trình đi.
+ *
+ *  Chỉ phiếu HỒ SƠ mới có: mỗi phiếu hồ sơ là một đợt riêng nên phải gom các
+ *  phiếu anh em lại. Đơn đặt hàng thì luỹ kế đã nằm sẵn trong cột (5a)/(5b) của
+ *  chính phiếu, gom thêm là cộng đôi — nên `khoaNhomDot` trả null cho nó. */
+function dotKhac(s: SigningSubmission, dot: Map<string, DotRow[]>): DotRow[] {
+  const khoa = khoaNhomDot(s);
+  return ((khoa && dot.get(khoa)) || []).filter((d) => d.id !== s.id);
+}
+
+// Chỉ phiếu HỒ SƠ đi tới các hàm dưới đây — đơn đặt hàng đã thoát ra ở nhánh
+// riêng, đọc thẳng bảng vật tư của chính nó. Nên luôn gọi là "đợt".
+function keDot(ds: DotRow[]): string {
+  return ds
+    .map((d) => {
+      const ten = d.dot_so != null ? `Đợt ${d.dot_so}` : (d.ma_phieu || "—");
+      return `${ten} · ${d.ngay ? ddmmyyyyISO(d.ngay) : "chưa có ngày"} · ${fmtMoney(d.so_tien)}` +
+        ` · ${STATUS_META[d.status]?.short || d.status}`;
+    })
+    .join("\n");
+}
+
+/**
+ * Cột 2 — "Đề nghị TT / Cấp phát": số tiền của RIÊNG dòng này.
+ *
+ * Nhãn nhỏ nói đây là đợt thứ mấy; nếu hợp đồng đã có đợt khác thì nói luôn để
+ * người đọc biết con số trên KHÔNG phải tất cả những gì đã chi — chi tiết các
+ * đợt kia nằm trong tooltip.
+ */
+export function deNghiCapPhat(s: SigningSubmission, dot: Map<string, DotRow[]>): SoLieuChinh {
+  if (!LOAI_CO_DOT.includes(s.loai)) return O_TRONG;
+  if (s.loai === "don_dat_hang") {
+    return oKhoiLuong(gomTheoDvt(s.vat_tu || [], DDH_CAP_PHAT),
+      "Cấp phát", "Đã TH trong + ngoài định mức (5a+5b)");
+  }
+  const v = deNghiDot(s);
+  if (v === null) {
+    return { so: "—", nhan: "", tip: "Chưa có số tiền đề nghị thanh toán cho đợt này." };
+  }
+  const khac = dotKhac(s, dot);
+  const nhan = s.dot_so != null ? `đợt ${s.dot_so}` : "đợt";
+  return {
+    so: fmtMoney(v),
+    nhan: khac.length ? `${nhan} · +${khac.length} đợt khác` : nhan,
+    tip: khac.length
+      ? `Đợt này: ${fmtMoney(v)}\n\nCác đợt khác của cùng hợp đồng ` +
+        `(${fmtMoney(tongDot(khac))}):\n${keDot(khac)}`
+      : undefined,
+  };
+}
+
+/**
+ * Cột 3 — "Còn lại" = tổng giá trị − các đợt khác − đợt này.
+ *
+ * Trừ CẢ đợt này nên khi hợp đồng mới có một đợt, ba cột đọc ngang đúng thành
+ * một phép trừ: tổng − đề nghị = còn lại. Có nhiều đợt thì nhãn nhỏ ghi rõ đã
+ * trừ mấy đợt, để không ai đọc nhầm thành phép trừ hai số trên cùng dòng.
+ * Âm là ĐÃ VƯỢT hợp đồng — phải thấy được ngay.
+ */
+export function conLai(s: SigningSubmission, dot: Map<string, DotRow[]>): SoLieuChinh & { am?: boolean } {
+  if (!LOAI_CO_DOT.includes(s.loai)) return O_TRONG;
+
+  // Đơn đặt hàng: trừ NGAY TRÊN TỪNG DÒNG vật tư rồi mới gom theo ĐVT —
+  // (4) − (5a) − (5b), đúng nghĩa cột "(6) Chênh lệch còn lại" của tờ mẫu.
+  // Không lấy thẳng cột (6) người lập gõ tay: gõ lệch một dòng là ba cột của
+  // danh sách không còn cộng trừ ra nhau, mà bảng này bán được là nhờ đọc ngang
+  // ra một phép trừ.
+  if (s.loai === "don_dat_hang") {
+    const g = gomTheoDvt(s.vat_tu || [], DDH_DU_TOAN, DDH_CAP_PHAT);
+    if (g.tong === null) {
+      return { so: "—", nhan: "", tip: "Bảng vật tư chưa có số ở cột (4) hay (5a)/(5b)." };
+    }
+    const o = oKhoiLuong(g, "còn lại", "Chênh lệch còn lại (4)−(5a)−(5b)");
+    // Nhãn của cột này KHÔNG lặp lại chữ "còn lại" (tiêu đề cột đã nói rồi), chỉ
+    // giữ đơn vị tính. Nhưng phần "+N ĐVT" thì PHẢI giữ: thiếu nó thì phiếu có
+    // nhiều đơn vị đọc thành như thể con số trên là toàn bộ phần còn lại.
+    const them = g.soNhom > 1 ? ` · +${g.soNhom - 1} ĐVT` : "";
+    return g.tong < 0
+      ? { ...o, nhan: `đã vượt${them}`, am: true }
+      : { ...o, nhan: `${g.dvt}${them}`.replace(/^ · /, ""), am: false };
+  }
+
+  const tong = tongGiaTri(s);
+  if (tong === null) {
+    return { so: "—", nhan: "", tip: "Chưa nhập ô \"Giá trị HĐ\" nên không tính được còn lại." };
+  }
+  const khac = dotKhac(s, dot);
+  const nay = deNghiDot(s) ?? 0;
+  const daChi = tongDot(khac) + nay;
+  const con = tong - daChi;
+  const soDot = khac.length + (nay ? 1 : 0);
+  return {
+    so: fmtMoney(con),
+    nhan: con < 0 ? "đã vượt" : khac.length ? `sau ${soDot} đợt` : "",
+    am: con < 0,
+    tip: `${fmtMoney(tong)} − ${fmtMoney(daChi)} (${soDot} đợt) = ${fmtMoney(con)}` +
+      (khac.length ? `\n\nCác đợt khác:\n${keDot(khac)}` : ""),
+  };
+}
+
+/** `2026-09-23` -> `23/09/2026`. Hàm SQL trả DATE nên không có múi giờ để lệch. */
+const ddmmyyyyISO = (iso: string): string => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+};
+
+/**
+ * "Đang ở bước mấy trên tổng mấy bước" — vd `2/4`.
+ *
+ * Cần thiết vì số cấp duyệt KHÔNG cố định: tuỳ loại phiếu và tuỳ ô tích PGĐ mà
+ * cùng một chip "Phó GĐ" có thể là bước 2/3 hay 2/4. Đọc thẳng từ `route` của
+ * từng phiếu (migration 074) nên không phải suy đoán.
+ *
+ * Trả "" khi phiếu không nằm trong luồng (nháp, trả lại, hoàn tất) — mấy trạng
+ * thái đó chip đã nói đủ, gắn thêm số bước chỉ gây rối.
+ */
+export function tienDoBuoc(s: SigningSubmission): string {
+  const steps = stepsOfSubmission(s);
+  if (!steps.length) return "";
+  // Phiếu cũ (route rỗng) mang trạng thái trước 053 -> phải quy đổi mới khớp
+  // được với danh sách bước suy ra từ FLOW.
+  let i = steps.indexOf(s.status);
+  if (i < 0) i = steps.indexOf(normalizeStatus(s.status));
+  return i < 0 ? "" : `${i + 1}/${steps.length}`;
+}
+
 // ─── Đọc ───
 const COLS = "*";
 
@@ -737,6 +1107,38 @@ export async function duplicateSubmission(
     project_code: src.project_code,
     project_name: src.project_name,
     files: src.files,
+
+    // ─── PHẢI CHÉP LOẠI PHIẾU VÀ NỘI DUNG RIÊNG CỦA NÓ ───
+    // Thiếu `loai` thì Postgres lấy mặc định của cột là 'ho_so' (migration 060),
+    // nên nhân đôi một đơn đặt hàng / tờ trình / hợp đồng lại đẻ ra phiếu HỒ SƠ
+    // trắng trơn — mất bảng vật tư, mất bảng so sánh A-B, mất số tài khoản thụ
+    // hưởng. Lỗi im lặng: không báo gì, người lập chỉ thấy form mở ra sai loại.
+    loai: src.loai,
+    hang_muc: src.hang_muc,
+    // 060 — phiếu hợp đồng
+    ben_a: src.ben_a,
+    ben_b: src.ben_b,
+    vat_percent: src.vat_percent,
+    so_sanh: src.so_sanh,
+    // 079 — đề nghị chuyển tiền
+    so_tai_khoan: src.so_tai_khoan,
+    ngan_hang: src.ngan_hang,
+    // 088 — tờ trình
+    so_to_trinh: src.so_to_trinh,
+    can_cu: src.can_cu,
+    kien_nghi: src.kien_nghi,
+    // 091 — phiếu yêu cầu / đơn đặt hàng
+    vat_tu: src.vat_tu,
+    chi_tiet: src.chi_tiet,
+    // 074 — chép ROUTE để form mở ra còn giữ nguyên các ô tích cấp duyệt (form
+    // suy ô tích từ route chứ không từ cột `pgd_chon`). KHÔNG chép `cap1_email`:
+    // người duyệt cấp 1 tính lại theo người lập bản sao, chép sang là gửi phiếu
+    // cho cấp trưởng của người khác.
+    route: src.route,
+    pgd_chon: src.pgd_chon,
+
+    // KHÔNG chép `ngay_dot` (094) và `ngay_chi`: bản sao là một đợt MỚI, chưa
+    // thanh toán / cấp phát ngày nào.
     status: "nhap",
     created_by: email,
     created_by_name: name || null,

@@ -67,17 +67,24 @@ ${TIMELINE_RULES[timelineMode]}
    - "attendees": mảng tên thành viên tham dự, CHỈ lấy từ danh sách tên đóng ở trên.
    - "project_name" / "package_name": tên dự án và gói thầu được bàn, không có thì "".
 3. "transcript_clean": biên tập lại bản gỡ băng thành các đoạn thoại ngắn gọn, chuẩn mực ngôn ngữ doanh nghiệp, gán đúng tên người phát biểu theo danh sách tên đóng. Chỉ giữ ý kiến chuyên môn, số liệu báo cáo và chỉ đạo của Chủ trì.
-4. "summary": chia 2 phần rõ rệt bằng tiếng Việt:
-   * "PHẦN 1: TÓM TẮT DIỄN BIẾN CUỘC HỌP" — bối cảnh, lý do họp, các báo cáo chính, ý kiến đóng góp quan trọng của các bộ phận.
-   * "PHẦN 2: TIẾN TRÌNH & TIMELINE CHI TIẾT" — diễn biến theo trình tự, trình bày đúng luật timeline ở trên, kèm số liệu thực tế được nhắc đến.
-5. "action_items": mảng gồm CẢ nội dung diễn biến lẫn đầu việc được giao, chia theo các mục chính của mẫu Biên bản họp công ty:
-   * Mục A: "MỤC ĐÍCH CUỘC HỌP"
-   * Mục B: "SỰ CẦN THIẾT TRIỂN KHAI" hoặc "BỐI CẢNH/HIỆN TRẠNG"
-   * Mục C: "TỔNG QUAN LỘ TRÌNH TRIỂN KHAI" hoặc "DIỄN BIẾN THẢO LUẬN"
-   * Mục D: "PHÂN CÔNG NHIỆM VỤ CHI TIẾT"
-   - Dòng TIÊU ĐỀ MỤC: "stt" là chữ cái ("A"/"B"/"C"/"D"), "content" là tên mục viết hoa, "assignee"/"coop"/"deadline" để "", "ts" để null, "is_header": true.
-   - Dòng NỘI DUNG CHI TIẾT: "stt" là số (1, 2, 3...), "content" mô tả đầy đủ 2-4 câu nghiệp vụ (KHÔNG tóm tắt sơ sài), "assignee" là bộ phận/cá nhân chịu trách nhiệm chính (VD: "P. QLDA", "P. HCNS", "BĐH", hoặc tên trong danh sách tên đóng), "coop" là bộ phận phối hợp (không có thì ""), "deadline" là hạn hoàn thành như đã nói trong họp (không có thì ""), "is_header": false.
-   - "ts": BẮT BUỘC với mọi dòng không phải tiêu đề — điền số giây (nguyên, lấy từ ts=<số> của dòng transcript làm căn cứ chính cho nội dung đó) để người kiểm tra bấm vào là nghe lại đúng đoạn. ${timelineMode === "none" ? "Chế độ hiện tại không có mốc thời gian nên để null." : "Không được bỏ trống, không được đoán bừa — lấy đúng ts của dòng transcript mà bạn dựa vào."}
+4. "summary": gồm 2 phần bằng tiếng Việt, viết liền mạch, CẤM in dòng tiêu đề kiểu "PHẦN 1:" / "PHẦN 2:" (mục II của biên bản đã có tiêu đề riêng, thêm nữa là dư). Ngăn 2 phần bằng MỘT DÒNG TRỐNG:
+   * Phần đầu — bối cảnh, lý do họp, các báo cáo chính, ý kiến đóng góp quan trọng của các bộ phận.
+   * Phần sau — diễn biến theo trình tự, trình bày đúng luật timeline ở trên, kèm số liệu thực tế được nhắc đến.
+5. "action_items": BẢNG PHÂN CÔNG của biên bản, dựng đúng mẫu công ty — gom nội dung THEO TỪNG DỰ ÁN, không chia theo A/B/C/D nữa. Có 3 loại dòng:
+   * DÒNG TIÊU ĐỀ MỤC ("is_header": true, "is_group": false): chỉ gồm 2 mục, viết hoa, đúng thứ tự này:
+     - "MỤC ĐÍCH CUỘC HỌP"
+     - "PHÂN CÔNG NHIỆM VỤ"
+     "stt" để "", "assignee"/"coop"/"deadline" để "", "ts" để null.
+   * DÒNG DỰ ÁN ("is_group": true, "is_header": false): chỉ nằm trong mục "PHÂN CÔNG NHIỆM VỤ". MỖI DỰ ÁN (hoặc mỗi nhóm nội dung lớn) MỘT DÒNG, đánh số "stt" 1, 2, 3... theo thứ tự được bàn trong họp. "content" là TÊN DỰ ÁN viết ngắn gọn đúng như người họp gọi (VD: "XLNT Tây Ninh", "Điện gió Đông Hải") — CẤM bịa tên dự án không được nhắc tới. "assignee"/"coop"/"deadline" để "", "ts" để null.
+     - Nội dung không thuộc dự án nào (việc nội bộ, hành chính, tài chính chung, quy trình) gom vào MỘT dòng dự án đặt CUỐI, đặt tên "Nội dung chung".
+     - Dự án nào được bàn nhiều thì đứng trước; mỗi dự án chỉ xuất hiện MỘT dòng, mọi nội dung của nó nằm ngay dưới dòng đó.
+   * DÒNG NỘI DUNG ("is_header": false, "is_group": false): nằm ngay dưới dòng dự án mà nó thuộc về, hoặc dưới dòng tiêu đề "MỤC ĐÍCH CUỘC HỌP".
+     - Trong mục "PHÂN CÔNG NHIỆM VỤ": "stt" để "" (số thứ tự đã nằm ở dòng dự án).
+     - Trong mục "MỤC ĐÍCH CUỘC HỌP": "stt" là 1 (và 2, 3... nếu có nhiều dòng).
+     - "content" mô tả đầy đủ 2-4 câu nghiệp vụ (KHÔNG tóm tắt sơ sài); nhiều ý thì mỗi ý một dòng riêng bắt đầu bằng "- " (ý phụ lùi vào bằng "   + "), xuống dòng bằng ký tự \\n.
+     - "assignee" là bộ phận/cá nhân chịu trách nhiệm chính (VD: "P. QLDA", "P. HCNS", "BĐH", hoặc tên trong danh sách tên đóng); ở mục mục đích cuộc họp mà cả công ty cùng làm thì ghi "Tất cả".
+     - "coop" là bộ phận phối hợp (không có thì ""), "deadline" là hạn hoàn thành như đã nói trong họp (không có thì "").
+   - "ts": BẮT BUỘC với mọi DÒNG NỘI DUNG (dòng tiêu đề mục và dòng dự án để null) — điền số giây (nguyên, lấy từ ts=<số> của dòng transcript làm căn cứ chính cho nội dung đó) để người kiểm tra bấm vào là nghe lại đúng đoạn. ${timelineMode === "none" ? "Chế độ hiện tại không có mốc thời gian nên để null." : "Không được bỏ trống, không được đoán bừa — lấy đúng ts của dòng transcript mà bạn dựa vào."}
 
 ━━━ ĐỊNH DẠNG ĐẦU RA (JSON CHUẨN, không kèm giải thích) ━━━
 {
@@ -93,8 +100,12 @@ ${TIMELINE_RULES[timelineMode]}
   "transcript_clean": "...",
   "summary": "...",
   "action_items": [
-    { "stt": "A", "content": "MỤC ĐÍCH CUỘC HỌP", "assignee": "", "coop": "", "deadline": "", "ts": null, "is_header": true },
-    { "stt": 1, "content": "...", "assignee": "P. QLDA", "coop": "", "deadline": "Trước 20/09/2026", "ts": 1247, "is_header": false }
+    { "stt": "", "content": "MỤC ĐÍCH CUỘC HỌP", "assignee": "", "coop": "", "deadline": "", "ts": null, "is_header": true, "is_group": false },
+    { "stt": 1, "content": "- Rà soát, giải quyết các khó khăn, vướng mắc trong quá trình triển khai các dự án;\\n- Triển khai, phân công và đôn đốc thực hiện các công việc trọng tâm.", "assignee": "Tất cả", "coop": "Tất cả", "deadline": "", "ts": 128, "is_header": false, "is_group": false },
+    { "stt": "", "content": "PHÂN CÔNG NHIỆM VỤ", "assignee": "", "coop": "", "deadline": "", "ts": null, "is_header": true, "is_group": false },
+    { "stt": 1, "content": "XLNT Tây Ninh", "assignee": "", "coop": "", "deadline": "", "ts": null, "is_header": false, "is_group": true },
+    { "stt": "", "content": "- Về các nội dung CĐT nhắc nhở liên quan các việc:\\n   + Giải trình ý kiến xã, SXD;\\n   + Lập kế hoạch chi tiết từng tuyến đường, từng hạng mục, ngày bắt đầu, kết thúc.", "assignee": "BĐH", "coop": "P. QLDA", "deadline": "Hết tháng 7/2026", "ts": 1247, "is_header": false, "is_group": false },
+    { "stt": 2, "content": "Nội dung chung", "assignee": "", "coop": "", "deadline": "", "ts": null, "is_header": false, "is_group": true }
   ]
 }
 

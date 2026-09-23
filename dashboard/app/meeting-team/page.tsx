@@ -113,6 +113,8 @@ interface ActionItem {
   coop: string;
   deadline: string;
   is_header?: boolean;
+  /** Dòng tên dự án — gom các đầu việc của cùng một dự án lại dưới nó. */
+  is_group?: boolean;
   /** Giây thứ mấy của cuộc họp — bấm vào là tua đúng đoạn ghi âm để kiểm chứng. */
   ts?: number | null;
 }
@@ -2116,25 +2118,40 @@ function MeetingTeamContent() {
                               </thead>
                               <tbody className="divide-y divide-slate-100">
                                 {editableActionItems.map((item, index) => {
+                                  // Biên bản cũ đánh dấu mục bằng chữ cái A/B/C/D nên vẫn phải
+                                  // suy từ stt, nếu không biên bản trước 09/2026 mất hết dòng tiêu đề.
                                   const isHeader = item.is_header || (typeof item.stt === "string" && isNaN(Number(item.stt)));
+                                  const isGroup = !isHeader && !!item.is_group;
+                                  // Tiêu đề mục và tên dự án đều không có người thực hiện/thời hạn
+                                  // nên ô nội dung trải rộng thay cho 4 ô trống.
+                                  const isWide = isHeader || isGroup;
                                   return (
-                                    <tr key={`item_${index}`} className={isHeader ? "bg-slate-100/80 font-bold border-t border-slate-200" : "hover:bg-slate-50/50 align-top"}>
+                                    <tr
+                                      key={`item_${index}`}
+                                      className={
+                                        isHeader
+                                          ? "bg-slate-100/80 font-bold border-t border-slate-200"
+                                          : isGroup
+                                            ? "bg-blue-50/70 font-bold border-t border-blue-100"
+                                            : "hover:bg-slate-50/50 align-top"
+                                      }
+                                    >
                                       <td className="px-3 py-2.5 text-center font-bold text-slate-700">{item.stt}</td>
-                                      <td className="px-4 py-2.5 text-xs text-slate-800" colSpan={isHeader ? 4 : 1}>
+                                      <td className="px-4 py-2.5 text-xs text-slate-800" colSpan={isWide ? 4 : 1}>
                                         {selectedMeeting.status === "draft" ? (
                                           // <textarea> chứ không phải <input>: nội dung 2–4 câu mà để
                                           // input thì chữ bị cắt cụt, không soát được biên bản.
                                           <textarea
-                                            rows={isHeader ? 1 : 3}
+                                            rows={isWide ? 1 : 3}
                                             value={item.content}
                                             onChange={(e) => handleUpdateActionItemField(index, "content", e.target.value)}
-                                            className={`w-full bg-transparent border border-transparent hover:border-slate-200 focus:bg-white focus:border-blue-500 rounded-lg px-2 py-1 focus:outline-none text-slate-800 resize-y leading-relaxed ${isHeader ? "font-extrabold text-[#005BAC]" : ""}`}
+                                            className={`w-full bg-transparent border border-transparent hover:border-slate-200 focus:bg-white focus:border-blue-500 rounded-lg px-2 py-1 focus:outline-none text-slate-800 resize-y leading-relaxed ${isWide ? "font-extrabold text-[#005BAC]" : ""}`}
                                           />
                                         ) : (
-                                          <span className={`block whitespace-pre-wrap ${isHeader ? "font-extrabold text-[#005BAC]" : "text-slate-800"}`}>{item.content}</span>
+                                          <span className={`block whitespace-pre-wrap ${isWide ? "font-extrabold text-[#005BAC]" : "text-slate-800"}`}>{item.content}</span>
                                         )}
                                       </td>
-                                      {!isHeader && (
+                                      {!isWide && (
                                         <>
                                           <td className="px-4 py-2.5">
                                             {selectedMeeting.status === "draft" ? (
@@ -2175,7 +2192,7 @@ function MeetingTeamContent() {
                                         </>
                                       )}
                                       <td className="px-2 py-2.5 text-center">
-                                        {typeof item.ts === "number" && !isHeader ? (
+                                        {typeof item.ts === "number" && !isWide ? (
                                           <button
                                             type="button"
                                             onClick={() => seekToTs(item.ts as number)}

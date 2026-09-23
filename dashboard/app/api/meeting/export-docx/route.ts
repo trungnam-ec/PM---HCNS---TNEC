@@ -51,15 +51,30 @@ export async function POST(req: NextRequest) {
     const attendeesList = Array.isArray(meeting.attendees) ? meeting.attendees : [];
     const attendeesText = attendeesList.join(", ") || "………";
 
-    // Prepare tasks list for Docxtemplater loop
+    // Bảng phân công có 3 loại dòng, template dựng 3 hàng khác nhau và chỉ in ra
+    // hàng nào có cờ tương ứng bật (xem {#is_header}/{#is_group}/{#is_task}):
+    //   • tiêu đề mục ("MỤC ĐÍCH CUỘC HỌP", "PHÂN CÔNG NHIỆM VỤ") — gộp ô, in đậm;
+    //   • dòng dự án (STT + tên dự án) — gộp ô, tô nền;
+    //   • dòng nội dung — đủ 5 ô như cũ.
+    // Cờ phải tính ở đây chứ không tin mỗi cờ AI trả về: biên bản dựng trước
+    // 09/2026 đánh dấu mục bằng chữ cái A/B/C/D và KHÔNG có is_group nào.
     const rawTasks = Array.isArray(meeting.action_items) ? meeting.action_items : [];
-    const tasksList = rawTasks.map((t: any, index: number) => ({
-      stt: t.stt || (index + 1),
-      content: t.content || "",
-      assignee: t.assignee || "",
-      coop: t.coop || "",
-      deadline: t.deadline || "",
-    }));
+    const tasksList = rawTasks.map((t: any) => {
+      const isHeader = !!t.is_header || (typeof t.stt === "string" && t.stt.trim() !== "" && isNaN(Number(t.stt)));
+      const isGroup = !isHeader && !!t.is_group;
+      return {
+        // STT để trống thì in ô trống — KHÔNG tự đánh số lại theo vị trí, vì số
+        // thứ tự giờ thuộc dòng dự án, đánh bù sẽ ra bảng đánh số sai be bét.
+        stt: t.stt ?? "",
+        content: t.content || "",
+        assignee: t.assignee || "",
+        coop: t.coop || "",
+        deadline: t.deadline || "",
+        is_header: isHeader,
+        is_group: isGroup,
+        is_task: !isHeader && !isGroup,
+      };
+    });
 
     // 3. Load template
     const templateFileName = "bien_ban_hop_template_1.docx";
@@ -103,8 +118,10 @@ export async function POST(req: NextRequest) {
       attendees_text: attendeesText,
       end_time: meeting.end_time || "………",
       distribution: meeting.distribution || "P. KHĐT, P. QLDA, P. VTTB; Lưu: HCNS.",
+      // KHÔNG in tóm tắt AI vào file Word nữa: nội dung đó đã có sẵn ở tab "Tóm tắt
+      // AI" trong phần mềm, in thêm vào mục II chỉ lặp lại đúng thứ bảng phân công
+      // bên dưới đã ghi. Cột {meeting_summary} cũng đã gỡ khỏi template.
       tasks: tasksList,
-      meeting_summary: meeting.summary || "Không có tóm tắt.",
     });
 
     // 6. Compile document

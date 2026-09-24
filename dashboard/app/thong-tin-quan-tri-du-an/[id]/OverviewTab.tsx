@@ -7,6 +7,10 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   statusMeta,
+  PROJECT_STATUS,
+  pcErrorMessage,
+  type GateCheck,
+  type PcProjectStatus,
   formatMoneyShort,
   formatVnd,
   parseVnd,
@@ -18,8 +22,8 @@ import {
   type PcProject,
   type PcProjectFinance,
 } from "@/lib/projectControl";
-import { Card, Field, TextInput, MoneyInput, PrimaryButton, ErrorLine, LockedMoney, inputCls } from "./ui";
-import { Check } from "lucide-react";
+import { Card, Field, TextInput, Select, MoneyInput, PrimaryButton, ErrorLine, LockedMoney, Modal, inputCls } from "./ui";
+import { Check, X, Loader2 } from "lucide-react";
 
 type InfoForm = {
   name: string;
@@ -72,6 +76,7 @@ export default function OverviewTab({
   const [finSaved, setFinSaved] = useState(false);
   const [finErr, setFinErr] = useState<string | null>(null);
 
+  const [statusTarget, setStatusTarget] = useState<PcProjectStatus | null>(null);
   const [stats, setStats] = useState<{ segments: number; length: number; contractsAB: number; contractsBB: number } | null>(null);
 
   useEffect(() => {
@@ -176,11 +181,22 @@ export default function OverviewTab({
             <TextInput value={f.code} onChange={set("code")} disabled={!canEdit} placeholder="DT769-XL15" />
           </Field>
           <Field label="Trạng thái vòng đời">
-            {/* Chỉ đổi ở tab Vòng đời (kiểm tra gate) — migration 102 chặn sửa thẳng. */}
-            <div className={`${inputCls} flex items-center justify-between`}>
-              <span>{statusMeta(project.status).label}</span>
-              <span className="text-[10px] font-normal text-slate-400">đổi ở tab Vòng đời</span>
-            </div>
+            {/* Ban lãnh đạo / Admin: dropdown đổi thẳng (migration 104, vẫn kiểm gate + lý do).
+                Người khác: chỉ xem, đổi từng bước ở tab Vòng đời. */}
+            {access.is_leadership ? (
+              <Select value={project.status} onChange={(e) => setStatusTarget(e.target.value as PcProjectStatus)}>
+                {PROJECT_STATUS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <div className={`${inputCls} flex items-center justify-between`}>
+                <span>{statusMeta(project.status).label}</span>
+                <span className="text-[10px] font-normal text-slate-400">đổi ở tab Vòng đời</span>
+              </div>
+            )}
           </Field>
           <Field label="Gói thầu" className="md:col-span-2">
             <TextInput value={f.package_name} onChange={set("package_name")} disabled={!canEdit} />
@@ -254,7 +270,96 @@ export default function OverviewTab({
           Tổng chiều dài tính tự động từ tab Lý trình & Hạng mục. Giá trị HĐ theo từng nhà thầu nhập ở tab Nhà thầu & Hợp đồng.
         </p>
       )}
+      {statusTarget && statusTarget !== project.status && (
+        <StatusChangeModal
+          project={project}
+          target={statusTarget}
+          onClose={() => setStatusTarget(null)}
+          onDone={() => {
+            setStatusTarget(null);
+            onSaved();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// Ban lãnh đạo / Admin đổi thẳng trạng thái: xem gate của giai đoạn đích, ghi lý do,
+// lưu lịch sử (bắt buộc nếu nhảy cóc / lùi / gate chưa đạt).
+function StatusChangeModal({
+  project,
+  target,
+  onClose,
+  onDone,
+}: {
+  project: PcProject;
+  target: PcProjectStatus;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [gates, setGates] = useState<GateCheck[] | null>(null);
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase.rpc("pc_check_gates", { p_project: project.id, p_target: target });
+      if (error) setErr(pcErrorMessage(error));
+      setGates((data as GateCheck[]) || []);
+    })();
+  }, [project.id, target]);
+
+  const failed = (gates || []).filter((g) => !g.ok).length;
+
+  async function go() {
+    if (!reason.trim()) return setErr("Ghi lý do đổi trạng thái.");
+    setSaving(true);
+    setErr(null);
+    const { error } = await supabase.rpc("pc_set_status_admin", { p_project: project.id, p_target: target, p_reason: reason.trim() });
+    setSaving(false);
+    if (error) return setErr(pcErrorMessage(error));
+    onDone();
+  }
+
+  return (
+    <Modal title={`Đổi trạng thái: ${statusMeta(project.status).label} → ${statusMeta(target).label}`} onClose={onClose}>
+      {!gates ? (
+        <div className="flex justify-center py-6">
+          <Loader2 className="animate-spin text-[#005BAC]" size={22} />
+        </div>
+      ) : gates.length === 0 ? (
+        <p className="text-xs text-slate-500">Giai đoạn này không có điều kiện (gate) cần kiểm.</p>
+      ) : (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Điều kiện của giai đoạn {statusMeta(target).label}</p>
+          {gates.map((g) => (
+            <div key={g.key} className="flex items-start gap-2.5 py-1 border-b border-slate-100 last:border-0">
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${g.ok ? "bg-emerald-500 text-white" : "bg-rose-500 text-white"}`}>
+                {g.ok ? <Check size={11} /> : <X size={11} />}
+              </span>
+              <div>
+                <p className="text-xs font-semibold text-slate-700">{g.label}</p>
+                <p className={`text-[11px] ${g.ok ? "text-slate-400" : "text-rose-600"}`}>{g.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {failed > 0 && (
+        <p className="text-[11px] font-semibold text-rose-600">Còn {failed} điều kiện chưa đạt — lần đổi này sẽ ghi vào lịch sử là &quot;bắt buộc&quot;.</p>
+      )}
+      <Field label="Lý do (bắt buộc)">
+        <TextInput value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Nhập dự án đang thi công dở vào hệ thống…" autoFocus />
+      </Field>
+      <ErrorLine msg={err} />
+      <div className="flex justify-end">
+        <PrimaryButton onClick={go} busy={saving} disabled={gates === null}>
+          Xác nhận đổi trạng thái
+        </PrimaryButton>
+      </div>
+    </Modal>
   );
 }
 

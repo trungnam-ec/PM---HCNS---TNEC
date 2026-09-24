@@ -135,7 +135,11 @@ export default function LifecycleTab({
                 }`}
               >
                 {o.kind === "FORWARD" ? <ArrowRight size={13} /> : o.kind === "SUSPEND" ? <PauseCircle size={13} /> : <Undo2 size={13} />}
-                {o.kind === "FORWARD" ? "Chuyển sang" : o.kind === "SUSPEND" ? (o.to === "SUSPENDED" ? "Tạm dừng" : "Tiếp tục") : "Lùi về"} {statusMeta(o.to).label}
+                {o.kind === "SUSPEND"
+                  ? o.to === "SUSPENDED"
+                    ? "Tạm dừng thi công"
+                    : "Tiếp tục thi công"
+                  : `${o.kind === "FORWARD" ? "Chuyển sang" : "Lùi về"} ${statusMeta(o.to).label}`}
               </button>
             ))}
           </div>

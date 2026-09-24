@@ -3,9 +3,16 @@
 import { useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/apiClient";
-import { X, MapPin, Loader2, Check, Trash2, Search, AlertCircle, Navigation, Globe, Plus, Camera } from "lucide-react";
+import { X, MapPin, Loader2, Check, Trash2, Search, AlertCircle, Navigation, Globe, Plus, Camera, FileSpreadsheet, Paperclip, Undo2 } from "lucide-react";
 import type { ProjectItem } from "./types";
 import { VN_PROVINCE_NAMES } from "@/lib/vnProvinces";
+import {
+  uploadProjectFile,
+  removeProjectFile,
+  resolveProjectFileUrl,
+  isAllowedProjectFile,
+  PROJECT_FILE_MAX_BYTES,
+} from "@/lib/projectFiles";
 
 // Link Google My Maps (bản đồ tuỳ chỉnh) — có /maps/d/ và mid=, không chứa toạ độ điểm.
 function isMyMapsLink(s: string): boolean {
@@ -53,6 +60,9 @@ type Draft = {
   mapsLink: string; // ô TRÊN: link Google Maps / toạ độ — vị trí BĐH (để chỉ đường)
   earthLink: string; // ô DƯỚI: link Google Earth — xem thiết kế dự án
   panoLink: string; // link ảnh 360 độ của dự án
+  sheetLink: string; // link Google Sheet của dự án
+  file: File | null; // tệp ảnh/PDF mới chọn — chỉ tải lên khi bấm Lưu
+  removeFile: boolean; // gỡ tệp đang có khi bấm Lưu
   status: string;
   investor: string;
   packageName: string;
@@ -68,6 +78,9 @@ const EMPTY_DRAFT: Draft = {
   mapsLink: "",
   earthLink: "",
   panoLink: "",
+  sheetLink: "",
+  file: null,
+  removeFile: false,
   status: "active",
   investor: "",
   packageName: "",
@@ -114,6 +127,9 @@ export default function LocationEditor({
       mapsLink: p.loc ? `${p.loc.lat}, ${p.loc.lng}` : "",
       earthLink: p.loc?.google_earth_url || "",
       panoLink: p.loc?.panorama_url || "",
+      sheetLink: p.loc?.sheet_url || "",
+      file: null,
+      removeFile: false,
       status: p.loc?.status || "active",
       investor: p.loc?.investor || "",
       packageName: p.loc?.package || "",
@@ -186,12 +202,35 @@ export default function LocationEditor({
     key: string,
     bdhName: string,
     draft: Draft,
-    extra?: Record<string, unknown>
+    extra?: Record<string, unknown>,
+    oldFilePath?: string | null
   ): Promise<boolean> {
+    const fail = (msg: string) => {
+      setRowState((s) => ({ ...s, [key]: "error" }));
+      setRowMsg((m) => ({ ...m, [key]: msg }));
+      return false;
+    };
+
+    const sheetUrl = draft.sheetLink.trim();
+    if (sheetUrl && !/^https?:\/\//i.test(sheetUrl)) {
+      return fail("Link Google Sheet phải bắt đầu bằng https://");
+    }
+
     const resolved = await resolveCoords(key, draft.mapsLink);
     if (!resolved) return false;
 
     setRowState((s) => ({ ...s, [key]: "saving" }));
+
+    // Tệp mới: tải lên kho TRƯỚC để có đường dẫn ghi vào CSDL.
+    let newFilePath: string | null = null;
+    if (draft.file) {
+      try {
+        newFilePath = await uploadProjectFile(draft.file);
+      } catch (e) {
+        return fail(e instanceof Error ? e.message : "Không tải được tệp lên.");
+      }
+    }
+
     const payload: Record<string, unknown> = {
       bdh_name: bdhName,
       lat: resolved.coords[0],
@@ -202,19 +241,29 @@ export default function LocationEditor({
       province: draft.province || null,
       google_earth_url: draft.earthLink.trim() || null, // link Google Earth (xem thiết kế)
       panorama_url: draft.panoLink.trim() || null, // link ảnh 360 độ
+      sheet_url: sheetUrl || null, // link Google Sheet
       created_by: email,
       updated_at: new Date().toISOString(),
       ...(extra || {}),
     };
     if (resolved.kmlUrl) payload.kml_url = resolved.kmlUrl; // giữ link My Maps để mở bản đồ chi tiết
+    // Không đụng tệp thì KHÔNG gửi 2 cột tệp — giữ nguyên tệp cũ trong CSDL.
+    if (draft.file) {
+      payload.attachment_path = newFilePath;
+      payload.attachment_name = draft.file.name;
+    } else if (draft.removeFile) {
+      payload.attachment_path = null;
+      payload.attachment_name = null;
+    }
     const { error } = await supabase
       .from("project_locations")
       .upsert(payload, { onConflict: "bdh_name" });
     if (error) {
-      setRowState((s) => ({ ...s, [key]: "error" }));
-      setRowMsg((m) => ({ ...m, [key]: error.message }));
-      return false;
+      if (newFilePath) removeProjectFile(newFilePath); // dọn tệp vừa tải, CSDL không trỏ tới
+      return fail(error.message);
     }
+    // CSDL đã thôi trỏ vào tệp cũ -> giờ mới xoá tệp cũ khỏi kho (ghi CSDL trước).
+    if ((draft.file || draft.removeFile) && oldFilePath) removeProjectFile(oldFilePath);
     setRowState((s) => ({ ...s, [key]: "saved" }));
     setRowMsg((m) => ({ ...m, [key]: "" }));
     onSaved();
@@ -222,7 +271,10 @@ export default function LocationEditor({
   }
 
   async function saveRow(p: ProjectItem) {
-    await upsertLocation(p.bdhName, p.bdhName, getDraft(p));
+    const draft = getDraft(p);
+    const ok = await upsertLocation(p.bdhName, p.bdhName, draft, undefined, p.loc?.attachment_path);
+    // Đã lưu tệp -> bỏ tệp chờ khỏi nháp, bấm Lưu lần nữa không tải lại.
+    if (ok) setDraft(p.bdhName, { file: null, removeFile: false }, draft);
   }
 
   // Thêm vị trí mới cho một Ban điều hành CHƯA có trong danh sách phòng ban.
@@ -266,6 +318,7 @@ export default function LocationEditor({
       setRowMsg((m) => ({ ...m, [p.bdhName]: error.message }));
       return;
     }
+    if (p.loc.attachment_path) removeProjectFile(p.loc.attachment_path);
     setDrafts((d) => {
       const next = { ...d };
       delete next[p.bdhName];
@@ -396,6 +449,27 @@ export default function LocationEditor({
                   className="w-full text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-500 placeholder:text-slate-400"
                 />
               </div>
+
+              <div className="space-y-1">
+                <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                  <FileSpreadsheet size={11} className="text-green-600" /> Link Google Sheet (tuỳ chọn)
+                </label>
+                <input
+                  value={newDraft.sheetLink}
+                  onChange={(e) => setNewDraft((d) => ({ ...d, sheetLink: e.target.value }))}
+                  placeholder="Dán link docs.google.com/spreadsheets/…"
+                  className="w-full text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500 placeholder:text-slate-400"
+                />
+              </div>
+
+              <FileField
+                draft={newDraft}
+                onChange={(patch) => setNewDraft((d) => ({ ...d, ...patch }))}
+                onError={(msg) => {
+                  setRowState((s) => ({ ...s, [NEW_KEY]: "error" }));
+                  setRowMsg((m) => ({ ...m, [NEW_KEY]: msg }));
+                }}
+              />
 
               <div className="grid grid-cols-2 gap-2">
                 <select
@@ -528,6 +602,29 @@ export default function LocationEditor({
                   />
                 </div>
 
+                <div className="space-y-1">
+                  <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                    <FileSpreadsheet size={11} className="text-green-600" /> Link Google Sheet (tuỳ chọn)
+                  </label>
+                  <input
+                    value={draft.sheetLink}
+                    onChange={(e) => setDraft(p.bdhName, { sheetLink: e.target.value }, draft)}
+                    placeholder="Dán link docs.google.com/spreadsheets/…"
+                    className="w-full text-xs font-medium text-slate-700 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500 placeholder:text-slate-400"
+                  />
+                </div>
+
+                <FileField
+                  draft={draft}
+                  currentName={p.loc?.attachment_name || null}
+                  currentPath={p.loc?.attachment_path || null}
+                  onChange={(patch) => setDraft(p.bdhName, patch, draft)}
+                  onError={(msg) => {
+                    setRowState((s) => ({ ...s, [p.bdhName]: "error" }));
+                    setRowMsg((m) => ({ ...m, [p.bdhName]: msg }));
+                  }}
+                />
+
                 <div className="grid grid-cols-2 gap-2">
                   <select
                     value={draft.status}
@@ -606,6 +703,110 @@ export default function LocationEditor({
             <p className="text-slate-400 text-xs italic text-center py-8">Không có BĐH phù hợp</p>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Ô "Tệp đính kèm" (1 ảnh hoặc PDF / BĐH). Chọn tệp chỉ giữ trong nháp — tải lên
+// kho khi bấm Lưu, cùng lúc với các ô khác của dòng.
+function FileField({
+  draft,
+  currentName = null,
+  currentPath = null,
+  onChange,
+  onError,
+}: {
+  draft: Draft;
+  currentName?: string | null;
+  currentPath?: string | null;
+  onChange: (patch: Partial<Draft>) => void;
+  onError: (msg: string) => void;
+}) {
+  const [opening, setOpening] = useState(false);
+
+  function pick(file: File | undefined) {
+    if (!file) return;
+    if (!isAllowedProjectFile(file)) return onError(`"${file.name}" không phải ảnh hoặc PDF.`);
+    if (file.size > PROJECT_FILE_MAX_BYTES) return onError(`"${file.name}" vượt mức 10MB cho phép.`);
+    onChange({ file, removeFile: false });
+  }
+
+  async function openCurrent() {
+    if (!currentPath) return;
+    setOpening(true);
+    const url = await resolveProjectFileUrl(currentPath);
+    setOpening(false);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+    else onError("Không mở được tệp — tệp có thể đã bị xoá khỏi kho.");
+  }
+
+  return (
+    <div className="space-y-1">
+      <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+        <Paperclip size={11} className="text-violet-500" /> Tệp đính kèm — 1 ảnh hoặc PDF, tối đa 10MB (tuỳ chọn)
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        {draft.file ? (
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-2.5 py-1.5 min-w-0">
+            <Paperclip size={12} className="shrink-0" />
+            <span className="truncate max-w-[220px]">{draft.file.name}</span>
+            <span className="text-violet-400 font-medium shrink-0">(chờ lưu)</span>
+            <button
+              onClick={() => onChange({ file: null })}
+              className="text-violet-400 hover:text-rose-500"
+              title="Bỏ tệp vừa chọn"
+            >
+              <X size={12} />
+            </button>
+          </span>
+        ) : currentName && !draft.removeFile ? (
+          <>
+            <button
+              onClick={openCurrent}
+              disabled={opening}
+              className="flex items-center gap-1.5 text-[11px] font-semibold text-[#005BAC] bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-lg px-2.5 py-1.5 min-w-0"
+              title="Mở tệp"
+            >
+              {opening ? (
+                <Loader2 size={12} className="animate-spin shrink-0" />
+              ) : (
+                <Paperclip size={12} className="shrink-0" />
+              )}
+              <span className="truncate max-w-[220px]">{currentName}</span>
+            </button>
+            <button
+              onClick={() => onChange({ removeFile: true })}
+              className="flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-rose-500 px-1.5 py-1.5"
+              title="Gỡ tệp (áp dụng khi bấm Lưu)"
+            >
+              <Trash2 size={12} /> Gỡ
+            </button>
+          </>
+        ) : currentName && draft.removeFile ? (
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-rose-500">
+            Tệp &quot;{currentName}&quot; sẽ bị gỡ khi lưu
+            <button
+              onClick={() => onChange({ removeFile: false })}
+              className="flex items-center gap-1 text-slate-500 hover:text-[#005BAC] font-bold"
+            >
+              <Undo2 size={12} /> Hoàn tác
+            </button>
+          </span>
+        ) : null}
+
+        <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 bg-white hover:bg-slate-50 border border-dashed border-slate-300 hover:border-violet-400 rounded-lg px-2.5 py-1.5 cursor-pointer transition-colors">
+          <Plus size={12} /> {currentName || draft.file ? "Chọn tệp khác" : "Chọn ảnh / PDF"}
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            className="hidden"
+            onChange={(e) => {
+              pick(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+        </label>
       </div>
     </div>
   );

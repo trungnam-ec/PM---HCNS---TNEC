@@ -23,8 +23,12 @@ import {
   Settings2,
   Map as MapIcon,
   Camera,
+  FileSpreadsheet,
+  Paperclip,
 } from "lucide-react";
 import type { Located, ProjectItem } from "./types";
+import { resolveProjectFileUrl } from "@/lib/projectFiles";
+import TaskFilePreviewModal from "@/components/TaskFilePreviewModal";
 import LocationEditor from "./LocationEditor";
 
 // Bỏ dấu tiếng Việt để tìm kiếm không phân biệt dấu.
@@ -159,6 +163,17 @@ export default function ProjectMap() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [baseLayer, setBaseLayer] = useState<BaseKey>("satellite");
+  const [fileOpening, setFileOpening] = useState(false);
+  const [filePreview, setFilePreview] = useState<{ name: string; url: string } | null>(null);
+
+  // Tệp đính kèm nằm ở kho riêng tư -> ký link có hạn lúc bấm rồi mở khung xem giữa màn hình.
+  async function openAttachment(path: string, name: string) {
+    setFileOpening(true);
+    const url = await resolveProjectFileUrl(path);
+    setFileOpening(false);
+    if (url) setFilePreview({ name, url });
+    else setLoadError("Không mở được tệp đính kèm — tệp có thể đã bị xoá.");
+  }
 
   // ─── Nạp dữ liệu: danh sách BĐH (departments) + phần định vị (project_locations) ───
   const loadData = useCallback(async () => {
@@ -167,7 +182,7 @@ export default function ProjectMap() {
       supabase
         .from("project_locations")
         .select(
-          "id,bdh_name,name,package,investor,progress,status,project_type,province,lat,lng,kml_url,google_earth_url,panorama_url"
+          "id,bdh_name,name,package,investor,progress,status,project_type,province,lat,lng,kml_url,google_earth_url,panorama_url,sheet_url,attachment_path,attachment_name"
         ),
     ]);
 
@@ -640,6 +655,40 @@ export default function ProjectMap() {
                       <Camera size={16} /> Hình ảnh 360 độ
                     </a>
                   )}
+                  {(selected.loc.sheet_url || selected.loc.attachment_path) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {selected.loc.sheet_url && (
+                        <a
+                          href={selected.loc.sheet_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 active:scale-[0.98] text-slate-700 text-sm font-bold py-3.5 rounded-xl transition-all"
+                        >
+                          <FileSpreadsheet size={16} className="text-green-600" /> Google Sheet
+                        </a>
+                      )}
+                      {selected.loc.attachment_path && (
+                        <button
+                          onClick={() =>
+                            openAttachment(
+                              selected.loc!.attachment_path!,
+                              selected.loc!.attachment_name || selected.loc!.attachment_path!
+                            )
+                          }
+                          disabled={fileOpening}
+                          title={selected.loc.attachment_name || undefined}
+                          className="flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 active:scale-[0.98] disabled:opacity-60 text-slate-700 text-sm font-bold py-3.5 px-3 rounded-xl transition-all min-w-0"
+                        >
+                          {fileOpening ? (
+                            <Loader2 size={16} className="animate-spin shrink-0" />
+                          ) : (
+                            <Paperclip size={16} className="text-violet-500 shrink-0" />
+                          )}
+                          <span className="truncate">Tệp đính kèm</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {selected.loc.kml_url && (
                     <a
                       href={selected.loc.kml_url}
@@ -662,6 +711,15 @@ export default function ProjectMap() {
             )}
           </div>
         </>
+      )}
+
+      {filePreview && (
+        <TaskFilePreviewModal
+          file={{ path: filePreview.name, name: filePreview.name }}
+          url={filePreview.url}
+          onClose={() => setFilePreview(null)}
+          zClass="z-[1100]"
+        />
       )}
     </div>
   );

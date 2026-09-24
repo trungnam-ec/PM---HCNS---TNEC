@@ -22,9 +22,11 @@ type Props = {
   /** Link ký có hạn trỏ sang Supabase Storage. */
   url: string;
   onClose: () => void;
+  /** Lớp z — mặc định z-[60]; trang bản đồ cần cao hơn các lớp Leaflet (z-[750]). */
+  zClass?: string;
 };
 
-export default function TaskFilePreviewModal({ file, url, onClose }: Props) {
+export default function TaskFilePreviewModal({ file, url, onClose, zClass = "z-[60]" }: Props) {
   // Esc để đóng. Chỉ gắn khi khung đang mở nên không đụng tới modal nằm dưới.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -43,7 +45,7 @@ export default function TaskFilePreviewModal({ file, url, onClose }: Props) {
 
   return createPortal((
     <div
-      className="fixed inset-0 z-[60] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+      className={`fixed inset-0 ${zClass} bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150`}
       onClick={onClose}
     >
       <div

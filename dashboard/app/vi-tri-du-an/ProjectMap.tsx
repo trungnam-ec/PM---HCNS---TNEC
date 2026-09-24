@@ -662,9 +662,9 @@ export default function ProjectMap() {
                           href={selected.loc.sheet_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 active:scale-[0.98] text-slate-700 text-sm font-bold py-3.5 rounded-xl transition-all"
+                          className="flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 active:scale-[0.98] text-slate-700 text-sm font-bold text-center leading-tight py-3.5 px-3 rounded-xl transition-all"
                         >
-                          <FileSpreadsheet size={16} className="text-green-600" /> Google Sheet
+                          <FileSpreadsheet size={16} className="text-green-600 shrink-0" /> Báo cáo QT/TT gói thầu
                         </a>
                       )}
                       {selected.loc.attachment_path && (
@@ -684,7 +684,7 @@ export default function ProjectMap() {
                           ) : (
                             <Paperclip size={16} className="text-violet-500 shrink-0" />
                           )}
-                          <span className="truncate">Tệp đính kèm</span>
+                          <span className="truncate">Tệp QT/TT Gói thầu</span>
                         </button>
                       )}
                     </div>

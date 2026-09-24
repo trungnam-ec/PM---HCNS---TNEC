@@ -189,7 +189,12 @@ export default function ProductionTab({ projectId, email, access }: { projectId:
       <ErrorLine msg={err} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="% hoàn thành (tỷ trọng)" value={pct(projectCompletion)} cls={heatCls(projectCompletion)} />
+        <Stat
+          label="% hoàn thành toàn dự án"
+          value={pct(projectCompletion)}
+          cls={heatCls(projectCompletion)}
+          hint="Bình quân các lý trình theo chiều dài"
+        />
         <Stat label="Chờ QS duyệt" value={String(pending.length)} cls={pending.length ? "bg-amber-100 text-amber-800" : ""} />
         <Stat label="Nhật ký đã duyệt" value={String(values.length)} cls="" />
         <Stat
@@ -477,11 +482,12 @@ export default function ProductionTab({ projectId, email, access }: { projectId:
   );
 }
 
-function Stat({ label, value, cls }: { label: string; value: string; cls: string }) {
+function Stat({ label, value, cls, hint }: { label: string; value: string; cls: string; hint?: string }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm px-4 py-3">
       <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">{label}</p>
       <p className={`inline-block text-base font-extrabold font-mono mt-1 px-1.5 rounded ${cls || "text-slate-800"}`}>{value}</p>
+      {hint && <p className="text-[10px] text-slate-400 mt-0.5">{hint}</p>}
     </div>
   );
 }

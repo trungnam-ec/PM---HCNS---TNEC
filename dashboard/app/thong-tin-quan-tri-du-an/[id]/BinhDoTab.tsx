@@ -204,8 +204,8 @@ export default function BinhDoTab({
   const snapOf = (segId: string) => snaps.find((x) => x.segment_id === segId) || null;
   const isPast = asOf !== t;
 
-  const colW = "min-w-[132px] w-[132px]";
-  const labelCls = "sticky left-0 z-10 bg-white text-[10px] font-bold text-slate-500 px-3 py-2 border-r border-slate-100 min-w-[170px] w-[170px]";
+  const colW = "min-w-[160px]";
+  const labelCls = "sticky left-0 z-10 bg-white text-[11px] font-bold text-slate-500 px-4 py-2.5 border-r border-slate-100 min-w-[220px] w-[220px]";
   const groupRow = (title: string) => (
     <tr>
       <td colSpan={segments.length + 1} className="bg-slate-50 text-[10px] font-extrabold uppercase tracking-wider text-[#005BAC] px-3 py-1.5">
@@ -248,12 +248,12 @@ export default function BinhDoTab({
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-x-auto">
-        <table className="text-[11px] border-collapse">
+        <table className="w-full text-[11px] border-collapse">
           <thead>
             <tr>
               <th className={`${labelCls} text-left align-bottom`}>Lý trình</th>
               {segments.map((s) => (
-                <th key={s.id} className={`${colW} px-2 py-2 border-r border-slate-100 text-left align-top`}>
+                <th key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 text-left align-top`}>
                   <button onClick={() => onOpenSegment(s.id)} className="text-left group w-full">
                     <span className="block text-xs font-extrabold text-[#005BAC] group-hover:underline">{s.code}</span>
                     <span className="block font-mono text-[10px] text-slate-500">
@@ -277,7 +277,7 @@ export default function BinhDoTab({
                 const sn = snapOf(s.id);
                 const st = sn ? RISK_STATUS[sn.status] : null;
                 return (
-                  <td key={s.id} className={`${colW} px-2 py-1.5 border-r border-slate-100 font-bold text-[10px] ${st ? st.cls : "text-slate-300"}`}>
+                  <td key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 font-bold text-[10px] ${st ? st.cls : "text-slate-300"}`}>
                     {st ? st.label : "—"}
                     {sn?.score != null && <span className="block font-mono text-[10px] opacity-80">Điểm {Math.round(Number(sn.score))}</span>}
                   </td>
@@ -294,7 +294,7 @@ export default function BinhDoTab({
                   return (
                     <td
                       key={s.id}
-                      className={`${colW} px-2 py-1.5 border-r border-slate-100 align-top ${
+                      className={`${colW} px-3 py-2.5 border-r border-slate-100 align-top ${
                         role === "MAIN" && names.length === 0 ? "bg-amber-50 text-amber-700" : "text-slate-700"
                       }`}
                     >
@@ -313,7 +313,7 @@ export default function BinhDoTab({
                 const v = rows.length ? gpmbPercent(s, rows) : null;
                 const obstructed = rows.some((r) => r.status === "OBSTRUCTED");
                 return (
-                  <td key={s.id} className={`${colW} px-2 py-1.5 border-r border-slate-100 font-bold ${heatCls(v)}`}>
+                  <td key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 font-bold ${heatCls(v)}`}>
                     {pct(v)}
                     {obstructed && <span className="block text-[9px] font-extrabold text-rose-600">Có vướng mắc</span>}
                   </td>
@@ -332,7 +332,7 @@ export default function BinhDoTab({
                   return (
                     <td
                       key={s.id}
-                      className={`${colW} px-2 py-1.5 border-r border-slate-100 ${
+                      className={`${colW} px-3 py-2.5 border-r border-slate-100 ${
                         !w ? "text-slate-300" : !w.applicable ? "text-slate-400 italic" : "font-semibold text-slate-700"
                       }`}
                     >
@@ -351,7 +351,7 @@ export default function BinhDoTab({
                   const rows = mobFor(s.id, cat.value);
                   const v = readiness(rows.map((r) => Number(r.status)));
                   return (
-                    <td key={s.id} className={`${colW} px-2 py-1.5 border-r border-slate-100 font-semibold ${heatCls(v)}`}>
+                    <td key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 font-semibold ${heatCls(v)}`}>
                       {v === null ? "—" : `${pct(v)} · ${rows.length} mục`}
                     </td>
                   );
@@ -367,7 +367,7 @@ export default function BinhDoTab({
                 const approved = rows.filter((d) => Number(d.owner_status) === 1).length;
                 const v = rows.length ? approved / rows.length : null;
                 return (
-                  <td key={s.id} className={`${colW} px-2 py-1.5 border-r border-slate-100 font-semibold ${rows.length ? heatCls(v) : "text-slate-300"}`}>
+                  <td key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 font-semibold ${rows.length ? heatCls(v) : "text-slate-300"}`}>
                     {rows.length ? `${approved}/${rows.length} CĐT duyệt` : ""}
                   </td>
                 );
@@ -380,7 +380,7 @@ export default function BinhDoTab({
               {segments.map((s) => {
                 const v = readiness(legalFor(s.id).map(legalScore));
                 return (
-                  <td key={s.id} className={`${colW} px-2 py-1.5 border-r border-slate-100 font-bold ${heatCls(v)}`}>
+                  <td key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 font-bold ${heatCls(v)}`}>
                     {pct(v)}
                   </td>
                 );
@@ -393,7 +393,7 @@ export default function BinhDoTab({
                 const here = staff.filter((l) => l.on_site).length;
                 const v = staff.length ? here / staff.length : null;
                 return (
-                  <td key={s.id} className={`${colW} px-2 py-1.5 border-r border-slate-100 font-semibold ${heatCls(v)}`}>
+                  <td key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 font-semibold ${heatCls(v)}`}>
                     {staff.length ? `${here}/${staff.length}` : "—"}
                   </td>
                 );
@@ -406,7 +406,7 @@ export default function BinhDoTab({
               {segments.map((s) => {
                 const v = weightedCompletion(data.wbs.filter((w) => w.segment_id === s.id), qtyBySw);
                 return (
-                  <td key={s.id} className={`${colW} px-2 py-1.5 border-r border-slate-100 font-bold ${heatCls(v)}`}>
+                  <td key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 font-bold ${heatCls(v)}`}>
                     {pct(v)}
                   </td>
                 );
@@ -419,7 +419,7 @@ export default function BinhDoTab({
                   {segments.map((s) => {
                     const f = segFin(s.id);
                     return (
-                      <td key={s.id} className={`${colW} px-2 py-1.5 border-r border-slate-100 font-mono text-slate-700`}>
+                      <td key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 font-mono text-slate-700`}>
                         {formatMoneyShort(f.actual)}
                         <span className="block text-[10px] text-slate-400">/ {f.gt ? formatMoneyShort(f.gt) : "chưa có đơn giá"}</span>
                       </td>
@@ -431,7 +431,7 @@ export default function BinhDoTab({
                   {segments.map((s) => {
                     const f = segFin(s.id);
                     return (
-                      <td key={s.id} className={`${colW} px-2 py-1.5 border-r border-slate-100 text-slate-700`}>
+                      <td key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 text-slate-700`}>
                         {f.gt ? `${pct(f.kh / f.gt)} → ${pct(f.actual / f.gt)}` : "—"}
                       </td>
                     );
@@ -443,7 +443,7 @@ export default function BinhDoTab({
                     const f = segFin(s.id);
                     const lb = progressLabel(f.gt && f.hasPlan ? f.actual / f.gt - f.kh / f.gt : null);
                     return (
-                      <td key={s.id} className={`${colW} px-2 py-1.5 border-r border-slate-100 font-bold text-[10px] ${lb.cls}`}>
+                      <td key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 font-bold text-[10px] ${lb.cls}`}>
                         {lb.label}
                       </td>
                     );
@@ -476,8 +476,8 @@ function PastBinhDo({
     { label: "% sẵn sàng pháp lý", get: (s) => s.legal },
     { label: "% sẵn sàng huy động", get: (s) => s.mobilization },
   ];
-  const colW = "min-w-[132px] w-[132px]";
-  const labelCls = "sticky left-0 z-10 bg-white text-[10px] font-bold text-slate-500 px-3 py-2 border-r border-slate-100 min-w-[170px] w-[170px]";
+  const colW = "min-w-[160px]";
+  const labelCls = "sticky left-0 z-10 bg-white text-[11px] font-bold text-slate-500 px-4 py-2.5 border-r border-slate-100 min-w-[220px] w-[220px]";
   const anyData = segments.some((s) => snapOf(s.id));
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-x-auto">
@@ -485,14 +485,14 @@ function PastBinhDo({
         Bình đồ tại ngày {formatDate(asOf)} — dựng lại từ số liệu hệ thống đã lưu (mỗi lý trình lấy bản gần nhất trước ngày này).
         {!anyData && " Chưa có số liệu lưu cho giai đoạn này."}
       </p>
-      <table className="text-[11px] border-collapse">
+      <table className="w-full text-[11px] border-collapse">
         <thead>
           <tr>
             <th className={`${labelCls} text-left`}>Lý trình</th>
             {segments.map((s) => {
               const sn = snapOf(s.id);
               return (
-                <th key={s.id} className={`${colW} px-2 py-2 border-r border-slate-100 text-left`}>
+                <th key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 text-left`}>
                   <span className="block text-xs font-extrabold text-[#005BAC]">{s.code}</span>
                   <span className="block text-[10px] text-slate-400">{sn ? `số liệu ${formatDate(sn.snap_date)}` : "chưa có"}</span>
                 </th>
@@ -507,7 +507,7 @@ function PastBinhDo({
               const sn = snapOf(s.id);
               const st = sn ? RISK_STATUS[sn.status] : null;
               return (
-                <td key={s.id} className={`${colW} px-2 py-1.5 border-r border-slate-100 font-bold text-[10px] ${st ? st.cls : "text-slate-300"}`}>
+                <td key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 font-bold text-[10px] ${st ? st.cls : "text-slate-300"}`}>
                   {st ? st.label : "—"}
                   {sn?.score != null && <span className="block font-mono">Điểm {Math.round(Number(sn.score))}</span>}
                 </td>
@@ -520,7 +520,7 @@ function PastBinhDo({
               const sn = snapOf(s.id);
               const lb = progressLabel(sn?.dp ?? null);
               return (
-                <td key={s.id} className={`${colW} px-2 py-1.5 border-r border-slate-100 font-bold text-[10px] ${lb.cls}`}>
+                <td key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 font-bold text-[10px] ${lb.cls}`}>
                   {lb.label}
                 </td>
               );
@@ -533,7 +533,7 @@ function PastBinhDo({
                 const sn = snapOf(s.id);
                 const v = sn ? r.get(sn) : null;
                 return (
-                  <td key={s.id} className={`${colW} px-2 py-1.5 border-r border-slate-100 font-bold ${heatCls(v == null ? null : Number(v))}`}>
+                  <td key={s.id} className={`${colW} px-3 py-2.5 border-r border-slate-100 font-bold ${heatCls(v == null ? null : Number(v))}`}>
                     {pct(v == null ? null : Number(v))}
                   </td>
                 );

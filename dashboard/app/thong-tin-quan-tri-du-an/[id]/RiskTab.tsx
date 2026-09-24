@@ -305,7 +305,6 @@ export default function RiskTab({ projectId, access }: { projectId: string; acce
             ))}
           </div>
         )}
-        <p className="text-[10px] text-slate-400 mt-2">Cảnh báo tự đóng khi hết vi phạm (ví dụ đã hết vướng GPMB, đã duyệt pháp lý).</p>
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

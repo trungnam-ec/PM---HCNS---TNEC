@@ -820,7 +820,7 @@ export type PcAlert = {
 export const SEVERITY: Record<AlertSeverity, { label: string; cls: string }> = {
   HIGH: { label: "Đỏ", cls: "bg-rose-500 text-white" },
   MEDIUM: { label: "Vàng", cls: "bg-amber-400 text-white" },
-  LOW: { label: "Lưu ý", cls: "bg-slate-300 text-slate-700" },
+  LOW: { label: "Lưu ý", cls: "bg-slate-500 text-white" },
 };
 
 export const ALERT_STATUS: Record<string, { label: string; cls: string }> = {

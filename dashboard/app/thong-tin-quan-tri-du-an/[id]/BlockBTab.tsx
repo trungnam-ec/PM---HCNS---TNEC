@@ -147,15 +147,17 @@ export default function BlockBTab({ projectId, bdhName, access }: { projectId: s
                   {/* Bề rộng cột CỐ ĐỊNH (table-fixed + colgroup) để mọi nhóm thẳng hàng
                       từ trên xuống; cột Hiện diện luôn có, nhóm không phải nhân sự để trống. */}
                   <table className="w-full min-w-[1280px] table-fixed text-[11px]">
+                    {/* Chia theo % để giãn đều theo bề ngang màn hình (mọi nhóm cùng tỷ lệ
+                        nên vẫn thẳng hàng trên dưới); dưới 1280px thì cuộn ngang. */}
                     <colgroup>
-                      <col />
-                      <col className="w-[160px]" />
-                      <col className="w-[208px]" />
-                      <col className="w-[256px]" />
-                      <col className="w-[256px]" />
-                      <col className="w-[76px]" />
-                      <col className="w-[92px]" />
-                      {canEdit && <col className="w-[52px]" />}
+                      <col style={{ width: "19%" }} />
+                      <col style={{ width: "13%" }} />
+                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "19%" }} />
+                      <col style={{ width: "19%" }} />
+                      <col style={{ width: "6%" }} />
+                      <col style={{ width: canEdit ? "6%" : "9%" }} />
+                      {canEdit && <col style={{ width: "3%" }} />}
                     </colgroup>
                     <thead>
                       <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-left">

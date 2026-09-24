@@ -8,7 +8,7 @@
 //   người có quyền tài chính thấy (pc_design_change_finance).
 // Kế hoạch sản lượng theo tháng (baseline) thuộc P3 cùng nhật ký sản lượng.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useConfirmBox } from "@/components/ConfirmDialog";
 import {
@@ -32,6 +32,7 @@ import {
   pcUpdate,
   pcUpsert,
   readiness,
+  todayVN,
   type PcAccess,
   type PcDesignChange,
   type PcLandClearance,
@@ -39,8 +40,8 @@ import {
   type PcSegment,
   type PcWbsItem,
 } from "@/lib/projectControl";
-import { Card, Field, TextInput, Select, MoneyInput, PrimaryButton, ErrorLine, Modal, TriToggle, StatusBar } from "./ui";
-import { Plus, Pencil, Trash2, Loader2, AlertTriangle } from "lucide-react";
+import { Card, Field, TextInput, Select, MoneyInput, PrimaryButton, ErrorLine, Modal, StatusBar } from "./ui";
+import { Plus, Pencil, Trash2, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 type DcMoney = { est_value: number | null; approved_value: number | null };
 
@@ -117,6 +118,30 @@ export default function BlockATab({
     });
   }
 
+  // Bàn giao nhanh cả lý trình: 1 đoạn phủ Km đầu → Km cuối, cả 2 bên, Đã bàn giao,
+  // ngày hôm nay -> lý trình lên 100%. Đoạn cũ giữ nguyên (% tối đa 100, không cộng dồn quá).
+  function handOverAll(s: PcSegment) {
+    ask({
+      title: `Xác nhận bàn giao toàn bộ ${s.code}?`,
+      message: `Tạo đoạn ${formatKm(s.km_start_m)} – ${formatKm(s.km_end_m)}, cả 2 bên, trạng thái "Đã bàn giao", ngày ${formatDate(todayVN())}. Sửa lại được bằng nút bút chì.`,
+      confirmLabel: "Xác nhận bàn giao",
+      tone: "normal",
+      onConfirm: async () => {
+        const { error } = await supabase.from("pc_land_clearance").insert({
+          project_id: projectId,
+          segment_id: s.id,
+          from_m: s.km_start_m,
+          to_m: s.km_end_m,
+          side: "BOTH",
+          status: "HANDED_OVER",
+          handover_date: todayVN(),
+        });
+        if (error) setErr(pcErrorMessage(error));
+        load();
+      },
+    });
+  }
+
   // Đổi trạng thái ngay trên dòng: cập nhật tạm trên giao diện, lỗi thì nạp lại.
   async function quickSet(table: string, id: string, patch: Record<string, unknown>, apply: () => void) {
     apply();
@@ -176,10 +201,25 @@ export default function BlockATab({
                       <div className="h-full bg-emerald-500" style={{ width: `${v * 100}%` }} />
                     </div>
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${heatCls(rows.length ? v : null)}`}>{pct(rows.length ? v : null)}</span>
+                    {canEdit && v < 0.999 && (
+                      <button
+                        onClick={() => handOverAll(s)}
+                        className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-md shrink-0"
+                        title="Tạo 1 đoạn phủ cả lý trình, cả 2 bên, Đã bàn giao"
+                      >
+                        <CheckCircle2 size={11} /> Bàn giao cả lý trình
+                      </button>
+                    )}
                     <span className="text-[10px] text-slate-400 w-40 text-right">
                       {(Number(s.km_end_m) - Number(s.km_start_m)).toLocaleString("vi-VN")} m × {s.sides} bên
                     </span>
                   </div>
+                  {rows.length === 0 && (
+                    <p className="text-[11px] italic text-slate-400 pl-16">
+                      Chưa có đoạn bàn giao —{" "}
+                      {canEdit ? "bấm \"Bàn giao cả lý trình\" hoặc \"Thêm đoạn bàn giao\" để nhập." : "chưa được nhập."}
+                    </p>
+                  )}
                   {rows.map((r) => {
                     const st = GPMB_STATUS[r.status];
                     return (
@@ -228,50 +268,75 @@ export default function BlockATab({
         {mob.filter((m) => inFocus(m.segment_id)).length === 0 ? (
           <p className="text-xs italic text-slate-400">Chưa có mục huy động.</p>
         ) : (
-          <div className="space-y-3">
-            {MOB_CATEGORIES.map((cat) => {
-              const rows = mob.filter((m) => m.category === cat.value && inFocus(m.segment_id));
-              if (!rows.length) return null;
-              return (
-                <div key={cat.value}>
-                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1">
-                    {cat.label} · {pct(readiness(rows.map((r) => Number(r.status))))}
-                  </p>
-                  {rows.map((r) => (
-                    <div key={r.id} className="flex items-center gap-2 text-[11px] py-1">
-                      <span className="font-semibold text-slate-700 flex-1 min-w-0 truncate">{r.item_name}</span>
-                      <span className="text-slate-400 w-16 shrink-0">{segLabel(r.segment_id)}</span>
-                      <span className="text-slate-400 w-20 shrink-0">{formatDate(r.planned_date)}</span>
-                      <span className="text-slate-500 w-28 shrink-0 text-right">
-                        {r.actual_qty ?? 0}/{r.planned_qty ?? "?"} {r.unit || ""}
-                      </span>
-                      <StatusBar
-                        compact
-                        widthCls="w-72"
-                        scale={SCALE_MOBILIZE}
-                        value={Number(r.status)}
-                        disabled={!canEdit}
-                        onChange={(v) =>
-                          quickSet("pc_mobilization", r.id, { status: v }, () =>
-                            setMob((xs) => xs.map((x) => (x.id === r.id ? { ...x, status: v as 0 | 0.5 | 1 } : x)))
-                          )
-                        }
-                      />
-                      {canEdit && (
-                        <>
-                          <button onClick={() => setMobEdit(r)} className="text-slate-300 hover:text-[#005BAC]">
-                            <Pencil size={11} />
-                          </button>
-                          <button onClick={() => confirmDelete(`Xoá "${r.item_name}"?`, "pc_mobilization", r.id)} className="text-slate-300 hover:text-rose-500">
-                            <Trash2 size={11} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1250px] table-fixed text-[11px]">
+              <GridCols canFin={canFin} canEdit={canEdit} />
+              <thead>
+                <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-left">
+                  <th className="py-1.5 pr-2">Hạng mục huy động</th>
+                  <th className="px-2">Lý trình</th>
+                  <th className="px-2">Ngày KH</th>
+                  <th className="px-2" colSpan={canFin ? 2 : 1}>
+                    SL thực tế / KH
+                  </th>
+                  <th className="px-3" colSpan={3}>
+                    Trạng thái
+                  </th>
+                  {canEdit && <th />}
+                </tr>
+              </thead>
+              <tbody>
+                {MOB_CATEGORIES.map((cat) => {
+                  const rows = mob.filter((m) => m.category === cat.value && inFocus(m.segment_id));
+                  if (!rows.length) return null;
+                  return (
+                    <Fragment key={cat.value}>
+                      <tr className="border-t border-slate-100">
+                        <td colSpan={gridColCount(canFin, canEdit)} className="pt-3 pb-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                          {cat.label} · {pct(readiness(rows.map((r) => Number(r.status))))}
+                        </td>
+                      </tr>
+                      {rows.map((r) => (
+                        <tr key={r.id} className="border-t border-slate-100">
+                          <td className="py-1.5 pr-2 font-semibold text-slate-700 truncate" title={r.item_name}>
+                            {r.item_name}
+                          </td>
+                          <td className="px-2 text-slate-500">{segLabel(r.segment_id)}</td>
+                          <td className="px-2 text-slate-500">{formatDate(r.planned_date)}</td>
+                          <td className="px-2 text-slate-600" colSpan={canFin ? 2 : 1}>
+                            {r.actual_qty ?? 0}/{r.planned_qty ?? "?"} {r.unit || ""}
+                          </td>
+                          <td className="px-3" colSpan={3}>
+                            <StatusBar
+                              compact
+                              widthCls="w-full"
+                              scale={SCALE_MOBILIZE}
+                              value={Number(r.status)}
+                              disabled={!canEdit}
+                              onChange={(v) =>
+                                quickSet("pc_mobilization", r.id, { status: v }, () =>
+                                  setMob((xs) => xs.map((x) => (x.id === r.id ? { ...x, status: v as 0 | 0.5 | 1 } : x)))
+                                )
+                              }
+                            />
+                          </td>
+                          {canEdit && (
+                            <td className="text-right whitespace-nowrap">
+                              <button onClick={() => setMobEdit(r)} className="text-slate-300 hover:text-[#005BAC] mr-1.5">
+                                <Pencil size={11} />
+                              </button>
+                              <button onClick={() => confirmDelete(`Xoá "${r.item_name}"?`, "pc_mobilization", r.id)} className="text-slate-300 hover:text-rose-500">
+                                <Trash2 size={11} />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </Card>
@@ -291,18 +356,20 @@ export default function BlockATab({
           <p className="text-xs italic text-slate-400">Chưa có phát sinh thiết kế.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[11px]">
+            {/* Cùng khung cột với bảng Huy động (GridCols) để hai bảng thẳng hàng trên dưới. */}
+            <table className="w-full min-w-[1250px] table-fixed text-[11px]">
+              <GridCols canFin={canFin} canEdit={canEdit} />
               <thead>
                 <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-left">
                   <th className="py-1.5 pr-2">Phát sinh</th>
-                  <th className="px-1">Lý trình</th>
-                  <th className="px-1">Hồ sơ</th>
-                  <th className="px-1">TVGS</th>
-                  <th className="px-1">CĐT</th>
-                  <th className="px-1">Ảnh hưởng</th>
-                  <th className="px-1">Hạn</th>
-                  {canFin && <th className="px-1 text-right">Dự kiến / Duyệt</th>}
-                  {canEdit && <th className="w-10" />}
+                  <th className="px-2">Lý trình</th>
+                  <th className="px-2">Hạn</th>
+                  <th className="px-2">Ảnh hưởng</th>
+                  {canFin && <th className="px-2">Dự kiến / Duyệt</th>}
+                  <th className="px-3">Hồ sơ</th>
+                  <th className="px-3">TVGS</th>
+                  <th className="px-3">CĐT</th>
+                  {canEdit && <th />}
                 </tr>
               </thead>
               <tbody>
@@ -321,23 +388,23 @@ export default function BlockATab({
                           <span className="font-semibold text-slate-700">{d.name}</span>
                           {it && <span className="block text-[10px] text-slate-400">{it.code} {it.name}</span>}
                         </td>
-                        <td className="px-1 text-slate-500">{segLabel(d.segment_id)}</td>
-                        <td className="px-1">
-                          <TriToggle value={Number(d.internal_status)} scale={SCALE_INTERNAL} disabled={!canEdit} onChange={set("internal_status")} />
-                        </td>
-                        <td className="px-1">
-                          <TriToggle value={Number(d.supervisor_status)} scale={SCALE_SUPERVISOR} disabled={!canEdit} onChange={set("supervisor_status")} />
-                        </td>
-                        <td className="px-1">
-                          <TriToggle value={Number(d.owner_status)} scale={SCALE_SUPERVISOR} disabled={!canEdit} onChange={set("owner_status")} />
-                        </td>
-                        <td className="px-1 text-slate-500">{d.impact_days != null ? `${d.impact_days} ngày` : ""}</td>
-                        <td className="px-1 text-slate-500">{formatDate(d.due_date)}</td>
+                        <td className="px-2 text-slate-500">{segLabel(d.segment_id)}</td>
+                        <td className="px-2 text-slate-500">{formatDate(d.due_date)}</td>
+                        <td className="px-2 text-slate-500">{d.impact_days != null ? `${d.impact_days} ngày` : ""}</td>
                         {canFin && (
-                          <td className="px-1 text-right font-mono text-slate-600">
+                          <td className="px-2 font-mono text-slate-600">
                             {money ? `${formatMoneyShort(money.est_value)} / ${formatMoneyShort(money.approved_value)}` : "—"}
                           </td>
                         )}
+                        <td className="px-3">
+                          <StatusBar compact widthCls="w-full" value={Number(d.internal_status)} scale={SCALE_INTERNAL} disabled={!canEdit} onChange={set("internal_status")} />
+                        </td>
+                        <td className="px-3">
+                          <StatusBar compact widthCls="w-full" value={Number(d.supervisor_status)} scale={SCALE_SUPERVISOR} disabled={!canEdit} onChange={set("supervisor_status")} />
+                        </td>
+                        <td className="px-3">
+                          <StatusBar compact widthCls="w-full" value={Number(d.owner_status)} scale={SCALE_SUPERVISOR} disabled={!canEdit} onChange={set("owner_status")} />
+                        </td>
                         {canEdit && (
                           <td className="text-right whitespace-nowrap">
                             <button onClick={() => setDcEdit(d)} className="text-slate-300 hover:text-[#005BAC] mr-1.5">
@@ -401,6 +468,30 @@ export default function BlockATab({
       )}
       {confirmNode}
     </div>
+  );
+}
+
+// Khung cột dùng chung cho bảng Huy động + Phát sinh: tên | lý trình | 100 | 90 |
+// (180 nếu có quyền tiền) | 3 × 240 trạng thái | thao tác. Hai bảng cùng khung nên
+// cột trạng thái thẳng hàng trên dưới.
+// colSpan dòng nhóm PHẢI đúng số cột thật — lớn hơn là trình duyệt sinh cột ảo, vỡ khung.
+function gridColCount(canFin: boolean, canEdit: boolean): number {
+  return 7 + (canFin ? 1 : 0) + (canEdit ? 1 : 0);
+}
+
+function GridCols({ canFin, canEdit }: { canFin: boolean; canEdit: boolean }) {
+  return (
+    <colgroup>
+      <col />
+      <col className="w-[90px]" />
+      <col className="w-[100px]" />
+      <col className="w-[90px]" />
+      {canFin && <col className="w-[180px]" />}
+      <col className="w-[240px]" />
+      <col className="w-[240px]" />
+      <col className="w-[240px]" />
+      {canEdit && <col className="w-[50px]" />}
+    </colgroup>
   );
 }
 

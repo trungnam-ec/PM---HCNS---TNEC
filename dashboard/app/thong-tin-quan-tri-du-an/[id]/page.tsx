@@ -122,32 +122,33 @@ export default function ProjectDetailPage() {
             </div>
           ) : (
             <>
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm px-5 py-4 flex flex-wrap items-center gap-3 print:hidden">
+              {/* Khung tên dự án: nền xanh gradient cùng màu tab đang chọn. */}
+              <div className="bg-gradient-to-r from-[#005BAC] to-[#00AEEF] rounded-2xl shadow-md shadow-blue-500/15 px-5 py-4 flex flex-wrap items-center gap-3 print:hidden">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="font-heading font-extrabold text-base text-slate-800">{project.name}</h2>
+                    <h2 className="font-heading font-extrabold text-base !text-white">{project.name}</h2>
                     {st && (
-                      <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${st.cls}`}>
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/20 !text-white">
                         {st.label}
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
+                  <p className="text-[11px] !text-white/80 font-semibold mt-0.5">
                     {project.bdh_name}
                     {project.code ? ` · ${project.code}` : ""}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {access.is_leadership && (
-                    <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600">Ban lãnh đạo</span>
+                    <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/20 !text-white">Ban lãnh đạo</span>
                   )}
                   {access.roles.map((r) => (
-                    <span key={r} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-50 text-[#005BAC]">
+                    <span key={r} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/20 !text-white">
                       {roleLabel(r)}
                     </span>
                   ))}
                   {!access.can_view_finance && (
-                    <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-100 text-slate-500 flex items-center gap-1">
+                    <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/20 !text-white flex items-center gap-1">
                       <Lock size={10} /> Ẩn số tiền
                     </span>
                   )}

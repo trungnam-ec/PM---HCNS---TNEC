@@ -383,14 +383,14 @@ function CloseoutCard({ projectId, canEdit }: { projectId: string; canEdit: bool
               <PrimaryButton onClick={add}>Thêm</PrimaryButton>
             </div>
           )}
-          <div className="grid grid-cols-[1fr_200px_200px_20px] gap-x-3 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+          <div className="grid grid-cols-[1fr_260px_260px_20px] gap-x-6 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
             <span>Hồ sơ</span>
             <span>Nội bộ</span>
             <span>TVGS / CĐT</span>
             <span />
           </div>
           {items.map((i) => (
-            <div key={i.id} className="grid grid-cols-[1fr_200px_200px_20px] gap-x-3 items-center text-[11px]">
+            <div key={i.id} className="grid grid-cols-[1fr_260px_260px_20px] gap-x-6 items-center text-[11px]">
               <span className="font-semibold text-slate-700 truncate" title={i.item_name}>
                 {i.item_name}
               </span>

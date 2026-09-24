@@ -114,11 +114,23 @@ export function Card({ title, action, children }: { title: string; action?: Reac
   );
 }
 
-export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+export function Modal({
+  title,
+  onClose,
+  children,
+  wide,
+  xwide,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  wide?: boolean;
+  xwide?: boolean;
+}) {
   return (
     <div className="fixed inset-0 z-[900] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className={`bg-white rounded-2xl shadow-2xl w-full ${wide ? "max-w-3xl" : "max-w-lg"} max-h-[90vh] overflow-y-auto p-6 space-y-4 animate-in zoom-in-95 duration-150`}
+        className={`bg-white rounded-2xl shadow-2xl w-full ${xwide ? "max-w-6xl" : wide ? "max-w-3xl" : "max-w-lg"} max-h-[90vh] overflow-y-auto p-6 space-y-4 animate-in zoom-in-95 duration-150`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2">

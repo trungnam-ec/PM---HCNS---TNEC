@@ -30,6 +30,16 @@ export async function uploadLogPhoto(projectId: string, file: File): Promise<Log
   return { path, name: file.name };
 }
 
+// Chép 1 ảnh sang đường dẫn MỚI (cùng dự án) — dùng khi nhân đôi phiếu báo cáo ngày,
+// để 2 phiếu không trỏ chung 1 tệp (xoá ảnh ở phiếu này sẽ không làm mất ảnh phiếu kia).
+export async function copyLogPhoto(projectId: string, photo: LogPhoto): Promise<LogPhoto> {
+  const clean = photo.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const path = `${projectId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${clean}`;
+  const { error } = await supabase.storage.from(LOG_PHOTOS_BUCKET).copy(photo.path, path);
+  if (error) throw new Error(`Không chép được ảnh "${photo.name}": ${error.message}`);
+  return { path, name: photo.name };
+}
+
 export async function resolveLogPhotoUrl(path: string): Promise<string | null> {
   const { data, error } = await supabase.storage.from(LOG_PHOTOS_BUCKET).createSignedUrl(path, SIGNED_TTL);
   if (error || !data) return null;

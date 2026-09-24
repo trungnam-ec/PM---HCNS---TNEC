@@ -42,7 +42,8 @@ import {
   fetchAllRows,
 } from "@/lib/projectControl";
 import { Card, Field, TextInput, Select, PrimaryButton, ErrorLine, Modal } from "./ui";
-import { Pencil, Trash2, Loader2, Check, Undo2, Send, Camera, ImageIcon, X, CalendarDays, CalendarRange } from "lucide-react";
+import DailyReportModal from "./DailyReportModal";
+import { Pencil, Trash2, Loader2, Check, Undo2, Send, Camera, ImageIcon, X, CalendarDays, CalendarRange, ClipboardList } from "lucide-react";
 
 const WEATHER = ["Nắng", "Âm u", "Mưa nhỏ", "Mưa lớn"];
 
@@ -66,6 +67,7 @@ export default function ProductionTab({ projectId, email, access }: { projectId:
   const [editing, setEditing] = useState<PcProgressLog | { type: "DAY" | "WEEK" } | null>(null);
   const [rejecting, setRejecting] = useState<PcProgressLog | null>(null);
   const [preview, setPreview] = useState<{ name: string; url: string } | null>(null);
+  const [dailyOpen, setDailyOpen] = useState(false);
 
   const load = useCallback(async () => {
     const [s, c, co, l, v] = await Promise.all([
@@ -208,6 +210,10 @@ export default function ProductionTab({ projectId, email, access }: { projectId:
               </PrimaryButton>
               <PrimaryButton onClick={() => setEditing({ type: "WEEK" })}>
                 <CalendarRange size={13} /> Nhập tổng tuần
+              </PrimaryButton>
+              {/* Phiếu báo cáo ngày theo mẫu công ty (thời tiết sáng/chiều, nhân sự & máy theo đơn vị…). */}
+              <PrimaryButton onClick={() => setDailyOpen(true)}>
+                <ClipboardList size={13} /> Báo cáo ngày
               </PrimaryButton>
             </div>
           ) : null
@@ -447,6 +453,7 @@ export default function ProductionTab({ projectId, email, access }: { projectId:
           }}
         />
       )}
+      {dailyOpen && <DailyReportModal projectId={projectId} onClose={() => setDailyOpen(false)} onSaved={() => setDailyOpen(false)} />}
       {rejecting && (
         <RejectModal
           onClose={() => setRejecting(null)}

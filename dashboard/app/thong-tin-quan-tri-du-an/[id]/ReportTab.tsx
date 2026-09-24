@@ -1,10 +1,11 @@
 "use client";
 
-// Tab Báo cáo (M8, P4) — báo cáo TUẦN (T2 → CN) / THÁNG (dương lịch), in bằng
+// Tab Báo cáo (M8, P4) — báo cáo NGÀY / TUẦN (T2 → CN) / THÁNG (dương lịch) / TỪ NGÀY – ĐẾN NGÀY, in bằng
 // trình duyệt (Ctrl+P / nút In). Mọi số tính từ nhật ký ĐÃ DUYỆT + snapshot rủi ro;
 // phần tiền chỉ có khi người xem có quyền tài chính.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
 import {
   RISK_STATUS,
@@ -31,9 +32,10 @@ import {
   fetchAllRows,
 } from "@/lib/projectControl";
 import { ErrorLine } from "./ui";
-import { Loader2, Printer } from "lucide-react";
+import DailyReportList from "./DailyReportList";
+import { Loader2, Printer, FileSpreadsheet, Plus } from "lucide-react";
 
-type Kind = "week" | "month";
+type Kind = "day" | "week" | "month" | "range";
 
 function monthRange(d: string): [string, string] {
   const [y, m] = d.split("-").map(Number);
@@ -43,8 +45,12 @@ function monthRange(d: string): [string, string] {
 
 export default function ReportTab({ project, access }: { project: PcProject; access: PcAccess }) {
   const canFin = access.can_view_finance;
-  const [kind, setKind] = useState<Kind>("week");
+  const [kind, setKind] = useState<Kind>("day");
   const [anchor, setAnchor] = useState(todayVN());
+  // Khoảng tuỳ chọn: mặc định từ đầu tháng đến hôm nay.
+  const [rangeFrom, setRangeFrom] = useState(`${todayVN().slice(0, 7)}-01`);
+  const [rangeTo, setRangeTo] = useState(todayVN());
+  const [dailyCreating, setDailyCreating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [data, setData] = useState<{
     segments: PcSegment[];
@@ -57,7 +63,16 @@ export default function ReportTab({ project, access }: { project: PcProject; acc
     payments: PcPayment[];
   } | null>(null);
 
-  const [from, to] = kind === "week" ? [weekStart(anchor), weekEnd(anchor)] : monthRange(anchor);
+  const [from, to] =
+    kind === "range"
+      ? rangeFrom <= rangeTo
+        ? [rangeFrom, rangeTo]
+        : [rangeTo, rangeFrom]
+      : kind === "day"
+      ? [anchor, anchor]
+      : kind === "week"
+      ? [weekStart(anchor), weekEnd(anchor)]
+      : monthRange(anchor);
 
   const load = useCallback(async () => {
     const pid = project.id;
@@ -129,12 +144,127 @@ export default function ReportTab({ project, access }: { project: PcProject; acc
   const sumA = (rows: PcValueRow[]) => rows.reduce((a, r) => a + Number(r.value_a || 0), 0);
   const sumB = (rows: PcValueRow[]) => rows.reduce((a, r) => a + Number(r.value_b || 0), 0);
 
-  const title = kind === "week" ? `BÁO CÁO TUẦN ${formatDate(from)} – ${formatDate(to)}` : `BÁO CÁO THÁNG ${to.slice(5, 7)}/${to.slice(0, 4)}`;
+  const title =
+    kind === "range"
+      ? `BÁO CÁO TỪ NGÀY ${formatDate(from)} ĐẾN NGÀY ${formatDate(to)}`
+      : kind === "day"
+      ? `BÁO CÁO NGÀY ${formatDate(from)}`
+      : kind === "week"
+      ? `BÁO CÁO TUẦN ${formatDate(from)} – ${formatDate(to)}`
+      : `BÁO CÁO THÁNG ${to.slice(5, 7)}/${to.slice(0, 4)}`;
+
+  // Xuất Excel — cùng nội dung bản in, 1 sheet. Tiền = số nguyên đồng (tính tiếp được),
+  // chỉ có khi người xuất có quyền tài chính. %HT xuất dạng số thập phân + định dạng %.
+  function exportExcel() {
+    if (!data || !calc) return;
+    const aoa: (string | number | null)[][] = [];
+    const pctCells: [number, number][] = []; // [dòng, cột] cần định dạng %
+    const moneyCells: [number, number][] = [];
+    const push = (row: (string | number | null)[]) => aoa.push(row);
+
+    push([project.bdh_name]);
+    push([title]);
+    push([project.name]);
+    push([[project.package_name, project.owner_name ? `CĐT: ${project.owner_name}` : ""].filter(Boolean).join(" · ")]);
+    push([`Lập ngày ${formatDate(todayVN())} · số liệu từ nhật ký đã được QS duyệt`]);
+    push([]);
+
+    push(["1. TÌNH HÌNH CHUNG"]);
+    push(["Ngày có nhật ký", logDays]);
+    push(["Nhân lực bình quân (người)", avgMan]);
+    push(["Ngày mưa", rainDays]);
+    push(["Cảnh báo đang mở", openAlerts.length]);
+    if (canFin) {
+      const add = (label: string, v: number) => {
+        push([label, v]);
+        moneyCells.push([aoa.length - 1, 1]);
+      };
+      add("Sản lượng kỳ (A-B), đồng", sumA(calc.inPeriod));
+      add("Sản lượng lũy kế, đồng", sumA(data.values));
+      add("CĐT thanh toán trong kỳ, đồng", calc.paidIn(from, to, "IN"));
+      add("Trả nhà thầu trong kỳ, đồng", calc.paidIn(from, to, "OUT"));
+    }
+    push([]);
+
+    push(["2. TIẾN ĐỘ THEO LÝ TRÌNH"]);
+    push(["Lý trình", "Trạng thái", "Điểm rủi ro", "%HT đầu kỳ", "%HT cuối kỳ", "Tăng", ...(canFin ? ["SL kỳ (đồng)"] : [])]);
+    data.segments.forEach((sg) => {
+      const items = data.wbs.filter((w) => w.segment_id === sg.id);
+      const a = weightedCompletion(items, calc.before);
+      const b = weightedCompletion(items, calc.after);
+      const snap = calc.snapAt(sg.id);
+      push([
+        sg.code,
+        snap ? RISK_STATUS[snap.status].label : "",
+        snap?.score != null ? Math.round(Number(snap.score)) : null,
+        a,
+        b,
+        a != null && b != null ? b - a : null,
+        ...(canFin ? [sumA(calc.inPeriod.filter((r) => r.segment_id === sg.id))] : []),
+      ]);
+      const r = aoa.length - 1;
+      pctCells.push([r, 3], [r, 4], [r, 5]);
+      if (canFin) moneyCells.push([r, 6]);
+    });
+    push([]);
+
+    push(["3. KHỐI LƯỢNG THỰC HIỆN TRONG KỲ"]);
+    push(["Lý trình", "Hạng mục", "ĐVT", "KL kỳ", "Lũy kế", "KL HĐ", "% HT", ...(canFin ? ["GT kỳ A-B (đồng)", "GT kỳ B-B' (đồng)"] : [])]);
+    [...new Set(calc.inPeriod.map((r) => r.segment_wbs_id))].forEach((swId) => {
+      const w = data.wbs.find((x) => x.id === swId);
+      const sg = data.segments.find((x) => x.id === w?.segment_id);
+      const it = w ? itemById.get(w.wbs_item_id) : null;
+      const rows = calc.inPeriod.filter((r) => r.segment_wbs_id === swId);
+      const q = rows.reduce((a, r) => a + Number(r.qty), 0);
+      const cum = calc.after.get(swId) || 0;
+      const b = Number(w?.budget_qty || 0);
+      push([
+        sg?.code || "",
+        `${it?.code || ""} ${it?.name || ""}`.trim(),
+        w?.unit || "",
+        q,
+        cum,
+        b || null,
+        b ? Math.min(1, cum / b) : null,
+        ...(canFin ? [sumA(rows), sumB(rows)] : []),
+      ]);
+      const r = aoa.length - 1;
+      pctCells.push([r, 6]);
+      if (canFin) moneyCells.push([r, 7], [r, 8]);
+    });
+    if (!calc.inPeriod.length) push(["Không có khối lượng được duyệt trong kỳ."]);
+    push([]);
+
+    push(["4. CẢNH BÁO ĐANG MỞ"]);
+    push(["Mức", "Nội dung", "Ghi chú xử lý", "Mới trong kỳ"]);
+    openAlerts.forEach((a) =>
+      push([SEVERITY[a.severity].label, a.message, a.note || "", newAlerts.some((n) => n.id === a.id) ? "Có" : ""])
+    );
+    if (!openAlerts.length) push(["Không có cảnh báo đang mở."]);
+    push([]);
+    push(["Người lập", "", "Chỉ huy trưởng / QS", "", "Giám đốc dự án"]);
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    pctCells.forEach(([r, c]) => {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (cell && typeof cell.v === "number") cell.z = "0.0%";
+    });
+    moneyCells.forEach(([r, c]) => {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (cell && typeof cell.v === "number") cell.z = "#,##0";
+    });
+    ws["!cols"] = [{ wch: 30 }, { wch: 40 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "BaoCao");
+    const safe = (project.code || project.bdh_name).replace(/[^a-zA-Z0-9_-]+/g, "_");
+    const period = from === to ? from : `${from}_${to}`;
+    XLSX.writeFile(wb, `BaoCao_${safe}_${period}.xlsx`);
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 print:hidden">
-        {(["week", "month"] as Kind[]).map((k) => (
+        {(["day", "week", "month", "range"] as Kind[]).map((k) => (
           <button
             key={k}
             onClick={() => setKind(k)}
@@ -142,25 +272,62 @@ export default function ReportTab({ project, access }: { project: PcProject; acc
               kind === k ? "bg-[#005BAC] text-white border-transparent" : "bg-white text-slate-600 border-slate-200"
             }`}
           >
-            {k === "week" ? "Báo cáo tuần" : "Báo cáo tháng"}
+            {k === "day" ? "Báo cáo ngày" : k === "week" ? "Báo cáo tuần" : k === "month" ? "Báo cáo tháng" : "Từ ngày – đến ngày"}
           </button>
         ))}
-        <input
-          type="date"
-          value={anchor}
-          onChange={(e) => e.target.value && setAnchor(e.target.value)}
-          className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-1.5"
-        />
-        <span className="text-[11px] text-slate-500">
-          Kỳ: {formatDate(from)} – {formatDate(to)}
-        </span>
+        {kind === "range" ? (
+          <>
+            <span className="text-[11px] font-bold text-slate-500">Từ</span>
+            <input
+              type="date"
+              value={rangeFrom}
+              onChange={(e) => e.target.value && setRangeFrom(e.target.value)}
+              className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-1.5"
+            />
+            <span className="text-[11px] font-bold text-slate-500">đến</span>
+            <input
+              type="date"
+              value={rangeTo}
+              onChange={(e) => e.target.value && setRangeTo(e.target.value)}
+              className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-1.5"
+            />
+          </>
+        ) : kind === "day" ? null : (
+          <input
+            type="date"
+            value={anchor}
+            onChange={(e) => e.target.value && setAnchor(e.target.value)}
+            className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-1.5"
+          />
+        )}
+        {kind !== "day" && <span className="text-[11px] text-slate-500">Kỳ: {formatDate(from)} – {formatDate(to)}</span>}
         <div className="flex-1" />
+        {kind === "day" && access.can_log && (
+          <button
+            onClick={() => setDailyCreating(true)}
+            className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-[11px] font-bold px-3.5 py-2 rounded-lg"
+          >
+            <Plus size={13} /> Lập báo cáo ngày
+          </button>
+        )}
+        {kind !== "day" && (
+          <button
+            onClick={exportExcel}
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-3.5 py-2 rounded-lg"
+          >
+            <FileSpreadsheet size={13} /> Xuất Excel
+          </button>
+        )}
         <button onClick={() => window.print()} className="flex items-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-[11px] font-bold px-3.5 py-2 rounded-lg">
           <Printer size={13} /> In báo cáo
         </button>
       </div>
       <ErrorLine msg={err} />
 
+      {/* Báo cáo ngày theo mẫu công ty (migration 105); tuần / tháng / khoảng giữ bản tổng hợp. */}
+      {kind === "day" ? (
+        <DailyReportList project={project} access={access} creating={dailyCreating} setCreating={setDailyCreating} />
+      ) : (
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-5 print:border-0 print:shadow-none print:p-0 text-slate-800">
         <div className="text-center space-y-1">
           <p className="text-[11px] font-bold text-slate-500 uppercase">{project.bdh_name}</p>
@@ -303,6 +470,7 @@ export default function ReportTab({ project, access }: { project: PcProject; acc
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

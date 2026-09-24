@@ -53,6 +53,11 @@ export type ApprovalPermissions = {
   canViewAccounting: boolean; // Xem module Kế toán > Hồ sơ thanh toán (/ke-toan).
                               // Module bắt buộc cờ: Admin luôn thấy, người khác phải
                               // được cấp cờ này mới vào (migration 071).
+  // Quản trị dự án (migration 096). Quyền TRONG từng dự án đi theo bảng
+  // pc_project_members; hai cờ dưới là quyền TOÀN CÔNG TY.
+  canViewAllProjects: boolean;    // Ban lãnh đạo: xem + sửa mọi dự án kể cả tiền, lập hồ sơ dự án
+  canViewProjectFinance: boolean; // Phòng TC-KT: xem + sửa tiền mọi dự án
+  canViewAllProjectsReadonly: boolean; // HCNS / QLDA: XEM mọi dự án, không tiền, không sửa (migration 103)
   // ─── Phiếu trình ký hồ sơ/văn bản (migration 050) ───
   // Luồng 4 cấp: PGĐ QLDA -> PGĐ KHĐT -> Giám đốc -> Kế toán. Mỗi cấp một cờ để
   // đổi người phụ trách chỉ cần tick lại, không phải sửa SQL hay code.
@@ -93,6 +98,9 @@ export const NO_APPROVAL_PERMISSIONS: ApprovalPermissions = {
   canManageNews: false,
   canViewReports: false,
   canViewAccounting: false,
+  canViewAllProjects: false,
+  canViewProjectFinance: false,
+  canViewAllProjectsReadonly: false,
   canCreateSigning: false,
   canApproveSigningQlda: false,
   canApproveSigningKhdt: false,
@@ -708,6 +716,9 @@ export async function fetchApprovalPermissions(email?: string | null): Promise<A
       canManageNews: !!row.can_manage_news,
       canViewReports: !!row.can_view_reports,
       canViewAccounting: !!row.can_view_accounting,
+      canViewAllProjects: !!row.can_view_all_projects,
+      canViewProjectFinance: !!row.can_view_project_finance,
+      canViewAllProjectsReadonly: !!row.can_view_all_projects_readonly,
       canCreateSigning: !!row.can_create_signing,
       canApproveSigningQlda: !!row.can_approve_signing_qlda,
       canApproveSigningKhdt: !!row.can_approve_signing_khdt,

@@ -55,6 +55,8 @@ export function isDirectorRole(role?: string | null): boolean {
 export type ModuleKey =
   | "dashboard"
   | "project_locations"
+  | "project_control"
+  | "project_dashboard"
   | "news"
   | "tasks"
   | "calendar"
@@ -96,6 +98,10 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleDef> = {
   accounting:     { minPlan: "basic", route: "/ke-toan", grantFlag: "canViewAccounting", requireFlag: true },
   meeting:        { minPlan: "basic", route: "/meeting-team" },
   project_locations: { minPlan: "basic", route: "/vi-tri-du-an" },
+  // Quản trị dự án (migration 096): gói chỉ mở CỬA trang; thấy dự án nào, thấy
+  // tiền hay không do RLS theo vai trò trong từng dự án quyết định.
+  project_control: { minPlan: "basic", route: "/thong-tin-quan-tri-du-an" },
+  project_dashboard: { minPlan: "basic", route: "/dashboard-du-an" },
   // Tin tức: ai đăng nhập cũng ĐỌC được (kênh truyền thông nội bộ). grantFlag ở
   // đây chỉ để người được cấp quyền đăng bài vẫn vào được trang khi phòng của họ
   // bị hạ gói — quyền ĐĂNG kiểm ở RLS (caller_can_manage_news, migration 023).

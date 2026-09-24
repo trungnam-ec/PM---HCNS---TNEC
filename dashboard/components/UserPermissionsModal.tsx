@@ -74,6 +74,9 @@ const FLAG_GROUPS: { title: string; note?: string; flags: { key: string; label: 
       { key: "can_manage_news", label: "Tin tức — Đăng bài", desc: "Đăng, sửa, xoá tin nội bộ (thông báo, giới thiệu, sự kiện)" },
       { key: "can_view_reports", label: "Hồ sơ trình ký", desc: "Kế hoạch thu chi, Sản lượng, Doanh thu — chỉ có tác dụng khi công ty ở gói Enterprise" },
       { key: "can_view_accounting", label: "Kế toán — Hồ sơ thanh toán", desc: "Trích xuất AI & sổ đề nghị thanh toán (module Kế toán). Admin luôn thấy, người khác cần cờ này" },
+      { key: "can_view_all_projects", label: "Quản trị dự án — Ban lãnh đạo", desc: "Xem & sửa MỌI dự án kể cả tiền, lập hồ sơ dự án mới, gán GĐDA" },
+      { key: "can_view_project_finance", label: "Quản trị dự án — TC-KT", desc: "Xem & sửa giá trị hợp đồng, thanh toán của MỌI dự án (phòng Tài chính – Kế toán)" },
+      { key: "can_view_all_projects_readonly", label: "Quản trị dự án — Xem toàn bộ", desc: "CHỈ XEM mọi dự án + Dashboard dự án, không thấy tiền, không sửa được gì (VD: HCNS, QLDA)" },
     ],
   },
   {

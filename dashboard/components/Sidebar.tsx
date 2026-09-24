@@ -29,7 +29,10 @@ import {
   TrendingUp,
   Fingerprint,
   Wallet,
-  ReceiptText
+  ReceiptText,
+  FolderKanban,
+  ClipboardType,
+  Gauge
 } from "lucide-react";
 import { useSidebar } from "./SidebarContext";
 import { useDepartments } from "@/lib/departments";
@@ -40,6 +43,36 @@ import { emailFieldMatches } from "@/lib/emailMatch";
 import { useTenantConfig } from "@/lib/tenantConfig";
 import { usePlan } from "@/lib/plan";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+
+// Quyền hiện 2 mục Quản trị dự án (RPC pc_nav_access, migration 103). Nạp 1 lần
+// mỗi phiên để menu không nháy khi chuyển trang. Lỗi (chưa chạy migration) ->
+// hiện như cũ để không khoá nhầm ai.
+type PcNav = { has_projects: boolean; can_dashboard: boolean };
+let pcNavCache: Promise<PcNav> | null = null;
+function loadPcNav(): Promise<PcNav> {
+  if (!pcNavCache) {
+    pcNavCache = (async () => {
+      const { data, error } = await supabase.rpc("pc_nav_access");
+      if (error || !data) {
+        pcNavCache = null;
+        return { has_projects: true, can_dashboard: true };
+      }
+      return data as PcNav;
+    })();
+  }
+  return pcNavCache;
+}
+function usePcNav(): PcNav | null {
+  const [nav, setNav] = useState<PcNav | null>(null);
+  useEffect(() => {
+    let alive = true;
+    loadPcNav().then((n) => alive && setNav(n));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return nav;
+}
 
 function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: boolean; pathname: string; setSidebarOpen: (o: boolean) => void }) {
   const searchParams = useSearchParams();
@@ -55,10 +88,17 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
   // Nhóm "Kế toán" (/ke-toan) — hiện chỉ có mục con "Hồ sơ thanh toán".
   const isKeToanSection = pathname.startsWith("/ke-toan");
   const [keToanGroupOpen, setKeToanGroupOpen] = useState(isKeToanSection);
+  // Nhóm "Quản lý dự án" — hiện chỉ có mục con "Vị trí dự án" (route giữ nguyên /vi-tri-du-an).
+  const isProjectSection =
+    pathname.startsWith("/vi-tri-du-an") ||
+    pathname.startsWith("/thong-tin-quan-tri-du-an") ||
+    pathname.startsWith("/dashboard-du-an");
+  const [projectGroupOpen, setProjectGroupOpen] = useState(isProjectSection);
   // Ẩn menu theo GÓI HIỆU LỰC CỦA PHÒNG + cấp phép riêng (không chỉ gói toàn cục).
   // Đang tải danh tính -> hiện tạm (tránh nháy menu trống), narrow lại khi có dữ liệu.
   const currentUser = useCurrentUser();
   const deps = useDepartments();
+  const pcNav = usePcNav();
   const isPathAllowed = (p: string) => (currentUser.loading ? true : currentUser.canPath(p));
   // "Chấm công GPS" chỉ hiện cho Admin hoặc nhân sự thuộc một Ban điều hành.
   const showGpsCheckin = !currentUser.loading && (currentUser.isAdmin || deps.bdh.includes(currentUser.department));
@@ -135,6 +175,59 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
             const isChildActive = child.dk
               ? isCalendarBooking && currentDk === child.dk
               : isBookingSection && activeChildTab === child.tab;
+            return (
+              <Link
+                key={child.href}
+                href={child.href}
+                onClick={() => setSidebarOpen(false)}
+                className={`flex items-center gap-2.5 px-4 py-2 rounded-full text-[11px] font-bold transition-all duration-200 active:scale-[0.97] hover:translate-x-1 border ${
+                  isChildActive
+                    ? "bg-blue-50 border-blue-200 text-[#005BAC]"
+                    : "bg-white border-slate-100 text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                }`}
+              >
+                <ChildIcon size={13} className={isChildActive ? "text-[#005BAC]" : "text-slate-400"} />
+                <span>{child.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  // Nhóm "Quản lý dự án" — đứng đúng chỗ mục "Vị trí dự án" cũ; mục con lọc theo gói.
+  // Thông tin quản trị: ai xem được ≥ 1 dự án. Dashboard: BLĐ, TC-KT, cờ xem toàn bộ, GĐDA.
+  // Đang nạp quyền -> tạm ẩn 2 mục này (không hiện rồi mới giấu).
+  const projectChildren = [
+    { label: "Vị trí dự án", href: "/vi-tri-du-an", icon: MapPin },
+    ...(pcNav?.has_projects ? [{ label: "Thông tin quản trị dự án", href: "/thong-tin-quan-tri-du-an", icon: ClipboardType }] : []),
+    ...(pcNav?.can_dashboard ? [{ label: "Dashboard dự án", href: "/dashboard-du-an", icon: Gauge }] : []),
+  ];
+  const projectGroup = (
+    <div key="project-group" className="space-y-1.5">
+      <button
+        type="button"
+        onClick={() => setProjectGroupOpen((o) => !o)}
+        className={`w-full flex items-center gap-3 px-5 py-2.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-[0.97] border cursor-pointer ${
+          isProjectSection
+            ? "bg-gradient-to-r from-[#005BAC] to-[#00AEEF] border-transparent text-white shadow-md shadow-blue-500/15"
+            : "bg-slate-50/50 border-slate-100 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+        }`}
+      >
+        <FolderKanban size={15} className={isProjectSection ? "text-white" : "text-slate-500"} />
+        <span className="flex-1 text-left">Quản lý dự án</span>
+        <ChevronDown
+          size={13}
+          className={`transition-transform duration-200 ${projectGroupOpen || isProjectSection ? "rotate-180" : ""} ${isProjectSection ? "text-white" : "text-slate-400"}`}
+        />
+      </button>
+
+      {(projectGroupOpen || isProjectSection) && (
+        <div className="pl-5 space-y-1.5 animate-in fade-in duration-150">
+          {projectChildren.map((child) => {
+            const ChildIcon = child.icon;
+            const isChildActive = pathname.startsWith(child.href);
             return (
               <Link
                 key={child.href}
@@ -237,6 +330,9 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
             <span>{item.label}</span>
           </Link>
         );
+
+        // Mục "Vị trí dự án" hiển thị dưới dạng nhóm "Quản lý dự án" (đã qua lọc gói ở navItems).
+        if (item.href === "/vi-tri-du-an") return projectGroup;
 
         // Chèn nhóm "Quản lý Đăng ký" ngay sau mục Lịch công việc (nếu gói cho phép)
         if (item.href === "/calendar") {

@@ -22,6 +22,7 @@ import {
   formatKm,
   formatMoneyShort,
   formatVnd,
+  gpmbBarCls,
   gpmbPercent,
   heatCls,
   parseKm,
@@ -35,13 +36,14 @@ import {
   todayVN,
   type PcAccess,
   type PcDesignChange,
+  type PcGpmbProgress,
   type PcLandClearance,
   type PcMobilization,
   type PcSegment,
   type PcWbsItem,
 } from "@/lib/projectControl";
 import { Card, Field, TextInput, Select, MoneyInput, PrimaryButton, ErrorLine, Modal, StatusBar } from "./ui";
-import { Plus, Pencil, Trash2, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, AlertTriangle, CheckCircle2, RotateCcw } from "lucide-react";
 
 type DcMoney = { est_value: number | null; approved_value: number | null };
 
@@ -64,6 +66,8 @@ export default function BlockATab({
   const [segments, setSegments] = useState<PcSegment[]>([]);
   const [catalog, setCatalog] = useState<PcWbsItem[]>([]);
   const [gpmb, setGpmb] = useState<PcLandClearance[]>([]);
+  // % GPMB kéo tay theo lý trình (segment_id -> 0..1), migration 106.
+  const [gpmbManual, setGpmbManual] = useState<Record<string, number>>({});
   const [mob, setMob] = useState<PcMobilization[]>([]);
   const [dcs, setDcs] = useState<PcDesignChange[]>([]);
   const [dcMoney, setDcMoney] = useState<Record<string, DcMoney>>({});
@@ -72,18 +76,22 @@ export default function BlockATab({
   const [dcEdit, setDcEdit] = useState<PcDesignChange | "new" | null>(null);
 
   const load = useCallback(async () => {
-    const [s, c, g, m, d] = await Promise.all([
+    const [s, c, g, m, d, gp] = await Promise.all([
       supabase.from("pc_segments").select("*").eq("project_id", projectId).order("km_start_m"),
       supabase.from("pc_wbs_items").select("*").order("sort_order"),
       supabase.from("pc_land_clearance").select("*").eq("project_id", projectId).order("from_m"),
       supabase.from("pc_mobilization").select("*").eq("project_id", projectId).order("planned_date", { nullsFirst: false }),
       supabase.from("pc_design_changes").select("*").eq("project_id", projectId).order("created_at"),
+      supabase.from("pc_gpmb_progress").select("*").eq("project_id", projectId),
     ]);
     const firstErr = [s, g, m, d].find((r) => r.error)?.error;
     setErr(firstErr ? pcErrorMessage(firstErr) : null);
     setSegments((s.data as PcSegment[]) || []);
     setCatalog((c.data as PcWbsItem[]) || []);
     setGpmb((g.data as PcLandClearance[]) || []);
+    const gpMap: Record<string, number> = {};
+    ((gp.data as PcGpmbProgress[]) || []).forEach((r) => (gpMap[r.segment_id] = Number(r.pct)));
+    setGpmbManual(gpMap);
     setMob((m.data as PcMobilization[]) || []);
     const dlist = (d.data as PcDesignChange[]) || [];
     setDcs(dlist);
@@ -142,6 +150,25 @@ export default function BlockATab({
     });
   }
 
+  // Kéo thanh GPMB: lưu % tay (upsert theo lý trình); null = xoá, quay về % tự tính.
+  async function setGpmbPct(segId: string, v: number | null) {
+    const prev = gpmbManual;
+    setGpmbManual((m) => {
+      const next = { ...m };
+      if (v === null) delete next[segId];
+      else next[segId] = v;
+      return next;
+    });
+    const e =
+      v === null
+        ? await pcDelete("pc_gpmb_progress", { segment_id: segId })
+        : await pcUpsert("pc_gpmb_progress", { project_id: projectId, segment_id: segId, pct: v }, "segment_id");
+    if (e) {
+      setErr(e);
+      setGpmbManual(prev);
+    }
+  }
+
   // Đổi trạng thái ngay trên dòng: cập nhật tạm trên giao diện, lỗi thì nạp lại.
   async function quickSet(table: string, id: string, patch: Record<string, unknown>, apply: () => void) {
     apply();
@@ -192,16 +219,33 @@ export default function BlockATab({
           <div className="space-y-3">
             {shownSegs.map((s) => {
               const rows = gpmb.filter((g) => g.segment_id === s.id);
-              const v = rows.length ? gpmbPercent(s, rows) : 0;
+              const auto = rows.length ? gpmbPercent(s, rows) : 0;
+              const manual = gpmbManual[s.id];
+              const hasManual = manual !== undefined;
+              const v = hasManual ? manual : auto;
               return (
                 <div key={s.id} className="space-y-1.5">
                   <div className="flex items-center gap-3">
                     <span className="text-xs font-extrabold text-slate-800 w-14">{s.code}</span>
-                    <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-                      <div className="h-full bg-emerald-500" style={{ width: `${v * 100}%` }} />
-                    </div>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${heatCls(rows.length ? v : null)}`}>{pct(rows.length ? v : null)}</span>
-                    {canEdit && v < 0.999 && (
+                    <GpmbBar value={v} editable={canEdit} onCommit={(nv) => setGpmbPct(s.id, nv)} />
+                    <span
+                      className={`text-[11px] font-bold px-2 py-0.5 rounded ${
+                        rows.length || hasManual ? gpmbBarCls(v).badge : heatCls(null)
+                      }`}
+                      title={hasManual ? `Kéo tay · tự tính theo đoạn bàn giao: ${pct(rows.length ? auto : null)}` : undefined}
+                    >
+                      {pct(rows.length || hasManual ? v : null)}
+                    </span>
+                    {canEdit && hasManual && (
+                      <button
+                        onClick={() => setGpmbPct(s.id, null)}
+                        className="text-slate-300 hover:text-[#005BAC] shrink-0"
+                        title={`Bỏ % kéo tay, quay về tự tính theo đoạn bàn giao (${pct(rows.length ? auto : null)})`}
+                      >
+                        <RotateCcw size={12} />
+                      </button>
+                    )}
+                    {canEdit && auto < 0.999 && (
                       <button
                         onClick={() => handOverAll(s)}
                         className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-md shrink-0"
@@ -891,5 +935,72 @@ function DcModal({
         </PrimaryButton>
       </div>
     </Modal>
+  );
+}
+
+// Thanh % GPMB kéo được, nấc 10%. Thả chuột mới lưu; phím ← → cũng đổi được.
+function GpmbBar({ value, editable, onCommit }: { value: number; editable: boolean; onCommit: (v: number) => void }) {
+  const [drag, setDrag] = useState<number | null>(null);
+  const shown = drag ?? value;
+  const cls = gpmbBarCls(shown);
+
+  const at = (e: React.PointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const raw = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    return Math.round(raw * 10) / 10;
+  };
+  const commit = (v: number) => {
+    setDrag(null);
+    if (Math.abs(v - value) > 0.001) onCommit(v);
+  };
+
+  if (!editable)
+    return (
+      <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+        <div className={`h-full ${cls.bar}`} style={{ width: `${shown * 100}%` }} />
+      </div>
+    );
+
+  return (
+    <div
+      role="slider"
+      tabIndex={0}
+      aria-label="% giải phóng mặt bằng"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(shown * 100)}
+      title="Kéo để chỉnh % GPMB (nấc 10%)"
+      className="group relative flex-1 h-5 flex items-center cursor-pointer touch-none select-none outline-none"
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setDrag(at(e));
+      }}
+      onPointerMove={(e) => {
+        if (drag !== null) setDrag(at(e));
+      }}
+      onPointerUp={(e) => {
+        if (drag !== null) commit(at(e));
+      }}
+      onPointerCancel={() => setDrag(null)}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+          e.preventDefault();
+          commit(Math.min(1, Math.round(value * 10 + 1) / 10));
+        } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+          e.preventDefault();
+          commit(Math.max(0, Math.round(value * 10 - 1) / 10));
+        }
+      }}
+    >
+      <div className="relative w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+        <div className={`h-full ${cls.bar} ${drag === null ? "transition-all" : ""}`} style={{ width: `${shown * 100}%` }} />
+      </div>
+      <div
+        className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 shadow ${
+          drag !== null ? "scale-125" : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
+        } ${cls.knob} transition-opacity`}
+        style={{ left: `${shown * 100}%` }}
+      />
+    </div>
   );
 }

@@ -3,7 +3,8 @@
 // Tab B. Pháp lý phục vụ thi công (M5, P2):
 // • Checklist theo nhóm: nhân sự & văn phòng BĐH, P.TN, VTĐV, BPTC, hợp đồng, khác.
 // • Mỗi mục 3 trạng thái: Đầu vào NCC (0/1) · Nội bộ (0/½/1) · TVGS/CĐT (0/½/1),
-//   bấm đổi ngay trên dòng. Mục nhân sự có thêm ô "hiện diện công trường".
+//   bấm đổi ngay trên dòng. Mục nhân sự có thêm ô "hiện diện công trường":
+//   chưa có người phụ trách thì ẩn ô; gán tên thì tự tích sẵn (vẫn bỏ tích được).
 // • % sẵn sàng 1 mục = (nội bộ + TVGS/CĐT) / 2; % nhóm = trung bình các mục.
 // • Dự án chưa có checklist -> nút "Tạo checklist mẫu" (đặc tả 7.5).
 
@@ -93,7 +94,7 @@ export default function BlockBTab({ projectId, bdhName, access }: { projectId: s
 
   const overall = readiness(items.map(legalScore));
   const staff = items.filter((i) => i.on_site !== null);
-  const here = staff.filter((i) => i.on_site).length;
+  const here = staff.filter((i) => i.on_site && hasPerson(i)).length;
   const segCode = (id: string | null) => (id ? segments.find((s) => s.id === id)?.code || "?" : "");
 
   return (
@@ -161,7 +162,7 @@ export default function BlockBTab({ projectId, bdhName, access }: { projectId: s
                     </colgroup>
                     <thead>
                       <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-left">
-                        <th className="py-1.5 pr-2">Mục</th>
+                        <th className="py-1.5 pr-2">Chức danh</th>
                         <th className="px-2">Người phụ trách</th>
                         <th className="px-4">Đầu vào NCC</th>
                         <th className="px-4">Nội bộ</th>
@@ -211,7 +212,7 @@ export default function BlockBTab({ projectId, bdhName, access }: { projectId: s
                             />
                           </td>
                           <td className="px-2 text-center">
-                            {r.on_site !== null && (
+                            {r.on_site !== null && hasPerson(r) && (
                               <input
                                 type="checkbox"
                                 checked={!!r.on_site}
@@ -274,6 +275,11 @@ export default function BlockBTab({ projectId, bdhName, access }: { projectId: s
   );
 }
 
+// Mục có người phụ trách (tên khác rỗng) mới được tính / hiện ô hiện diện.
+function hasPerson(i: PcLegalItem): boolean {
+  return !!i.person_name?.trim();
+}
+
 function Stat({ label, value, cls }: { label: string; value: string; cls: string }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm px-4 py-3">
@@ -328,18 +334,20 @@ function LegalModal({
     setF((x) => ({ ...x, [k]: e.target.value }));
 
   async function save() {
-    if (!f.item_name.trim()) return setErr("Nhập tên mục.");
+    if (!f.item_name.trim()) return setErr("Nhập chức danh.");
     setSaving(true);
     setErr(null);
+    const name = person?.name.trim() || null;
     const payload = {
       item_group: f.item_group,
       item_name: f.item_name.trim(),
-      person_name: person?.name.trim() || null,
+      person_name: name,
       segment_id: f.segment_id || null,
       due_date: f.due_date || null,
       note: f.note.trim() || null,
-      // Bật/tắt theo dõi hiện diện: giữ giá trị cũ nếu vẫn bật.
-      on_site: f.is_staff ? (row?.on_site ?? false) : null,
+      // Hiện diện: chưa có tên -> chưa tích; vừa gán tên -> tự tích; đã có tên từ
+      // trước -> giữ nguyên lựa chọn cũ. Tắt theo dõi -> null.
+      on_site: !f.is_staff ? null : !name ? false : row?.person_name?.trim() ? (row.on_site ?? true) : true,
     };
     let e: string | null = null;
     if (row) e = await pcUpdate("pc_legal_items", { id: row.id }, payload);
@@ -374,7 +382,7 @@ function LegalModal({
             ))}
           </Select>
         </Field>
-        <Field label="Tên mục" className="col-span-2">
+        <Field label="Chức danh" className="col-span-2">
           <TextInput value={f.item_name} onChange={set("item_name")} placeholder="Chỉ huy trưởng / Phòng thí nghiệm / BPTC cầu…" />
         </Field>
         <div className="space-y-1">

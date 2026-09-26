@@ -467,6 +467,16 @@ export function gpmbPercent(seg: { km_start_m: number; km_end_m: number; sides: 
   return Math.min(1, done / total);
 }
 
+// % GPMB kéo tay trên thanh tiến trình (migration 106) — có thì thay % tự tính.
+export type PcGpmbProgress = { id: string; project_id: string; segment_id: string; pct: number };
+
+// Màu thanh GPMB: ≤30% đỏ · 40–80% vàng · ≥90% xanh lá.
+export function gpmbBarCls(v: number): { bar: string; badge: string; knob: string } {
+  if (v >= 0.85) return { bar: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-800", knob: "border-emerald-500" };
+  if (v >= 0.35) return { bar: "bg-amber-400", badge: "bg-amber-100 text-amber-800", knob: "border-amber-400" };
+  return { bar: "bg-rose-500", badge: "bg-rose-100 text-rose-700", knob: "border-rose-500" };
+}
+
 // Màu cho ô bình đồ theo tỷ lệ 0..1 (null = chưa có dữ liệu).
 export function heatCls(v: number | null): string {
   if (v === null) return "bg-slate-50 text-slate-300";

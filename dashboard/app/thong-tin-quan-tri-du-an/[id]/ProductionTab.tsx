@@ -419,7 +419,8 @@ export default function ProductionTab({ projectId, email, access }: { projectId:
         {byPeriod.length === 0 ? (
           <p className="text-xs italic text-slate-400">Chưa có nhật ký đã duyệt.</p>
         ) : (
-          <table className="w-full text-[11px]">
+          <div className="overflow-x-auto -mx-1 px-1">
+          <table className="w-full min-w-[520px] text-[11px]">
             <thead>
               <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-left">
                 <th className="py-1.5">Kỳ</th>
@@ -439,6 +440,7 @@ export default function ProductionTab({ projectId, email, access }: { projectId:
               ))}
             </tbody>
           </table>
+          </div>
         )}
         {!canFin && <p className="text-[10px] text-slate-400 mt-2">Giá trị sản lượng chỉ hiện với Ban lãnh đạo / GĐDA / TC-KT.</p>}
       </Card>

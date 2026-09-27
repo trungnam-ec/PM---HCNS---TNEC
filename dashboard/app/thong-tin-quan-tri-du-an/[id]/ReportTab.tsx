@@ -353,7 +353,8 @@ export default function ReportTab({ project, access }: { project: PcProject; acc
         </Section>
 
         <Section title="2. Tiến độ theo lý trình">
-          <table className="w-full text-[11px]">
+          <div className="overflow-x-auto -mx-1 px-1">
+          <table className="w-full min-w-[560px] text-[11px]">
             <thead>
               <tr className="text-[10px] font-extrabold uppercase text-slate-500 text-left border-b border-slate-200">
                 <th className="py-1">Lý trình</th>
@@ -386,13 +387,15 @@ export default function ReportTab({ project, access }: { project: PcProject; acc
               })}
             </tbody>
           </table>
+          </div>
         </Section>
 
         <Section title="3. Khối lượng thực hiện trong kỳ">
           {calc.inPeriod.length === 0 ? (
             <p className="text-[11px] italic text-slate-400">Không có khối lượng được duyệt trong kỳ.</p>
           ) : (
-            <table className="w-full text-[11px]">
+            <div className="overflow-x-auto -mx-1 px-1">
+            <table className="w-full min-w-[680px] text-[11px]">
               <thead>
                 <tr className="text-[10px] font-extrabold uppercase text-slate-500 text-left border-b border-slate-200">
                   <th className="py-1">Lý trình</th>
@@ -433,6 +436,7 @@ export default function ReportTab({ project, access }: { project: PcProject; acc
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </Section>
 

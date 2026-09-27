@@ -345,7 +345,8 @@ export default function FinanceTab({
         {bbRows.length === 0 ? (
           <p className="text-xs italic text-slate-400">Chưa có HĐ B-B&apos;.</p>
         ) : (
-          <table className="w-full text-[11px]">
+          <div className="overflow-x-auto -mx-1 px-1">
+          <table className="w-full min-w-[720px] text-[11px]">
             <thead>
               <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-right">
                 <th className="py-1.5 text-left">Nhà thầu</th>
@@ -377,6 +378,7 @@ export default function FinanceTab({
               ))}
             </tbody>
           </table>
+          </div>
         )}
         <p className="text-[10px] text-slate-400 mt-2">
           Sản lượng B-B&apos; = KL đã duyệt × đơn giá B-B&apos; (nhập ở tab Nhà thầu &amp; Hợp đồng). Ngưỡng đổi ở tab Tổng quan.

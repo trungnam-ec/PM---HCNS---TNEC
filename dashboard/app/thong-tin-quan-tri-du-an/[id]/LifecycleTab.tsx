@@ -383,40 +383,56 @@ function CloseoutCard({ projectId, canEdit }: { projectId: string; canEdit: bool
               <PrimaryButton onClick={add}>Thêm</PrimaryButton>
             </div>
           )}
-          <div className="grid grid-cols-[1fr_260px_260px_20px] gap-x-6 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+          {/* Tiêu đề cột: chỉ hiện trên màn rộng; mobile mỗi mục tự có nhãn riêng. */}
+          <div className="hidden md:grid grid-cols-[1fr_220px_220px_20px] gap-x-5 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
             <span>Hồ sơ</span>
             <span>Nội bộ</span>
             <span>TVGS / CĐT</span>
             <span />
           </div>
-          {items.map((i) => (
-            <div key={i.id} className="grid grid-cols-[1fr_260px_260px_20px] gap-x-6 items-center text-[11px]">
-              <span className="font-semibold text-slate-700 truncate" title={i.item_name}>
-                {i.item_name}
-              </span>
-              <StatusBar compact widthCls="w-full" value={Number(i.internal_status)} scale={SCALE_INTERNAL} disabled={!canEdit} onChange={(v) => quick(i.id, { internal_status: v as 0 | 0.5 | 1 })} />
-              <StatusBar compact widthCls="w-full" value={Number(i.supervisor_status)} scale={SCALE_SUPERVISOR} disabled={!canEdit} onChange={(v) => quick(i.id, { supervisor_status: v as 0 | 0.5 | 1 })} />
-              {canEdit ? (
-                <button
-                  onClick={() =>
-                    ask({
-                      title: `Xoá "${i.item_name}"?`,
-                      onConfirm: async () => {
-                        const e = await pcDelete("pc_closeout_items", { id: i.id });
-                        if (e) setErr(e);
-                        load();
-                      },
-                    })
-                  }
-                  className="text-slate-300 hover:text-rose-500"
-                >
-                  <Trash2 size={11} />
-                </button>
-              ) : (
-                <span />
-              )}
-            </div>
-          ))}
+          {items.map((i) => {
+            const removeBtn = canEdit ? (
+              <button
+                onClick={() =>
+                  ask({
+                    title: `Xoá "${i.item_name}"?`,
+                    onConfirm: async () => {
+                      const e = await pcDelete("pc_closeout_items", { id: i.id });
+                      if (e) setErr(e);
+                      load();
+                    },
+                  })
+                }
+                className="text-slate-300 hover:text-rose-500 shrink-0"
+                aria-label={`Xoá ${i.item_name}`}
+              >
+                <Trash2 size={13} />
+              </button>
+            ) : null;
+            return (
+              // Mobile: xếp dọc (tên → Nội bộ → TVGS). Desktop (md+): lưới 1 hàng.
+              <div
+                key={i.id}
+                className="border-b border-slate-100 pb-3 last:border-0 last:pb-0 md:border-0 md:pb-0 md:grid md:grid-cols-[1fr_220px_220px_20px] md:gap-x-5 md:items-center text-[11px]"
+              >
+                <div className="flex items-center justify-between gap-2 mb-2 md:mb-0 md:min-w-0">
+                  <span className="font-semibold text-slate-700 truncate" title={i.item_name}>
+                    {i.item_name}
+                  </span>
+                  <span className="md:hidden">{removeBtn}</span>
+                </div>
+                <div className="flex items-center gap-2 mb-1.5 md:mb-0 md:contents">
+                  <span className="md:hidden w-20 shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">Nội bộ</span>
+                  <StatusBar compact widthCls="w-full" value={Number(i.internal_status)} scale={SCALE_INTERNAL} disabled={!canEdit} onChange={(v) => quick(i.id, { internal_status: v as 0 | 0.5 | 1 })} />
+                </div>
+                <div className="flex items-center gap-2 md:contents">
+                  <span className="md:hidden w-20 shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">TVGS / CĐT</span>
+                  <StatusBar compact widthCls="w-full" value={Number(i.supervisor_status)} scale={SCALE_SUPERVISOR} disabled={!canEdit} onChange={(v) => quick(i.id, { supervisor_status: v as 0 | 0.5 | 1 })} />
+                </div>
+                <span className="hidden md:flex md:justify-end">{removeBtn}</span>
+              </div>
+            );
+          })}
         </div>
       )}
       {confirmNode}
@@ -453,7 +469,8 @@ function SettlementCard({ projectId, canEdit }: { projectId: string; canEdit: bo
       {contracts.length === 0 ? (
         <p className="text-xs italic text-slate-400">Chưa có hợp đồng.</p>
       ) : (
-        <table className="w-full text-[11px]">
+        <div className="overflow-x-auto -mx-1 px-1">
+        <table className="w-full min-w-[520px] text-[11px]">
           <thead>
             <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-left">
               <th className="py-1.5">HĐ</th>
@@ -506,6 +523,7 @@ function SettlementCard({ projectId, canEdit }: { projectId: string; canEdit: bo
             })}
           </tbody>
         </table>
+        </div>
       )}
       {edit && (
         <SettlementModal

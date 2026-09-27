@@ -1014,7 +1014,8 @@ function BbPriceModal({
       ) : rows.length === 0 ? (
         <p className="text-xs text-slate-500">Phạm vi HĐ chưa trùng hạng mục nào. Gán hạng mục cho lý trình ở tab Lý trình &amp; Hạng mục trước.</p>
       ) : (
-        <table className="w-full text-[11px]">
+        <div className="overflow-x-auto -mx-1 px-1">
+        <table className="w-full min-w-[720px] text-[11px]">
           <thead>
             <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-left">
               <th className="py-1.5">Lý trình</th>
@@ -1048,6 +1049,7 @@ function BbPriceModal({
             })}
           </tbody>
         </table>
+        </div>
       )}
       <p className="text-[10px] text-slate-400">Chênh lệch âm (đỏ) = đơn giá B-B&apos; cao hơn A-B, hạng mục đang lỗ. Để trống ô = xoá đơn giá.</p>
       <ErrorLine msg={err} />

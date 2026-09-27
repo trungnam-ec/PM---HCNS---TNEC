@@ -392,7 +392,8 @@ export default function MaterialTab({ projectId, access }: { projectId: string; 
         {ctx.issues.length === 0 ? (
           <p className="text-xs italic text-slate-400">Chưa có phiếu cấp phát.</p>
         ) : (
-          <table className="w-full text-[11px]">
+          <div className="overflow-x-auto -mx-1 px-1">
+          <table className="w-full min-w-[760px] text-[11px]">
             <thead>
               <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-left">
                 <th className="py-1.5">Ngày</th>
@@ -433,6 +434,7 @@ export default function MaterialTab({ projectId, access }: { projectId: string; 
               })}
             </tbody>
           </table>
+          </div>
         )}
         {ctx.issues.length > 100 && <p className="text-[10px] text-slate-400 mt-2">Hiện 100 phiếu gần nhất (tính toán vẫn dùng đủ {ctx.issues.length} phiếu).</p>}
       </Card>
@@ -831,7 +833,8 @@ function CatalogPanel({
       {materials.length === 0 ? (
         <p className="text-xs italic text-slate-400">Danh mục trống.</p>
       ) : (
-        <table className="w-full text-[11px]">
+        <div className="overflow-x-auto -mx-1 px-1">
+        <table className="w-full min-w-[640px] text-[11px]">
           <thead>
             <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-left">
               <th className="py-1.5">Mã</th>
@@ -872,6 +875,7 @@ function CatalogPanel({
             })}
           </tbody>
         </table>
+        </div>
       )}
       {edit && (
         <MaterialModal
@@ -1199,7 +1203,8 @@ function ImportModal({
             {bad > 0 && <span className="text-rose-600"> · {bad} lỗi (sẽ bỏ qua)</span>}
           </p>
           <div className="max-h-80 overflow-auto border border-slate-100 rounded-lg">
-            <table className="w-full text-[11px]">
+            <div className="overflow-x-auto -mx-1 px-1">
+            <table className="w-full min-w-[720px] text-[11px]">
               <thead className="sticky top-0 bg-white">
                 <tr className="text-[10px] font-extrabold uppercase text-slate-400 text-left">
                   <th className="px-2 py-1.5">Dòng</th>
@@ -1229,6 +1234,7 @@ function ImportModal({
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
           <div className="flex justify-end">
             <PrimaryButton onClick={commit} busy={saving} disabled={rows.length === bad}>

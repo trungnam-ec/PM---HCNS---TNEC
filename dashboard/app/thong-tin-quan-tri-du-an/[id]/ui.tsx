@@ -6,10 +6,8 @@ import type { ReactNode, InputHTMLAttributes, SelectHTMLAttributes } from "react
 import { AlertCircle, Loader2 } from "lucide-react";
 import { formatVnd } from "@/lib/projectControl";
 
-// text-base (16px) trên mobile để iOS không tự phóng to khi chạm ô nhập và để
-// ô đọc-only cùng cỡ với ô nhập; về text-xs (12px) từ sm trở lên (giữ desktop gọn).
 export const inputCls =
-  "w-full text-base sm:text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#00AEEF] placeholder:text-slate-400 disabled:bg-slate-50 disabled:text-slate-500";
+  "w-full text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#00AEEF] placeholder:text-slate-400 disabled:bg-slate-50 disabled:text-slate-500";
 
 export function Field({ label, children, className = "" }: { label: string; children: ReactNode; className?: string }) {
   return (
@@ -107,8 +105,8 @@ export function ErrorLine({ msg }: { msg: string | null | undefined }) {
 export function Card({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="bg-white rounded-2xl border border-slate-100 shadow-sm">
-      <div className="flex items-center gap-2 px-5 py-3.5 border-b border-slate-100">
-        <h3 className="font-heading font-extrabold text-xs text-slate-800 flex-1">{title}</h3>
+      <div className="flex flex-wrap items-center gap-2 px-5 py-3.5 border-b border-slate-100">
+        <h3 className="font-heading font-extrabold text-xs text-slate-800 flex-1 min-w-0">{title}</h3>
         {action}
       </div>
       <div className="p-5">{children}</div>

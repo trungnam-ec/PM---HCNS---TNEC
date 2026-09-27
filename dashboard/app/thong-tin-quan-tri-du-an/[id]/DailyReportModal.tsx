@@ -187,7 +187,7 @@ export default function DailyReportModal({
           <table className="text-[11px] min-w-full">
             <thead>
               <tr className="bg-slate-50 text-slate-500">
-                <th className="text-left font-bold px-2 py-1.5 w-28">Nội dung</th>
+                <th className="text-left font-bold px-2 py-1.5 w-28 sticky left-0 bg-slate-50 z-10 border-r border-slate-200">Nội dung</th>
                 {units.map((u) => (
                   <th key={u.key} className="font-bold px-1 py-1.5 min-w-[88px]" title={u.name}>
                     {u.key.startsWith("u-") ? (
@@ -213,7 +213,7 @@ export default function DailyReportModal({
             <tbody>
               {keys.map((k) => (
                 <tr key={k} className="border-t border-slate-100">
-                  <td className="px-2 py-1 font-semibold text-slate-600">{k}</td>
+                  <td className="px-2 py-1 font-semibold text-slate-600 sticky left-0 bg-white z-10 border-r border-slate-100">{k}</td>
                   {units.map((u) => (
                     <td key={u.key} className="px-1 py-1">
                       <input
@@ -228,7 +228,7 @@ export default function DailyReportModal({
                 </tr>
               ))}
               <tr className="border-t border-slate-200 bg-slate-50 font-extrabold text-slate-700">
-                <td className="px-2 py-1.5 italic">Tổng</td>
+                <td className="px-2 py-1.5 italic sticky left-0 bg-slate-50 z-10 border-r border-slate-200">Tổng</td>
                 {units.map((u) => (
                   <td key={u.key} className="px-1 py-1.5 text-center italic">
                     {sumRecord(u[field])}

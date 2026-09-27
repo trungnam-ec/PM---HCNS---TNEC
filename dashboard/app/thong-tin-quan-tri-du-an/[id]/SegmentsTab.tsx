@@ -183,13 +183,13 @@ export default function SegmentsTab({ projectId, access }: { projectId: string; 
               const typeLabel = SEGMENT_TYPES.find((t) => t.value === s.segment_type)?.label || s.segment_type;
               return (
                 <div key={s.id} className="border border-slate-100 rounded-xl">
-                  <div className="flex items-center gap-3 px-3.5 py-2.5">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3.5 py-2.5">
                     <button
                       onClick={() => setOpen((o) => ({ ...o, [s.id]: !o[s.id] }))}
-                      className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                      className="flex flex-wrap items-center gap-x-2 gap-y-1 w-full sm:w-auto sm:flex-1 min-w-0 text-left"
                     >
                       {isOpen ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
-                      <span className="text-xs font-extrabold text-slate-800 w-14 shrink-0">{s.code}</span>
+                      <span className="text-xs font-extrabold text-slate-800 min-w-14 shrink-0">{s.code}</span>
                       <span className="text-[11px] font-mono font-semibold text-slate-600 shrink-0">
                         {formatKm(s.km_start_m)} – {formatKm(s.km_end_m)}
                       </span>

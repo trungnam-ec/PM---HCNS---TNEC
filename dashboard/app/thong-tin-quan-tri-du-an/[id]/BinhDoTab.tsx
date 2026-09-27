@@ -208,8 +208,12 @@ export default function BinhDoTab({
   const labelCls = "sticky left-0 z-10 bg-white text-[11px] font-bold text-slate-500 px-4 py-2.5 border-r border-slate-100 min-w-[220px] w-[220px]";
   const groupRow = (title: string) => (
     <tr>
-      <td colSpan={segments.length + 1} className="bg-slate-50 text-[10px] font-extrabold uppercase tracking-wider text-[#005BAC] px-3 py-1.5">
-        {title}
+      {/* Dòng tiêu đề mục trải hết bảng nhưng CHỮ phải ghim trái (sticky) — nếu không,
+          khi cuộn ngang chữ trôi theo và bị cắt mất. */}
+      <td colSpan={segments.length + 1} className="bg-slate-50 p-0">
+        <div className="sticky left-0 z-10 inline-block bg-slate-50 text-[10px] font-extrabold uppercase tracking-wider text-[#005BAC] px-3 py-1.5">
+          {title}
+        </div>
       </td>
     </tr>
   );

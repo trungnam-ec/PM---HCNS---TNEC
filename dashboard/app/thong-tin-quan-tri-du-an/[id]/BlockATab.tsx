@@ -225,9 +225,11 @@ export default function BlockATab({
               const v = hasManual ? manual : auto;
               return (
                 <div key={s.id} className="space-y-1.5">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-extrabold text-slate-800 w-14">{s.code}</span>
-                    <GpmbBar value={v} editable={canEdit} onCommit={(nv) => setGpmbPct(s.id, nv)} />
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <span className="text-xs font-extrabold text-slate-800 w-14 shrink-0">{s.code}</span>
+                    <div className="flex flex-1 min-w-[130px]">
+                      <GpmbBar value={v} editable={canEdit} onCommit={(nv) => setGpmbPct(s.id, nv)} />
+                    </div>
                     <span
                       className={`text-[11px] font-bold px-2 py-0.5 rounded ${
                         rows.length || hasManual ? gpmbBarCls(v).badge : heatCls(null)
@@ -254,12 +256,12 @@ export default function BlockATab({
                         <CheckCircle2 size={11} /> Bàn giao cả lý trình
                       </button>
                     )}
-                    <span className="text-[10px] text-slate-400 w-40 text-right">
+                    <span className="text-[10px] text-slate-400 shrink-0 ml-auto">
                       {(Number(s.km_end_m) - Number(s.km_start_m)).toLocaleString("vi-VN")} m × {s.sides} bên
                     </span>
                   </div>
                   {rows.length === 0 && (
-                    <p className="text-[11px] italic text-slate-400 pl-16">
+                    <p className="text-[11px] italic text-slate-400 pl-4 sm:pl-16">
                       Chưa có đoạn bàn giao —{" "}
                       {canEdit ? "bấm \"Bàn giao cả lý trình\" hoặc \"Thêm đoạn bàn giao\" để nhập." : "chưa được nhập."}
                     </p>
@@ -267,7 +269,7 @@ export default function BlockATab({
                   {rows.map((r) => {
                     const st = GPMB_STATUS[r.status];
                     return (
-                      <div key={r.id} className="flex items-center gap-2 text-[11px] pl-16">
+                      <div key={r.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] pl-4 sm:pl-16">
                         <span className="font-mono text-slate-600 w-44 shrink-0">
                           {formatKm(r.from_m)} – {formatKm(r.to_m)}
                         </span>
@@ -313,11 +315,11 @@ export default function BlockATab({
           <p className="text-xs italic text-slate-400">Chưa có mục huy động.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1250px] table-fixed text-[11px]">
+            <table className="w-full min-w-[1280px] table-fixed text-[11px]">
               <GridCols canFin={canFin} canEdit={canEdit} />
               <thead>
                 <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-left">
-                  <th className="py-1.5 pr-2">Hạng mục huy động</th>
+                  <th className="py-1.5 pr-2 sticky left-0 bg-white z-10 border-r border-slate-100">Hạng mục huy động</th>
                   <th className="px-2">Lý trình</th>
                   <th className="px-2">Ngày KH</th>
                   <th className="px-2" colSpan={canFin ? 2 : 1}>
@@ -336,13 +338,15 @@ export default function BlockATab({
                   return (
                     <Fragment key={cat.value}>
                       <tr className="border-t border-slate-100">
-                        <td colSpan={gridColCount(canFin, canEdit)} className="pt-3 pb-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-                          {cat.label} · {pct(readiness(rows.map((r) => Number(r.status))))}
+                        <td colSpan={gridColCount(canFin, canEdit)} className="p-0">
+                          <div className="sticky left-0 inline-block bg-white pt-3 pb-1 pr-3 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                            {cat.label} · {pct(readiness(rows.map((r) => Number(r.status))))}
+                          </div>
                         </td>
                       </tr>
                       {rows.map((r) => (
                         <tr key={r.id} className="border-t border-slate-100">
-                          <td className="py-1.5 pr-2 font-semibold text-slate-700 truncate" title={r.item_name}>
+                          <td className="py-1.5 pr-2 font-semibold text-slate-700 truncate sticky left-0 bg-white z-10 border-r border-slate-100" title={r.item_name}>
                             {r.item_name}
                           </td>
                           <td className="px-2 text-slate-500">{segLabel(r.segment_id)}</td>
@@ -401,11 +405,11 @@ export default function BlockATab({
         ) : (
           <div className="overflow-x-auto">
             {/* Cùng khung cột với bảng Huy động (GridCols) để hai bảng thẳng hàng trên dưới. */}
-            <table className="w-full min-w-[1250px] table-fixed text-[11px]">
+            <table className="w-full min-w-[1280px] table-fixed text-[11px]">
               <GridCols canFin={canFin} canEdit={canEdit} />
               <thead>
                 <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-left">
-                  <th className="py-1.5 pr-2">Phát sinh</th>
+                  <th className="py-1.5 pr-2 sticky left-0 bg-white z-10 border-r border-slate-100">Phát sinh</th>
                   <th className="px-2">Lý trình</th>
                   <th className="px-2">Hạn</th>
                   <th className="px-2">Ảnh hưởng</th>
@@ -428,7 +432,7 @@ export default function BlockATab({
                       );
                     return (
                       <tr key={d.id} className="border-t border-slate-100">
-                        <td className="py-1.5 pr-2">
+                        <td className="py-1.5 pr-2 sticky left-0 bg-white z-10 border-r border-slate-100">
                           <span className="font-semibold text-slate-700">{d.name}</span>
                           {it && <span className="block text-[10px] text-slate-400">{it.code} {it.name}</span>}
                         </td>
@@ -526,14 +530,14 @@ function gridColCount(canFin: boolean, canEdit: boolean): number {
 function GridCols({ canFin, canEdit }: { canFin: boolean; canEdit: boolean }) {
   return (
     <colgroup>
-      <col />
+      <col className="w-[180px]" />
       <col className="w-[90px]" />
       <col className="w-[100px]" />
       <col className="w-[90px]" />
       {canFin && <col className="w-[180px]" />}
-      <col className="w-[240px]" />
-      <col className="w-[240px]" />
-      <col className="w-[240px]" />
+      <col className="w-[190px]" />
+      <col className="w-[190px]" />
+      <col className="w-[190px]" />
       {canEdit && <col className="w-[50px]" />}
     </colgroup>
   );

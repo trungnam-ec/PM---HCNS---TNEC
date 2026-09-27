@@ -126,7 +126,7 @@ export default function ProjectControlListPage() {
             </div>
           ) : (
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-              <div className="grid grid-cols-[1.2fr_2fr_1fr_1fr_auto] gap-3 px-5 py-3 border-b border-slate-100 bg-slate-50/60 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+              <div className="hidden sm:grid grid-cols-[1.2fr_2fr_1fr_1fr_auto] gap-3 px-5 py-3 border-b border-slate-100 bg-slate-50/60 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
                 <span>Ban điều hành</span>
                 <span>Dự án</span>
                 <span>Trạng thái</span>
@@ -136,56 +136,73 @@ export default function ProjectControlListPage() {
               {filtered.map((r) => {
                 const p = r.project;
                 const st = p ? statusMeta(p.status) : null;
-                return (
-                  <div
-                    key={r.bdhName}
-                    className="grid grid-cols-[1.2fr_2fr_1fr_1fr_auto] gap-3 px-5 py-3.5 border-b border-slate-50 last:border-0 items-center hover:bg-slate-50/50"
+                const dates =
+                  p && (p.start_date || p.finish_date)
+                    ? `${formatDate(p.start_date) || "?"} – ${formatDate(p.finish_date) || "?"}`
+                    : "";
+                const statusBadge = st ? (
+                  <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0 ${st.cls}`}>{st.label}</span>
+                ) : null;
+                const action = p ? (
+                  <Link
+                    href={`/thong-tin-quan-tri-du-an/${p.id}`}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-[#005BAC] hover:text-blue-700 whitespace-nowrap"
                   >
-                    <span className="flex items-center gap-2 text-xs font-bold text-slate-700 min-w-0">
-                      <Building2 size={14} className="text-slate-400 shrink-0" />
-                      <span className="truncate">{r.bdhName}</span>
-                    </span>
-                    <span className="min-w-0">
-                      {p ? (
-                        <>
-                          <span className="block text-xs font-semibold text-slate-700 truncate" title={p.name}>
-                            {p.name}
-                          </span>
-                          {p.code && <span className="text-[10px] font-mono text-slate-400">{p.code}</span>}
-                        </>
-                      ) : (
-                        <span className="text-xs italic text-slate-400">Chưa lập hồ sơ</span>
-                      )}
-                    </span>
-                    <span>
-                      {st && (
-                        <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${st.cls}`}>
-                          {st.label}
+                    Mở hồ sơ <ChevronRight size={13} />
+                  </Link>
+                ) : isLeader ? (
+                  <button
+                    onClick={() => setCreating(r.bdhName)}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-white bg-[#005BAC] hover:bg-blue-700 px-2.5 py-1.5 rounded-lg whitespace-nowrap"
+                  >
+                    <Plus size={12} /> Lập hồ sơ
+                  </button>
+                ) : null;
+                return (
+                  <div key={r.bdhName} className="border-b border-slate-50 last:border-0">
+                    {/* ── MOBILE: 2 cột — trái: BĐH + trạng thái + ngày; phải: dự án + mã + nút ── */}
+                    <div className="sm:hidden px-4 py-3.5 flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                        <span className="flex items-center gap-2 text-[13px] font-extrabold text-slate-800 min-w-0">
+                          <Building2 size={15} className="text-slate-400 shrink-0" />
+                          <span className="truncate">{r.bdhName}</span>
                         </span>
-                      )}
-                    </span>
-                    <span className="text-[11px] font-semibold text-slate-500">
-                      {p && (p.start_date || p.finish_date)
-                        ? `${formatDate(p.start_date) || "?"} – ${formatDate(p.finish_date) || "?"}`
-                        : ""}
-                    </span>
-                    <span className="w-24 flex justify-end">
-                      {p ? (
-                        <Link
-                          href={`/thong-tin-quan-tri-du-an/${p.id}`}
-                          className="flex items-center gap-1 text-[11px] font-bold text-[#005BAC] hover:text-blue-700"
-                        >
-                          Mở hồ sơ <ChevronRight size={13} />
-                        </Link>
-                      ) : isLeader ? (
-                        <button
-                          onClick={() => setCreating(r.bdhName)}
-                          className="flex items-center gap-1 text-[11px] font-bold text-white bg-[#005BAC] hover:bg-blue-700 px-2.5 py-1.5 rounded-lg"
-                        >
-                          <Plus size={12} /> Lập hồ sơ
-                        </button>
-                      ) : null}
-                    </span>
+                        {statusBadge && <div>{statusBadge}</div>}
+                        {dates && <span className="text-[11px] font-semibold text-slate-400">{dates}</span>}
+                      </div>
+                      <div className="shrink-0 flex flex-col items-end gap-1 text-right max-w-[44%]">
+                        {p ? (
+                          <>
+                            <span className="text-xs font-semibold text-slate-700 truncate max-w-full" title={p.name}>{p.name}</span>
+                            {p.code && <span className="text-[10px] font-mono text-slate-400">{p.code}</span>}
+                          </>
+                        ) : (
+                          <span className="text-xs italic text-slate-400">Chưa lập hồ sơ</span>
+                        )}
+                        {action && <div className="mt-0.5">{action}</div>}
+                      </div>
+                    </div>
+
+                    {/* ── DESKTOP: lưới 5 cột ── */}
+                    <div className="hidden sm:grid grid-cols-[1.2fr_2fr_1fr_1fr_auto] gap-3 px-5 py-3.5 items-center hover:bg-slate-50/50">
+                      <span className="flex items-center gap-2 text-xs font-bold text-slate-700 min-w-0">
+                        <Building2 size={14} className="text-slate-400 shrink-0" />
+                        <span className="truncate">{r.bdhName}</span>
+                      </span>
+                      <span className="min-w-0">
+                        {p ? (
+                          <>
+                            <span className="block text-xs font-semibold text-slate-700 truncate" title={p.name}>{p.name}</span>
+                            {p.code && <span className="text-[10px] font-mono text-slate-400">{p.code}</span>}
+                          </>
+                        ) : (
+                          <span className="text-xs italic text-slate-400">Chưa lập hồ sơ</span>
+                        )}
+                      </span>
+                      <span>{statusBadge}</span>
+                      <span className="text-[11px] font-semibold text-slate-500">{dates}</span>
+                      <span className="w-24 flex justify-end">{action}</span>
+                    </div>
                   </div>
                 );
               })}

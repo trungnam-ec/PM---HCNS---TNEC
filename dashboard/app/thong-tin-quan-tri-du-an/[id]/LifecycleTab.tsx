@@ -421,12 +421,12 @@ function CloseoutCard({ projectId, canEdit }: { projectId: string; canEdit: bool
                   </span>
                   <span className="md:hidden">{removeBtn}</span>
                 </div>
-                <div className="flex items-center gap-2 mb-1.5 md:mb-0 md:contents">
-                  <span className="md:hidden w-20 shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">Nội bộ</span>
+                <div className="mb-2 md:mb-0 md:contents">
+                  <span className="md:hidden block mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Nội bộ</span>
                   <StatusBar compact widthCls="w-full" value={Number(i.internal_status)} scale={SCALE_INTERNAL} disabled={!canEdit} onChange={(v) => quick(i.id, { internal_status: v as 0 | 0.5 | 1 })} />
                 </div>
-                <div className="flex items-center gap-2 md:contents">
-                  <span className="md:hidden w-20 shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">TVGS / CĐT</span>
+                <div className="md:contents">
+                  <span className="md:hidden block mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">TVGS / CĐT</span>
                   <StatusBar compact widthCls="w-full" value={Number(i.supervisor_status)} scale={SCALE_SUPERVISOR} disabled={!canEdit} onChange={(v) => quick(i.id, { supervisor_status: v as 0 | 0.5 | 1 })} />
                 </div>
                 <span className="hidden md:flex md:justify-end">{removeBtn}</span>
@@ -743,7 +743,7 @@ function WarrantyCard({
       action={canEditInfo ? <PrimaryButton onClick={save} busy={saving}>{saved ? <><Check size={13} /> Đã lưu</> : "Lưu bảo hành"}</PrimaryButton> : null}
     >
       <ErrorLine msg={err} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         <Field label="Ngày bắt đầu bảo hành">
           <TextInput type="date" value={f.start} disabled={!canEditInfo} onChange={(e) => setF((x) => ({ ...x, start: e.target.value }))} />
         </Field>
@@ -770,7 +770,7 @@ function WarrantyCard({
         <label className="flex items-end gap-2 text-[11px] font-semibold text-slate-600 pb-2">
           <input type="checkbox" checked={f.released} disabled={!canEditInfo} onChange={(e) => setF((x) => ({ ...x, released: e.target.checked }))} /> Bảo lãnh đã giải toả
         </label>
-        <Field label="Ghi chú" className="col-span-2 md:col-span-4">
+        <Field label="Ghi chú" className="sm:col-span-2 md:col-span-4">
           <TextInput value={f.note} disabled={!canEditInfo} onChange={(e) => setF((x) => ({ ...x, note: e.target.value }))} />
         </Field>
       </div>

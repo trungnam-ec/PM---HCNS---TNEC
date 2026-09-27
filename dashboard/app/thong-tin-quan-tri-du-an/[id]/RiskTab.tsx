@@ -162,7 +162,7 @@ export default function RiskTab({ projectId, access }: { projectId: string; acce
               </colgroup>
               <thead>
                 <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-left">
-                  <th className="py-1.5">Lý trình</th>
+                  <th className="py-1.5 sticky left-0 bg-white z-10 border-r border-slate-100">Lý trình</th>
                   <th className="px-2">Trạng thái</th>
                   <th className="px-2">Điểm rủi ro</th>
                   {FACTORS.map((f) => (
@@ -412,7 +412,7 @@ function ConfigCard({ cfg, canEdit, onSaved }: { cfg: PcRiskConfig; canEdit: boo
       action={canEdit ? <PrimaryButton onClick={save} busy={saving}>Lưu & tính lại</PrimaryButton> : <span className="text-[10px] font-bold text-slate-400">Chỉ GĐDA / BLĐ sửa</span>}
     >
       <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-2">Trọng số yếu tố</p>
-      <div className="grid grid-cols-6 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {box("w_progress", "Tiến độ")}
         {box("w_gpmb", "GPMB")}
         {box("w_legal", "Pháp lý")}

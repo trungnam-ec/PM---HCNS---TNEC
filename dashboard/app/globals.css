@@ -1167,16 +1167,10 @@ html.dark .paper-sheet .border-slate-900 { border-color: #0f172a !important; }
 /* Giữ cỡ chữ ổn định khi xoay máy, không để iOS tự phóng. */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
-/* iPhone TỰ PHÓNG TO trang mỗi khi chạm vào ô nhập có cỡ chữ < 16px — rất khó
-   chịu. Ép các ô nhập ≥ 16px trên màn hình nhỏ để tắt hành vi này. Chỉ áp cho
-   cảm ứng nhỏ nên desktop giữ nguyên. */
-@media (max-width: 639px) {
-  input:not([type="checkbox"]):not([type="radio"]),
-  select,
-  textarea {
-    font-size: 16px !important;
-  }
-}
+/* GHI CHÚ: trước đây có ép ô nhập ≥16px trên mobile để iOS không tự phóng to khi
+   chạm ô. Nhưng nhiều ô trong app rất hẹp (lưới nhiều cột, form dày) nên 16px làm
+   chữ TRÀN/BỊ CẮT. Ưu tiên giữ cỡ chữ thiết kế (nhỏ, gọn, vừa ô) — chấp nhận iOS
+   phóng nhẹ khi focus. Do đó KHÔNG ép font-size ở đây nữa. */
 
 /* Khi đã "Thêm vào MH chính" và mở dạng app (standalone): chừa lề an toàn cho
    thanh Home dưới đáy và phần "tai thỏ" khi xoay ngang, tránh bị che nội dung. */

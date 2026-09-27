@@ -398,22 +398,24 @@ export default function FinanceTab({
               const pays = data.payments.filter((p) => p.contract_id === c.id);
               return (
                 <div key={c.id} className="border border-slate-100 rounded-xl p-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0">
                       {c.contract_type === "A_B" ? "A-B" : "B-B'"}
                     </span>
-                    <span className="text-xs font-extrabold text-slate-800 flex-1">{c.partner_name}</span>
-                    <span className="text-[11px] font-mono text-slate-500">GT {formatMoneyShort(contractValue(c))}</span>
-                    {canEdit && (
-                      <>
-                        <button onClick={() => setAccFor({ contract: c, row: null })} className="text-[10px] font-bold text-[#005BAC] flex items-center gap-0.5">
-                          <Plus size={11} /> Nghiệm thu
-                        </button>
-                        <button onClick={() => setPayFor({ contract: c, row: null })} className="text-[10px] font-bold text-[#005BAC] flex items-center gap-0.5">
-                          <Plus size={11} /> Thanh toán
-                        </button>
-                      </>
-                    )}
+                    <span className="text-xs font-extrabold text-slate-800 flex-1 min-w-0">{c.partner_name}</span>
+                    <div className="flex items-center gap-3 basis-full sm:basis-auto sm:shrink-0">
+                      <span className="text-[11px] font-mono text-slate-500 shrink-0">GT {formatMoneyShort(contractValue(c))}</span>
+                      {canEdit && (
+                        <>
+                          <button onClick={() => setAccFor({ contract: c, row: null })} className="text-[10px] font-bold text-[#005BAC] flex items-center gap-0.5 shrink-0">
+                            <Plus size={11} /> Nghiệm thu
+                          </button>
+                          <button onClick={() => setPayFor({ contract: c, row: null })} className="text-[10px] font-bold text-[#005BAC] flex items-center gap-0.5 shrink-0">
+                            <Plus size={11} /> Thanh toán
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                   {accs.map((a) => (
                     <div key={a.id} className="flex items-center gap-2 text-[11px] pl-2">
@@ -618,7 +620,7 @@ function PlanEditor({
     <Card
       title="Kế hoạch sản lượng & giải ngân theo tháng"
       action={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 basis-full sm:basis-auto">
           <select
             value={version}
             onChange={(e) => {

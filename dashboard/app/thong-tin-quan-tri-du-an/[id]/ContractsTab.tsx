@@ -171,7 +171,7 @@ export default function ContractsTab({ projectId, access }: { projectId: string;
     const parent = c.parent_contract_id ? contracts.find((x) => x.id === c.parent_contract_id) : null;
     return (
       <div key={c.id} className="border border-slate-100 rounded-xl p-3.5 space-y-2.5">
-        <div className="flex items-start gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-extrabold text-slate-800">{c.partner_name || "(chưa chọn đơn vị)"}</span>
@@ -194,24 +194,28 @@ export default function ContractsTab({ projectId, access }: { projectId: string;
             </p>
             {c.note && <p className="text-[11px] text-slate-400 italic mt-0.5">{c.note}</p>}
           </div>
-          {canFin && (
-            <div className="text-right shrink-0">
-              <p className="text-sm font-extrabold font-mono text-slate-800">{cur != null ? formatMoneyShort(cur) : "—"}</p>
-              <p className="text-[10px] text-slate-400">
-                trước VAT{myAdd.length ? ` · gồm ${myAdd.length} phụ lục` : ""}
-                {f?.advance_rate != null ? ` · TƯ ${rateToPct(f.advance_rate)}%` : ""}
-                {f?.retention_rate != null ? ` · giữ lại ${rateToPct(f.retention_rate)}%` : ""}
-              </p>
-            </div>
-          )}
-          {canEdit && (
-            <div className="flex shrink-0">
-              <GhostButton onClick={() => setEditing(c)}>
-                <Pencil size={12} />
-              </GhostButton>
-              <GhostButton danger onClick={() => removeContract(c)}>
-                <Trash2 size={12} />
-              </GhostButton>
+          {(canFin || canEdit) && (
+            <div className="flex items-start justify-between gap-2 sm:justify-end shrink-0">
+              {canFin && (
+                <div className="text-left sm:text-right">
+                  <p className="text-sm font-extrabold font-mono text-slate-800">{cur != null ? formatMoneyShort(cur) : "—"}</p>
+                  <p className="text-[10px] text-slate-400">
+                    trước VAT{myAdd.length ? ` · gồm ${myAdd.length} phụ lục` : ""}
+                    {f?.advance_rate != null ? ` · TƯ ${rateToPct(f.advance_rate)}%` : ""}
+                    {f?.retention_rate != null ? ` · giữ lại ${rateToPct(f.retention_rate)}%` : ""}
+                  </p>
+                </div>
+              )}
+              {canEdit && (
+                <div className="flex shrink-0">
+                  <GhostButton onClick={() => setEditing(c)}>
+                    <Pencil size={12} />
+                  </GhostButton>
+                  <GhostButton danger onClick={() => removeContract(c)}>
+                    <Trash2 size={12} />
+                  </GhostButton>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -247,7 +247,7 @@ export default function OverviewTab({
                 <TextInput value={fin.vat} onChange={(e) => setFin((x) => ({ ...x, vat: e.target.value }))} disabled={!access.can_edit_finance} />
               </Field>
               <Field label="GT HĐ sau VAT (tự tính)">
-                <div className="text-xs font-mono font-bold text-slate-700 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 text-right">
+                <div className="text-base sm:text-xs font-mono font-bold text-slate-700 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 text-right">
                   {postVat != null ? `${formatVnd(postVat)} đ` : "—"}
                 </div>
               </Field>

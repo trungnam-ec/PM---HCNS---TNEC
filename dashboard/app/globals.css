@@ -1145,3 +1145,30 @@ html.dark .paper-sheet .text-slate-500 { color: #64748b !important; }
 html.dark .paper-sheet .border-slate-200 { border-color: #e2e8f0 !important; }
 html.dark .paper-sheet .border-slate-300 { border-color: #cbd5e1 !important; }
 html.dark .paper-sheet .border-slate-900 { border-color: #0f172a !important; }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   PWA / TỐI ƯU DI ĐỘNG (iPhone)
+   Gói riêng ở cuối để không đụng phần giao diện desktop đang chạy.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Giữ cỡ chữ ổn định khi xoay máy, không để iOS tự phóng. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+/* iPhone TỰ PHÓNG TO trang mỗi khi chạm vào ô nhập có cỡ chữ < 16px — rất khó
+   chịu. Ép các ô nhập ≥ 16px trên màn hình nhỏ để tắt hành vi này. Chỉ áp cho
+   cảm ứng nhỏ nên desktop giữ nguyên. */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Khi đã "Thêm vào MH chính" và mở dạng app (standalone): chừa lề an toàn cho
+   thanh Home dưới đáy và phần "tai thỏ" khi xoay ngang, tránh bị che nội dung. */
+@media (display-mode: standalone) {
+  body { padding-bottom: env(safe-area-inset-bottom); }
+  /* Thanh bên cố định: nút Đăng xuất/hồ sơ nằm sát đáy, đẩy lên khỏi thanh Home. */
+  aside { padding-bottom: env(safe-area-inset-bottom); }
+}

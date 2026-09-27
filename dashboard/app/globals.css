@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+/* Font nạp MỘT LẦN ở <head> trong app/layout.tsx (không @import ở đây để tránh
+   chặn render và tránh trùng/lệch cân nặng). Hai token dưới là nguồn tham chiếu
+   duy nhất: --font-sans (thân bài) và --font-heading (tiêu đề, class .font-heading). */
 @import "tailwindcss";
 
 @theme {
@@ -14,6 +16,17 @@
   
   --font-sans: 'Inter', sans-serif;
   --font-heading: 'Plus Jakarta Sans', sans-serif;
+  /* Trước đây số/mã dùng font-mono → rơi về monospace mặc định của máy, lệch với
+     Inter và khác nhau trên mỗi thiết bị. Nay quy font-mono về CHÍNH Inter cho
+     đồng bộ toàn hệ thống; phần canh cột số thẳng hàng do .font-mono bật
+     tabular-nums bên dưới đảm nhiệm. */
+  --font-mono: 'Inter', sans-serif;
+}
+
+/* Giữ lợi ích canh cột của số (đều bề ngang) mà không cần font monospace. */
+.font-mono {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
 :root {

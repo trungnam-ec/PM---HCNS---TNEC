@@ -1,10 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import AuthWrapper from "@/components/AuthWrapper";
 import PWARegister from "@/components/PWARegister";
-
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 const SYSTEM_TITLE = process.env.NEXT_PUBLIC_SYSTEM_TITLE || "Trungnam E&C";
 
@@ -38,11 +35,18 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="vi" className={inter.variable} suppressHydrationWarning>
+    <html lang="vi" suppressHydrationWarning>
       <head>
+        {/* NGUỒN FONT DUY NHẤT của hệ thống — Inter (thân bài) + Plus Jakarta Sans
+            (tiêu đề). Nạp một lần ở đây, đủ dải cân nặng và tự có bộ ký tự tiếng
+            Việt. Không @import trong CSS, không khai báo lại nơi khác để tránh
+            lệch/trùng. Xem thêm @theme trong globals.css (--font-sans / --font-heading). */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+          rel="stylesheet"
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'){document.documentElement.classList.add('dark');}}catch(e){}})();`,

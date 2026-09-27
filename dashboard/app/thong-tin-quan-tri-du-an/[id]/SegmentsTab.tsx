@@ -51,7 +51,7 @@ const EMPTY_SEG: SegForm = {
   segment_type: "ROAD",
   structure_name: "",
   locality: "",
-  sides: "2",
+  sides: "BOTH",
   planned_start: "",
   planned_finish: "",
   note: "",
@@ -281,7 +281,7 @@ function SegmentModal({
           segment_type: segment.segment_type,
           structure_name: segment.structure_name || "",
           locality: segment.locality || "",
-          sides: String(segment.sides),
+          sides: Number(segment.sides) === 1 ? "LEFT" : "BOTH",
           planned_start: segment.planned_start || "",
           planned_finish: segment.planned_finish || "",
           note: segment.note || "",
@@ -308,7 +308,7 @@ function SegmentModal({
       segment_type: f.segment_type,
       structure_name: f.structure_name.trim() || null,
       locality: f.locality.trim() || null,
-      sides: Number(f.sides) === 1 ? 1 : 2,
+      sides: f.sides === "BOTH" ? 2 : 1,
       sort_order: Math.round(start),
       planned_start: f.planned_start || null,
       planned_finish: f.planned_finish || null,
@@ -360,8 +360,9 @@ function SegmentModal({
         </Field>
         <Field label="Số bên tuyến (tính % GPMB)">
           <Select value={f.sides} onChange={set("sides")}>
-            <option value="2">2 bên (trái + phải)</option>
-            <option value="1">1 bên</option>
+            <option value="LEFT">Bên trái</option>
+            <option value="RIGHT">Bên phải</option>
+            <option value="BOTH">Cả 2 bên</option>
           </Select>
         </Field>
         <div />

@@ -7,12 +7,12 @@
 // • Lịch sử chuyển giai đoạn.
 // • Hồ sơ hoàn công (checklist) · Quyết toán A-B / B-B' (tiền) · Bảo hành + sự cố.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useConfirmBox } from "@/components/ConfirmDialog";
 import {
   ACCEPTANCE_STATUS,
-  CLOSEOUT_TEMPLATE,
+  CLOSEOUT_GROUPS,
   LIFECYCLE_STEPS,
   SCALE_INTERNAL,
   SCALE_SUPERVISOR,
@@ -32,6 +32,7 @@ import {
   warrantyEnd,
   type GateCheck,
   type PcAccess,
+  type PcCloseoutGroup,
   type PcCloseoutItem,
   type PcContract,
   type PcLifecycleEvent,
@@ -304,12 +305,16 @@ function HistoryCard({ events }: { events: PcLifecycleEvent[] }) {
 }
 
 // ─── Hồ sơ hoàn công ───
+// 3 nút nhóm lớn (I/II/III) → bấm mở popup danh sách mục con của nhóm đó.
+const isDone = (i: PcCloseoutItem) => Number(i.internal_status) === 1 && Number(i.supervisor_status) === 1;
+const TEMPLATE_TOTAL = CLOSEOUT_GROUPS.reduce((s, g) => s + g.items.length, 0);
+
 function CloseoutCard({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
-  const { ask, confirmNode } = useConfirmBox();
   const [items, setItems] = useState<PcCloseoutItem[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState("");
+  const [open, setOpen] = useState<PcCloseoutGroup | null>(null);
+  const seeding = useRef(false);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.from("pc_closeout_items").select("*").eq("project_id", projectId).order("sort_order");
@@ -322,61 +327,175 @@ function CloseoutCard({ projectId, canEdit }: { projectId: string; canEdit: bool
     load();
   }, [load]);
 
-  async function seed() {
-    const { error } = await supabase
-      .from("pc_closeout_items")
-      .insert(CLOSEOUT_TEMPLATE.map((n, i) => ({ project_id: projectId, item_name: n, sort_order: (i + 1) * 10 })));
+  // Tạo danh mục mẫu cho các nhóm truyền vào. Khoá bằng ref chống bấm trùng.
+  async function seed(codes: PcCloseoutGroup[]) {
+    if (seeding.current) return;
+    seeding.current = true;
+    setBusy(true);
+    const rows = CLOSEOUT_GROUPS.filter((g) => codes.includes(g.code)).flatMap((g) =>
+      g.items.map((it, i) => ({ project_id: projectId, group_code: g.code, item_no: it.no, item_name: it.name, sort_order: (i + 1) * 10 }))
+    );
+    const { error } = await supabase.from("pc_closeout_items").insert(rows);
+    seeding.current = false;
+    setBusy(false);
     if (error) return setErr(pcErrorMessage(error));
     load();
+  }
+
+  const all = items || [];
+  const done = all.filter(isDone).length;
+  const group = CLOSEOUT_GROUPS.find((g) => g.code === open) || null;
+
+  return (
+    <Card title={`Hồ sơ hoàn công${all.length ? ` — ${done}/${all.length} đạt` : ""}`}>
+      <ErrorLine msg={err} />
+      {!items ? (
+        <Loader2 className="animate-spin text-[#005BAC] mx-auto" size={20} />
+      ) : (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {CLOSEOUT_GROUPS.map((g) => {
+              const xs = all.filter((i) => i.group_code === g.code);
+              const ok = xs.filter(isDone).length;
+              const pct = xs.length ? Math.round((ok / xs.length) * 100) : 0;
+              return (
+                <button
+                  key={g.code}
+                  type="button"
+                  onClick={() => setOpen(g.code)}
+                  className="text-left rounded-xl border border-slate-200 hover:border-[#005BAC] hover:shadow-md transition-all p-4 flex flex-col gap-2 bg-white"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <span className="shrink-0 w-8 h-8 rounded-lg bg-[#005BAC]/10 text-[#005BAC] font-heading font-extrabold text-xs flex items-center justify-center">
+                      {g.code}
+                    </span>
+                    <span className="font-bold text-[12px] text-slate-700 leading-snug">{g.title}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div className={`h-full ${pct >= 100 ? "bg-emerald-500" : "bg-[#005BAC]"}`} style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500">{xs.length ? `${ok}/${xs.length} mục đạt` : "Chưa có danh mục"}</span>
+                    <span className="font-bold text-[#005BAC] flex items-center gap-1">
+                      Xem chi tiết <ArrowRight size={12} />
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          {all.length === 0 && (
+            <div className="text-center pt-1 space-y-2">
+              <p className="text-xs text-slate-500">Chưa có checklist hoàn công (cần cho gate &quot;Hoàn thành&quot;).</p>
+              {canEdit && (
+                <div className="flex justify-center">
+                  <PrimaryButton onClick={() => seed(CLOSEOUT_GROUPS.map((g) => g.code))} disabled={busy}>
+                    Tạo checklist mẫu đủ 3 nhóm ({TEMPLATE_TOTAL} mục)
+                  </PrimaryButton>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {group && (
+        <CloseoutGroupModal
+          projectId={projectId}
+          group={group}
+          items={all.filter((i) => i.group_code === group.code)}
+          canEdit={canEdit}
+          busy={busy}
+          onSeed={() => seed([group.code])}
+          onPatch={(id, patch) => setItems((xs) => (xs || []).map((x) => (x.id === id ? { ...x, ...patch } : x)))}
+          onReload={load}
+          onClose={() => setOpen(null)}
+        />
+      )}
+    </Card>
+  );
+}
+
+function CloseoutGroupModal({
+  projectId,
+  group,
+  items,
+  canEdit,
+  busy,
+  onSeed,
+  onPatch,
+  onReload,
+  onClose,
+}: {
+  projectId: string;
+  group: (typeof CLOSEOUT_GROUPS)[number];
+  items: PcCloseoutItem[];
+  canEdit: boolean;
+  busy: boolean;
+  onSeed: () => void;
+  onPatch: (id: string, patch: Partial<PcCloseoutItem>) => void;
+  onReload: () => void;
+  onClose: () => void;
+}) {
+  // Xác nhận xoá ngay tại dòng: hộp ConfirmDialog (z-90) sẽ nằm DƯỚI Modal (z-900).
+  const [pendingDel, setPendingDel] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+
+  async function remove(id: string) {
+    setPendingDel(null);
+    const e = await pcDelete("pc_closeout_items", { id });
+    if (e) setErr(e);
+    onReload();
   }
 
   async function add() {
     if (!name.trim()) return;
-    const max = (items || []).reduce((m, i) => Math.max(m, i.sort_order), 0);
-    const { error } = await supabase.from("pc_closeout_items").insert({ project_id: projectId, item_name: name.trim(), sort_order: max + 10 });
+    const max = items.reduce((m, i) => Math.max(m, i.sort_order), 0);
+    const { error } = await supabase
+      .from("pc_closeout_items")
+      .insert({ project_id: projectId, group_code: group.code, item_name: name.trim(), sort_order: max + 10 });
     if (error) return setErr(pcErrorMessage(error));
     setName("");
     setAdding(false);
-    load();
+    onReload();
   }
 
   async function quick(id: string, patch: Partial<PcCloseoutItem>) {
-    setItems((xs) => (xs || []).map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    onPatch(id, patch);
     const e = await pcUpdate("pc_closeout_items", { id }, patch as Record<string, unknown>);
     if (e) {
       setErr(e);
-      load();
+      onReload();
     }
   }
 
-  const done = (items || []).filter((i) => Number(i.internal_status) === 1 && Number(i.supervisor_status) === 1).length;
+  const done = items.filter(isDone).length;
 
   return (
-    <Card
-      title={`Hồ sơ hoàn công${items && items.length ? ` — ${done}/${items.length} đạt` : ""}`}
-      action={
-        canEdit && items && items.length > 0 ? (
-          <button onClick={() => setAdding((a) => !a)} className="text-[11px] font-bold text-[#005BAC] flex items-center gap-1">
-            <Plus size={12} /> Thêm mục
-          </button>
-        ) : null
-      }
-    >
+    <Modal title={`${group.code}. ${group.title}${items.length ? ` — ${done}/${items.length} đạt` : ""}`} onClose={onClose} xwide>
       <ErrorLine msg={err} />
-      {!items ? (
-        <Loader2 className="animate-spin text-[#005BAC] mx-auto" size={20} />
-      ) : items.length === 0 ? (
+      {items.length === 0 ? (
         <div className="text-center py-4 space-y-2">
           <ListChecks size={22} className="mx-auto text-slate-300" />
-          <p className="text-xs text-slate-500">Chưa có checklist hoàn công (cần cho gate &quot;Hoàn thành&quot;).</p>
+          <p className="text-xs text-slate-500">Nhóm này chưa có danh mục hồ sơ.</p>
           {canEdit && (
             <div className="flex justify-center">
-              <PrimaryButton onClick={seed}>Tạo checklist mẫu ({CLOSEOUT_TEMPLATE.length} mục)</PrimaryButton>
+              <PrimaryButton onClick={onSeed} disabled={busy}>
+                Tạo danh mục mẫu ({group.items.length} mục)
+              </PrimaryButton>
             </div>
           )}
         </div>
       ) : (
         <div className="space-y-2">
+          {canEdit && (
+            <div className="flex justify-end">
+              <button onClick={() => setAdding((a) => !a)} className="text-[11px] font-bold text-[#005BAC] flex items-center gap-1">
+                <Plus size={12} /> Thêm mục
+              </button>
+            </div>
+          )}
           {adding && (
             <div className="flex gap-2">
               <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên hồ sơ" />
@@ -390,34 +509,45 @@ function CloseoutCard({ projectId, canEdit }: { projectId: string; canEdit: bool
             <span>TVGS / CĐT</span>
             <span />
           </div>
-          {items.map((i) => {
-            const removeBtn = canEdit ? (
+          {items.map((i, idx) => {
+            // Ý con "10.a": in tiêu đề mục cha (nếu có) trước ý con đầu tiên, rồi thụt lề.
+            const [parent, sub] = (i.item_no || "").split(".");
+            const prevParent = (items[idx - 1]?.item_no || "").split(".")[0];
+            const heading = sub && parent !== prevParent ? group.headings?.[parent] : undefined;
+            const label = !i.item_no ? "•" : sub ? `${sub})` : `${i.item_no}.`;
+            const removeBtn = !canEdit ? null : pendingDel === i.id ? (
+              <span className="flex items-center gap-1 shrink-0">
+                <button onClick={() => remove(i.id)} className="text-rose-500 hover:text-rose-700" aria-label="Xác nhận xoá">
+                  <Check size={14} />
+                </button>
+                <button onClick={() => setPendingDel(null)} className="text-slate-400 hover:text-slate-600" aria-label="Huỷ xoá">
+                  <X size={14} />
+                </button>
+              </span>
+            ) : (
               <button
-                onClick={() =>
-                  ask({
-                    title: `Xoá "${i.item_name}"?`,
-                    onConfirm: async () => {
-                      const e = await pcDelete("pc_closeout_items", { id: i.id });
-                      if (e) setErr(e);
-                      load();
-                    },
-                  })
-                }
+                onClick={() => setPendingDel(i.id)}
                 className="text-slate-300 hover:text-rose-500 shrink-0"
                 aria-label={`Xoá ${i.item_name}`}
+                title="Xoá mục"
               >
                 <Trash2 size={13} />
               </button>
-            ) : null;
+            );
             return (
-              // Mobile: xếp dọc (tên → Nội bộ → TVGS). Desktop (md+): lưới 1 hàng.
-              <div
-                key={i.id}
-                className="border-b border-slate-100 pb-3 last:border-0 last:pb-0 md:border-0 md:pb-0 md:grid md:grid-cols-[1fr_220px_220px_20px] md:gap-x-5 md:items-center text-[11px]"
-              >
-                <div className="flex items-center justify-between gap-2 mb-2 md:mb-0 md:min-w-0">
-                  <span className="font-semibold text-slate-700 truncate" title={i.item_name}>
-                    {i.item_name}
+              <div key={i.id} className="space-y-2">
+                {heading && (
+                  <p className="text-[11px] font-semibold text-slate-700 flex gap-2">
+                    <span className="w-6 shrink-0 text-slate-400">{parent}.</span>
+                    <span>{heading}</span>
+                  </p>
+                )}
+              {/* Mobile: xếp dọc (tên → Nội bộ → TVGS). Desktop (md+): lưới 1 hàng. */}
+              <div className="border-b border-slate-100 pb-3 md:pb-2 md:grid md:grid-cols-[1fr_220px_220px_20px] md:gap-x-5 md:items-center text-[11px]">
+                <div className="flex items-start justify-between gap-2 mb-2 md:mb-0 md:min-w-0">
+                  <span className={`flex gap-2 font-semibold text-slate-700 leading-snug ${sub ? "pl-6" : ""}`}>
+                    <span className="w-6 shrink-0 text-slate-400">{label}</span>
+                    <span>{i.item_name}</span>
                   </span>
                   <span className="md:hidden">{removeBtn}</span>
                 </div>
@@ -431,12 +561,12 @@ function CloseoutCard({ projectId, canEdit }: { projectId: string; canEdit: bool
                 </div>
                 <span className="hidden md:flex md:justify-end">{removeBtn}</span>
               </div>
+              </div>
             );
           })}
         </div>
       )}
-      {confirmNode}
-    </Card>
+    </Modal>
   );
 }
 

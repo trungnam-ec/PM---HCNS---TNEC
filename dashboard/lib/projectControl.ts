@@ -1005,9 +1005,13 @@ export type PcLifecycleEvent = {
   changed_at: string;
 };
 
+export type PcCloseoutGroup = "I" | "II" | "III";
+
 export type PcCloseoutItem = {
   id: string;
   project_id: string;
+  group_code: PcCloseoutGroup;
+  item_no: string | null; // "1"…"16", ý con "10.a"; null = mục tự thêm
   item_name: string;
   internal_status: Tri;
   supervisor_status: Tri;
@@ -1017,14 +1021,73 @@ export type PcCloseoutItem = {
   sort_order: number;
 };
 
-export const CLOSEOUT_TEMPLATE = [
-  "Hồ sơ hoàn công",
-  "Bản vẽ hoàn công",
-  "Nhật ký thi công",
-  "Hồ sơ quản lý chất lượng (thí nghiệm, vật liệu)",
-  "Biên bản nghiệm thu hoàn thành hạng mục",
-  "Biên bản nghiệm thu hoàn thành công trình",
-  "Biên bản bàn giao đưa vào sử dụng",
+// Hồ sơ hoàn công — 3 nhóm lớn (migration 108). `headings` = tiêu đề của mục có ý
+// con (vd III.10): chỉ hiển thị, không chấm trạng thái; các ý con "10.a"… chấm riêng.
+export const CLOSEOUT_GROUPS: {
+  code: PcCloseoutGroup;
+  title: string;
+  items: { no: string; name: string }[];
+  headings?: Record<string, string>;
+}[] = [
+  {
+    code: "I",
+    title: "Hồ sơ chuẩn bị đầu tư xây dựng và hợp đồng",
+    items: [
+      { no: "1", name: "Quyết định chủ trương đầu tư xây dựng và Báo cáo nghiên cứu tiền khả thi đầu tư xây dựng (nếu có)" },
+      { no: "2", name: "Quyết định phê duyệt dự án đầu tư xây dựng công trình và Báo cáo nghiên cứu khả thi đầu tư xây dựng hoặc Báo cáo kinh tế - kỹ thuật đầu tư xây dựng" },
+      { no: "3", name: "Nhiệm vụ thiết kế, các văn bản thẩm định, tham gia ý kiến của các cơ quan có liên quan trong việc thẩm định dự án đầu tư xây dựng và thiết kế cơ sở" },
+      { no: "4", name: "Phương án đền bù giải phóng mặt bằng và xây dựng tái định cư (nếu có)" },
+      { no: "5", name: "Văn bản của các tổ chức, cơ quan nhà nước có thẩm quyền (nếu có) về: thỏa thuận quy hoạch, thỏa thuận hoặc chấp thuận sử dụng hoặc đấu nối với công trình kỹ thuật bên ngoài hàng rào; đánh giá tác động môi trường, bảo đảm an toàn (an toàn giao thông, an toàn cho các công trình lân cận) và các văn bản khác có liên quan" },
+      { no: "6", name: "Quyết định giao đất, cho thuê đất của cơ quan có thẩm quyền hoặc hợp đồng thuê đất đối với trường hợp không được cấp đất" },
+      { no: "7", name: "Giấy phép xây dựng, trừ những trường hợp được miễn giấy phép xây dựng" },
+      { no: "8", name: "Quyết định chỉ định thầu, phê duyệt kết quả lựa chọn các nhà thầu và hợp đồng xây dựng giữa chủ đầu tư với các nhà thầu" },
+      { no: "9", name: "Các tài liệu chứng minh năng lực của các nhà thầu theo quy định" },
+      { no: "10", name: "Các hồ sơ, tài liệu khác có liên quan trong giai đoạn chuẩn bị đầu tư xây dựng" },
+    ],
+  },
+  {
+    code: "II",
+    title: "Hồ sơ khảo sát, thiết kế xây dựng công trình",
+    items: [
+      { no: "1", name: "Nhiệm vụ khảo sát, phương án kỹ thuật khảo sát, báo cáo kết quả khảo sát xây dựng" },
+      { no: "2", name: "Văn bản phê duyệt báo cáo kết quả khảo sát xây dựng đối với trường hợp không phê duyệt trực tiếp lên báo cáo khảo sát xây dựng" },
+      { no: "3", name: "Kết quả thẩm tra, thẩm định thiết kế xây dựng; quyết định phê duyệt thiết kế xây dựng công trình kèm theo: hồ sơ thiết kế xây dựng công trình đã được phê duyệt (có danh mục bản vẽ kèm theo); chỉ dẫn kỹ thuật" },
+      { no: "4", name: "Văn bản thông báo chấp thuận nghiệm thu thiết kế xây dựng công trình" },
+      { no: "5", name: "Các văn bản, tài liệu, hồ sơ khác có liên quan đến giai đoạn khảo sát, thiết kế xây dựng công trình" },
+    ],
+  },
+  {
+    code: "III",
+    title: "Hồ sơ quản lý thi công xây dựng công trình",
+    headings: {
+      "10": "Văn bản thỏa thuận, chấp thuận, xác nhận của các tổ chức, cơ quan nhà nước có thẩm quyền (nếu có) về:",
+    },
+    items: [
+      { no: "1", name: "Danh mục các thay đổi thiết kế trong quá trình thi công xây dựng công trình và các văn bản thẩm định, phê duyệt của cấp có thẩm quyền" },
+      { no: "2", name: "Bản vẽ hoàn công (có danh mục bản vẽ kèm theo)" },
+      { no: "3", name: "Các kế hoạch, biện pháp kiểm tra, kiểm soát chất lượng thi công xây dựng công trình" },
+      { no: "4", name: "Các chứng từ chứng nhận xuất xứ hàng hóa, nhãn mác hàng hóa, tài liệu công bố tiêu chuẩn áp dụng đối với sản phẩm, hàng hóa; chứng nhận hợp quy, công bố hợp quy, thông báo tiếp nhận hồ sơ công bố hợp quy của cơ quan chuyên ngành; chứng nhận hợp chuẩn (nếu có) theo quy định của Luật Chất lượng sản phẩm hàng hóa" },
+      { no: "5", name: "Các kết quả quan trắc (nếu có), đo đạc, thí nghiệm trong quá trình thi công" },
+      { no: "6", name: "Các biên bản nghiệm thu công việc xây dựng, nghiệm thu bộ phận hoặc giai đoạn công trình (nếu có) trong quá trình thi công xây dựng" },
+      { no: "7", name: "Các kết quả thí nghiệm đối chứng, kiểm định chất lượng công trình, thí nghiệm khả năng chịu lực kết cấu xây dựng (nếu có)" },
+      { no: "8", name: "Hồ sơ quản lý chất lượng của thiết bị lắp đặt vào công trình" },
+      { no: "9", name: "Quy trình vận hành, khai thác công trình (nếu có); quy trình bảo trì công trình" },
+      { no: "10.a", name: "Di dân vùng lòng hồ, khảo sát các di tích lịch sử, văn hóa" },
+      { no: "10.b", name: "An toàn phòng cháy, chữa cháy" },
+      { no: "10.c", name: "An toàn môi trường" },
+      { no: "10.d", name: "An toàn lao động, an toàn vận hành hệ thống thiết bị công trình, thiết bị công nghệ" },
+      { no: "10.đ", name: "Thực hiện Giấy phép xây dựng (đối với trường hợp phải có giấy phép xây dựng)" },
+      { no: "10.e", name: "Cho phép đấu nối với công trình hạ tầng kỹ thuật và các công trình khác có liên quan" },
+      { no: "10.g", name: "Văn bản của cơ quan chuyên môn về xây dựng, quản lý phát triển đô thị về việc hoàn thành các công trình hạ tầng kỹ thuật có liên quan của dự án theo kế hoạch xây dựng nêu tại Báo cáo nghiên cứu khả thi đã được thẩm định, phê duyệt" },
+      { no: "10.h", name: "Các văn bản khác theo quy định của pháp luật có liên quan" },
+      { no: "11", name: "Hồ sơ giải quyết sự cố công trình (nếu có)" },
+      { no: "12", name: "Phụ lục các tồn tại cần sửa chữa, khắc phục (nếu có) sau khi đưa hạng mục công trình, công trình xây dựng vào sử dụng" },
+      { no: "13", name: "Biên bản nghiệm thu hoàn thành hạng mục công trình, công trình xây dựng" },
+      { no: "14", name: "Văn bản thông báo của cơ quan có thẩm quyền quy định tại khoản 4 Điều 57 Luật Xây dựng số 135/2025/QH15 (nếu có)" },
+      { no: "15", name: "Các hồ sơ, tài liệu có liên quan trong quá trình thực hiện kiểm tra công tác nghiệm thu theo quy định (nếu có)" },
+      { no: "16", name: "Các hồ sơ/văn bản/tài liệu khác có liên quan trong giai đoạn thi công xây dựng và nghiệm thu công trình xây dựng" },
+    ],
+  },
 ];
 
 export type PcSettlement = {

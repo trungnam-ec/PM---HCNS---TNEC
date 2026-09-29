@@ -69,6 +69,11 @@ function loadDirectory(): Promise<PickedEmployee[]> {
   return cache;
 }
 
+// Toàn bộ danh bạ (đã nạp 1 lần) — cho nhập danh sách thành viên từ Excel đối chiếu.
+export function loadDirectoryList(): Promise<PickedEmployee[]> {
+  return loadDirectory();
+}
+
 // Danh sách phòng ban/bộ phận có trong danh bạ (cho dropdown lọc).
 export async function listDirectoryDepartments(): Promise<string[]> {
   const list = await loadDirectory();

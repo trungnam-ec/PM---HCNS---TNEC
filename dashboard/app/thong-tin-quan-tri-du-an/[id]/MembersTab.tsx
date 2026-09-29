@@ -29,6 +29,7 @@ import {
 } from "@/lib/projectControl";
 import { Card, Field, Select, TextInput, PrimaryButton, ErrorLine, inputCls } from "./ui";
 import EmployeePicker, { findEmployeeByEmail, listDirectoryDepartments, type PickedEmployee } from "./EmployeePicker";
+import MembersImport from "./MembersImport";
 import { buildMembersPdfDoc, type MembersPdfRow } from "./membersPdf";
 import { buildMembersWorkbook } from "./membersXlsx";
 import { Trash2, Loader2, UserPlus, FileDown, FileSpreadsheet } from "lucide-react";
@@ -186,7 +187,7 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
   return (
     <div className="space-y-4">
       {canManage && (
-        <Card title="Thêm thành viên">
+        <Card title="Thêm thành viên" action={<MembersImport project={project} members={members} onDone={load} />}>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
             <Field label="Nhóm đơn vị">
               <TextInput value={draft.unit_group} onChange={setD("unit_group")} placeholder="VD: Ban điều hành" />

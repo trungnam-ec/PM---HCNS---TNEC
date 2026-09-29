@@ -140,7 +140,7 @@ export const CONTRACT_KINDS: { value: PcContractKind; label: string }[] = [
 export type PcMember = {
   id: string;
   project_id: string;
-  email: string;
+  email: string | null; // NULL = nhân sự chưa có email (migration 114) — không đăng nhập, không nhận quyền
   name: string | null;
   role: PcRole; // "Quyền hệ thống" — các hàm quyền đọc cột này
   // migration 111 — thông tin nhân sự dự án (chỉ hiển thị, không ảnh hưởng quyền)

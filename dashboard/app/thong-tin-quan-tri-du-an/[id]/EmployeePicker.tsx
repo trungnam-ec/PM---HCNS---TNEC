@@ -48,17 +48,18 @@ function loadDirectory(): Promise<PickedEmployee[]> {
       const { data } = await supabase.from("employees_directory").select("name, email, department, role, phone").order("name");
       const list: PickedEmployee[] = [];
       ((data as { name: string; email: string | null; department: string | null; role: string | null; phone: string | null }[]) || []).forEach((e) => {
-        // Bỏ hồ sơ không có email thật (ô ghi "n/a"…).
+        // Giữ CẢ hồ sơ chưa có email thật (ô trống / "n/a" / "chưa có") — nhân sự hiện
+        // trường BĐH nhiều người chưa có email nhưng vẫn phải chọn được. Khi đó email = "".
+        if (!e.name?.trim()) return;
         const valid = splitEmails(e.email).filter((x) => EMAIL_RE.test(x));
-        if (valid.length)
-          list.push({
-            name: e.name,
-            email: valid[0],
-            department: e.department || "",
-            role: e.role || "",
-            phone: e.phone || "",
-            workEmail: pickWorkEmail(valid),
-          });
+        list.push({
+          name: e.name,
+          email: valid[0] || "",
+          department: e.department || "",
+          role: e.role || "",
+          phone: e.phone || "",
+          workEmail: valid.length ? pickWorkEmail(valid) : "",
+        });
       });
       // Rỗng (phiên đăng nhập chưa sẵn / lỗi mạng) thì không giữ, lần sau nạp lại.
       if (!list.length) cache = null;
@@ -132,11 +133,15 @@ export default function EmployeePicker({
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
-  const options = useMemo(() => {
+  // Không cắt số lượng — danh bạ công ty vài trăm người, hiện đủ trong khung cuộn.
+  const { options, elsewhere } = useMemo(() => {
     const q = fold(search.trim());
+    const hit = (e: PickedEmployee) => fold(`${e.name} ${e.email} ${e.department} ${e.role}`).includes(q);
     const base = department ? emps.filter((e) => e.department === department) : emps;
-    const list = q ? base.filter((e) => fold(`${e.name} ${e.email} ${e.department} ${e.role}`).includes(q)) : base;
-    return list.slice(0, 60);
+    const list = q ? base.filter(hit) : base;
+    // Đang lọc theo phòng ban mà người cần tìm ở phòng khác -> báo để khỏi tưởng thiếu.
+    const other = department && q ? emps.filter((e) => e.department !== department && hit(e)).length : 0;
+    return { options: list, elsewhere: other };
   }, [emps, search, department]);
 
   const typed = search.trim();
@@ -189,6 +194,8 @@ export default function EmployeePicker({
             }}
             onFocus={() => setOpen(true)}
             placeholder={placeholder}
+            autoComplete="off"
+            name="employee-search"
             className="flex-1 min-w-0 outline-none text-[11px] font-semibold placeholder:font-normal bg-transparent text-slate-800"
           />
         </div>
@@ -208,12 +215,17 @@ export default function EmployeePicker({
               <span className="block text-[10px] text-slate-400 font-semibold">Không có trong danh bạ nhân sự</span>
             </button>
           )}
+          {elsewhere > 0 && (
+            <p className="px-3 py-1.5 text-[10px] font-semibold text-amber-700 bg-amber-50 border-b border-amber-100">
+              Có {elsewhere} người khớp ở phòng ban khác — chọn &quot;Tất cả phòng ban&quot; để thấy.
+            </p>
+          )}
           {options.length === 0 ? (
             !custom && <p className="text-center text-slate-400 text-[11px] italic py-4">Không tìm thấy nhân sự phù hợp.</p>
           ) : (
-            options.map((e) => (
+            options.map((e, i) => (
               <button
-                key={e.email}
+                key={`${e.email || e.name}-${i}`}
                 type="button"
                 onClick={() => pick(e)}
                 className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 text-left"
@@ -224,6 +236,7 @@ export default function EmployeePicker({
                   <span className="block text-[10px] text-slate-400 font-semibold truncate">
                     {e.department || "Chưa xếp phòng"}
                     {e.role ? ` • ${e.role}` : ""}
+                    {!e.email ? " • chưa có email" : ""}
                   </span>
                 </span>
               </button>

@@ -55,7 +55,9 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
   const [picked, setPicked] = useState<PickedEmployee | null>(null);
   const [draft, setDraft] = useState<Draft>(() => ({
     unit_group: "",
-    department: project.bdh_name || "",
+    // Mặc định "Tất cả phòng ban": nhân sự khối văn phòng cũng tham gia dự án. Người
+    // của BĐH vẫn xếp lên đầu danh sách (EmployeePicker bdhName).
+    department: "",
     role: "VIEW",
     project_role: "",
     duty: "",
@@ -77,7 +79,7 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
     const filled = await Promise.all(
       rows.map(async (m) => {
         if (m.department || m.title || m.phone || m.contact_email) return m;
-        const e = await findEmployeeByEmail(m.email);
+        const e = await findEmployeeByEmail(m.email || "");
         return e ? { ...m, department: e.department, title: e.role, phone: e.phone, contact_email: e.workEmail } : m;
       })
     );
@@ -104,8 +106,13 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
 
   async function add() {
     const emp = picked;
-    const email = (emp?.email || "").toLowerCase();
-    if (!email) return setErr("Chọn nhân sự trong danh sách.");
+    if (!emp) return setErr("Chọn nhân sự trong danh sách.");
+    // Nhân sự chưa có email vẫn thêm được — chỉ để có trong danh sách (không email thì
+    // không đăng nhập, không nhận quyền). Migration 114 bỏ NOT NULL cột email.
+    const email = (emp.email || "").toLowerCase() || null;
+    const sameName = (m: PcMember) => (m.name || "").trim().toLowerCase() === emp.name.trim().toLowerCase();
+    if (members.some((m) => (email ? (m.email || "").toLowerCase() === email : !m.email && sameName(m))))
+      return setErr(`${emp.name} đã có trong danh sách thành viên.`);
     setSaving(true);
     setErr(null);
     const { error } = await supabase.from("pc_project_members").insert({
@@ -307,13 +314,13 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
                       <td className="px-1 text-slate-600 min-w-[160px]">{projectName}</td>
                       <td className="px-1">{textCell(m, "unit_group")}</td>
                       <td className="px-1 text-slate-600 whitespace-nowrap">{m.department || "—"}</td>
-                      <td className="px-1 font-semibold text-slate-700 whitespace-nowrap">{m.name || m.email}</td>
+                      <td className="px-1 font-semibold text-slate-700 whitespace-nowrap">{m.name || m.email || "—"}</td>
                       <td className="px-1 text-slate-600 whitespace-nowrap">{m.title || "—"}</td>
                       <td className="px-1">{textCell(m, "project_role")}</td>
                       <td className="px-1">{textCell(m, "duty")}</td>
                       <td className="px-1">{textCell(m, "reports_to")}</td>
                       <td className="px-1 text-slate-600 whitespace-nowrap font-mono">{m.phone || "—"}</td>
-                      <td className="px-1 text-slate-600 whitespace-nowrap">{m.contact_email || m.email}</td>
+                      <td className="px-1 text-slate-600 whitespace-nowrap">{m.contact_email || m.email || "Chưa có"}</td>
                       <td className="px-1">
                         {canManage ? (
                           <select
@@ -406,7 +413,7 @@ function toPdfRows(members: PcMember[]): MembersPdfRow[] {
   return members.map((m) => {
     const status = m.status || "JOINED";
     return {
-      name: m.name || m.email,
+      name: m.name || m.email || "",
       unitGroup: m.unit_group || "",
       department: m.department || "",
       title: m.title || "",
@@ -414,7 +421,7 @@ function toPdfRows(members: PcMember[]): MembersPdfRow[] {
       duty: m.duty || "",
       reportsTo: m.reports_to || "",
       phone: m.phone || "",
-      email: m.contact_email || m.email,
+      email: m.contact_email || m.email || "Chưa có",
       status,
       statusLabel: MEMBER_STATUSES.find((x) => x.value === status)?.label || "",
       role: m.role,

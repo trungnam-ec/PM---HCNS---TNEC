@@ -42,6 +42,8 @@ export const ROLES: { value: PcRole; label: string; desc: string }[] = [
 ];
 
 export function roleLabel(r: string): string {
+  // BDH_MANAGER: cờ "GĐDA/Chỉ huy trưởng" (migration 112), không phải vai trò gán tay.
+  if (r === "BDH_MANAGER") return "GĐDA/CHT (cờ)";
   return ROLES.find((x) => x.value === r)?.label || r;
 }
 
@@ -111,15 +113,52 @@ export type PcProjectFinance = {
   contingency_value: number | null;
   payment_threshold: number;
   warranty_guarantee_value?: number | null; // giá trị bảo lãnh bảo hành — migration 102
+  // migration 109 — nhập đúng như Điều 9 HĐ (các số đã gồm VAT)
+  contract_kind?: PcContractKind | null;
+  package_total_value?: number | null; // giá HĐ toàn gói (liên danh)
+  package_construction_cost?: number | null; // chi phí xây dựng của liên danh — migration 110
+  package_contingency?: number | null; // chi phí dự phòng của liên danh (tự tính = toàn gói − CPXD liên danh)
+  contract_value?: number | null; // giá trị theo khối lượng đảm nhận
+  construction_cost?: number | null; // chi phí xây dựng
 };
+
+export type PcContractKind = "LUMP_SUM" | "FIXED_UNIT_PRICE" | "ADJUSTABLE_UNIT_PRICE" | "TIME_BASED" | "MIXED";
+
+export const CONTRACT_KINDS: { value: PcContractKind; label: string }[] = [
+  { value: "LUMP_SUM", label: "HĐ trọn gói" },
+  { value: "FIXED_UNIT_PRICE", label: "HĐ theo đơn giá cố định" },
+  { value: "ADJUSTABLE_UNIT_PRICE", label: "HĐ theo đơn giá điều chỉnh" },
+  { value: "TIME_BASED", label: "HĐ theo thời gian" },
+  { value: "MIXED", label: "HĐ hỗn hợp" },
+];
 
 export type PcMember = {
   id: string;
   project_id: string;
   email: string;
   name: string | null;
-  role: PcRole;
+  role: PcRole; // "Quyền hệ thống" — các hàm quyền đọc cột này
+  // migration 111 — thông tin nhân sự dự án (chỉ hiển thị, không ảnh hưởng quyền)
+  unit_group?: string | null;
+  department?: string | null;
+  title?: string | null;
+  phone?: string | null;
+  contact_email?: string | null;
+  project_role?: string | null;
+  duty?: string | null;
+  reports_to?: string | null;
+  status?: PcMemberStatus;
+  created_at?: string;
 };
+
+export type PcMemberStatus = "NOT_JOINED" | "JOINED" | "CONCURRENT" | "COMPANY_LEVEL";
+
+export const MEMBER_STATUSES: { value: PcMemberStatus; label: string; cls: string }[] = [
+  { value: "NOT_JOINED", label: "Chưa tham gia", cls: "bg-slate-100 text-slate-500" },
+  { value: "JOINED", label: "Đã tham gia", cls: "bg-emerald-50 text-emerald-700" },
+  { value: "CONCURRENT", label: "Kiêm nhiệm", cls: "bg-amber-50 text-amber-700" },
+  { value: "COMPANY_LEVEL", label: "Tham gia thuộc cấp công ty", cls: "bg-blue-50 text-[#005BAC]" },
+];
 
 export type PcSegment = {
   id: string;

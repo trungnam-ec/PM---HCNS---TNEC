@@ -58,6 +58,7 @@ export type ApprovalPermissions = {
   canViewAllProjects: boolean;    // Ban lãnh đạo: xem + sửa mọi dự án kể cả tiền, lập hồ sơ dự án
   canViewProjectFinance: boolean; // Phòng TC-KT: xem + sửa tiền mọi dự án
   canViewAllProjectsReadonly: boolean; // HCNS / QLDA: XEM mọi dự án, không tiền, không sửa (migration 103)
+  canManageBdhProject: boolean; // CHT / Chỉ huy phó: như GĐDA nhưng CHỈ dự án BĐH của mình (migration 112)
   // ─── Phiếu trình ký hồ sơ/văn bản (migration 050) ───
   // Luồng 4 cấp: PGĐ QLDA -> PGĐ KHĐT -> Giám đốc -> Kế toán. Mỗi cấp một cờ để
   // đổi người phụ trách chỉ cần tick lại, không phải sửa SQL hay code.
@@ -101,6 +102,7 @@ export const NO_APPROVAL_PERMISSIONS: ApprovalPermissions = {
   canViewAllProjects: false,
   canViewProjectFinance: false,
   canViewAllProjectsReadonly: false,
+  canManageBdhProject: false,
   canCreateSigning: false,
   canApproveSigningQlda: false,
   canApproveSigningKhdt: false,
@@ -719,6 +721,7 @@ export async function fetchApprovalPermissions(email?: string | null): Promise<A
       canViewAllProjects: !!row.can_view_all_projects,
       canViewProjectFinance: !!row.can_view_project_finance,
       canViewAllProjectsReadonly: !!row.can_view_all_projects_readonly,
+      canManageBdhProject: !!row.can_manage_bdh_project,
       canCreateSigning: !!row.can_create_signing,
       canApproveSigningQlda: !!row.can_approve_signing_qlda,
       canApproveSigningKhdt: !!row.can_approve_signing_khdt,

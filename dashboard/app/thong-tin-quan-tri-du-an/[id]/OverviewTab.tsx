@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import {
   statusMeta,
   PROJECT_STATUS,
+  CONTRACT_KINDS,
   pcErrorMessage,
   type GateCheck,
   type PcProjectStatus,
@@ -66,12 +67,20 @@ export default function OverviewTab({
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const [fin, setFin] = useState(() => ({
-    value: finance?.contract_value_pre_vat != null ? formatVnd(finance.contract_value_pre_vat) : "",
-    vat: rateToPct(finance?.vat_rate ?? 0.08),
-    contingency: finance?.contingency_value != null ? formatVnd(finance.contingency_value) : "",
-    threshold: formatVnd(finance?.payment_threshold ?? 4000000000),
-  }));
+  // Các số chép từ Điều 9 HĐ (đã gồm VAT). Dữ liệu trước migration 109 chỉ có số
+  // trước thuế → suy ngược ra số sau VAT.
+  const [fin, setFin] = useState(() => {
+    const cv = contractValueOf(finance);
+    return {
+      kind: finance?.contract_kind || "",
+      packageTotal: finance?.package_total_value != null ? formatVnd(finance.package_total_value) : "",
+      packageConstruction: finance?.package_construction_cost != null ? formatVnd(finance.package_construction_cost) : "",
+      value: cv != null ? formatVnd(cv) : "",
+      construction: finance?.construction_cost != null ? formatVnd(finance.construction_cost) : "",
+      vat: rateToPct(finance?.vat_rate ?? 0.08),
+      threshold: formatVnd(finance?.payment_threshold ?? 4000000000),
+    };
+  });
   const [finSaving, setFinSaving] = useState(false);
   const [finSaved, setFinSaved] = useState(false);
   const [finErr, setFinErr] = useState<string | null>(null);
@@ -123,15 +132,32 @@ export default function OverviewTab({
   async function saveFinance() {
     const vat = pctToRate(fin.vat);
     if (vat === null || vat < 0 || vat > 1) return setFinErr("Thuế VAT không hợp lệ.");
+    const value = parseVnd(fin.value);
+    const construction = parseVnd(fin.construction);
+    if (value != null && construction != null && construction > value)
+      return setFinErr("Chi phí xây dựng không được lớn hơn giá trị đảm nhận.");
+    const packageTotal = parseVnd(fin.packageTotal);
+    if (value != null && packageTotal != null && value > packageTotal)
+      return setFinErr("Giá trị đảm nhận không được lớn hơn giá HĐ toàn gói.");
+    const packageConstruction = parseVnd(fin.packageConstruction);
+    if (packageTotal != null && packageConstruction != null && packageConstruction > packageTotal)
+      return setFinErr("Chi phí xây dựng của liên danh không được lớn hơn giá HĐ toàn gói.");
     setFinSaving(true);
     setFinErr(null);
     const e = await pcUpsert(
       "pc_project_finance",
       {
         project_id: project.id,
-        contract_value_pre_vat: parseVnd(fin.value),
+        contract_kind: fin.kind || null,
+        package_total_value: packageTotal,
+        package_construction_cost: packageConstruction,
+        package_contingency: packageTotal != null && packageConstruction != null ? packageTotal - packageConstruction : null,
+        contract_value: value,
+        construction_cost: construction,
         vat_rate: vat,
-        contingency_value: parseVnd(fin.contingency),
+        // 2 cột cũ ghi lại số tính sẵn — Dashboard dự án / tab Tài chính vẫn đọc chúng.
+        contract_value_pre_vat: value != null ? Math.round(value / (1 + vat)) : null,
+        contingency_value: value != null && construction != null ? value - construction : null,
         payment_threshold: parseVnd(fin.threshold) ?? 4000000000,
       },
       "project_id"
@@ -143,9 +169,17 @@ export default function OverviewTab({
     onSaved();
   }
 
-  const preVat = parseVnd(fin.value);
+  const value = parseVnd(fin.value);
   const vatRate = pctToRate(fin.vat) ?? 0;
-  const postVat = preVat != null ? Math.round(preVat * (1 + vatRate)) : null;
+  const preVat = value != null ? Math.round(value / (1 + vatRate)) : null;
+  const packageTotal = parseVnd(fin.packageTotal);
+  const sharePct = value != null && packageTotal ? (value / packageTotal) * 100 : null;
+  const packageConstruction = parseVnd(fin.packageConstruction);
+  const packageContingency = packageTotal != null && packageConstruction != null ? packageTotal - packageConstruction : null;
+  const packageContingencyPct = packageContingency != null && packageConstruction ? (packageContingency / packageConstruction) * 100 : null;
+  const construction = parseVnd(fin.construction);
+  const contingency = value != null && construction != null ? value - construction : null;
+  const contingencyPct = contingency != null && construction ? (contingency / construction) * 100 : null;
 
   const set = (k: keyof InfoForm) => (e: { target: { value: string } }) => setF((x) => ({ ...x, [k]: e.target.value }));
 
@@ -157,7 +191,7 @@ export default function OverviewTab({
         <Stat label="HĐ A-B / B-B'" value={stats ? `${stats.contractsAB} / ${stats.contractsBB}` : "…"} />
         <Stat
           label="GT HĐ A-B sau VAT"
-          value={access.can_view_finance ? formatMoneyShort(finance?.contract_value_pre_vat != null ? Math.round(finance.contract_value_pre_vat * (1 + Number(finance.vat_rate))) : null) : "🔒"}
+          value={access.can_view_finance ? formatMoneyShort(contractValueOf(finance)) : "🔒"}
         />
       </div>
 
@@ -240,19 +274,48 @@ export default function OverviewTab({
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="GT HĐ trước thuế">
+              <Field label="Loại hợp đồng">
+                <Select value={fin.kind} onChange={(e) => setFin((x) => ({ ...x, kind: e.target.value }))} disabled={!access.can_edit_finance}>
+                  <option value="">— Chọn loại HĐ —</option>
+                  {CONTRACT_KINDS.map((k) => (
+                    <option key={k.value} value={k.value}>
+                      {k.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Tỷ lệ đảm nhận (tự tính)">
+                <Computed text={sharePct != null ? `${formatPct(sharePct)} tổng giá trị HĐ` : "—"} />
+              </Field>
+              <Field label="Giá HĐ toàn gói (liên danh, đã gồm VAT)">
+                <MoneyInput value={fin.packageTotal} onChange={(v) => setFin((x) => ({ ...x, packageTotal: v }))} disabled={!access.can_edit_finance} placeholder="Để trống nếu không liên danh" />
+              </Field>
+              <Field label="Giá trị theo khối lượng đảm nhận (đã gồm VAT)">
                 <MoneyInput value={fin.value} onChange={(v) => setFin((x) => ({ ...x, value: v }))} disabled={!access.can_edit_finance} />
+              </Field>
+              <Field label="Chi phí xây dựng của liên danh">
+                <MoneyInput value={fin.packageConstruction} onChange={(v) => setFin((x) => ({ ...x, packageConstruction: v }))} disabled={!access.can_edit_finance} placeholder="Để trống nếu không liên danh" />
+              </Field>
+              <Field label="Chi phí xây dựng">
+                <MoneyInput value={fin.construction} onChange={(v) => setFin((x) => ({ ...x, construction: v }))} disabled={!access.can_edit_finance} />
+              </Field>
+              <Field label="Chi phí dự phòng của liên danh (tự tính = toàn gói − CPXD liên danh)">
+                <Computed
+                  text={packageContingency != null ? `${formatVnd(packageContingency)} đ` : "—"}
+                  hint={packageContingencyPct != null ? `${formatPct(packageContingencyPct)} CPXD` : undefined}
+                />
+              </Field>
+              <Field label="Chi phí dự phòng (tự tính = đảm nhận − chi phí xây dựng)">
+                <Computed
+                  text={contingency != null ? `${formatVnd(contingency)} đ` : "—"}
+                  hint={contingencyPct != null ? `${formatPct(contingencyPct)} CPXD` : undefined}
+                />
               </Field>
               <Field label="Thuế VAT (%)">
                 <TextInput value={fin.vat} onChange={(e) => setFin((x) => ({ ...x, vat: e.target.value }))} disabled={!access.can_edit_finance} />
               </Field>
-              <Field label="GT HĐ sau VAT (tự tính)">
-                <div className="text-xs font-mono font-bold text-slate-700 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 text-right">
-                  {postVat != null ? `${formatVnd(postVat)} đ` : "—"}
-                </div>
-              </Field>
-              <Field label="Chi phí dự phòng">
-                <MoneyInput value={fin.contingency} onChange={(v) => setFin((x) => ({ ...x, contingency: v }))} disabled={!access.can_edit_finance} />
+              <Field label="GT đảm nhận trước thuế (tự tính)">
+                <Computed text={preVat != null ? `${formatVnd(preVat)} đ` : "—"} />
               </Field>
               <Field label="Ngưỡng cảnh báo SL chưa thanh toán B-B'">
                 <MoneyInput value={fin.threshold} onChange={(v) => setFin((x) => ({ ...x, threshold: v }))} disabled={!access.can_edit_finance} />
@@ -360,6 +423,27 @@ function StatusChangeModal({
         </PrimaryButton>
       </div>
     </Modal>
+  );
+}
+
+// GT đảm nhận đã gồm VAT; dòng cũ (trước migration 109) suy từ số trước thuế.
+function contractValueOf(finance: PcProjectFinance | null): number | null {
+  if (!finance) return null;
+  if (finance.contract_value != null) return Number(finance.contract_value);
+  if (finance.contract_value_pre_vat != null) return Math.round(Number(finance.contract_value_pre_vat) * (1 + Number(finance.vat_rate)));
+  return null;
+}
+
+function formatPct(v: number) {
+  return `${v.toLocaleString("vi-VN", { maximumFractionDigits: 3 })}%`;
+}
+
+function Computed({ text, hint }: { text: string; hint?: string }) {
+  return (
+    <div className="text-xs font-mono font-bold text-slate-700 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+      <span className="text-[10px] font-sans font-semibold text-slate-400">{hint || ""}</span>
+      <span className="text-right">{text}</span>
+    </div>
   );
 }
 

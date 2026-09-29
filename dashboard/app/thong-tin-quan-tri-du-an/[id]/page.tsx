@@ -157,7 +157,9 @@ export default function ProjectDetailPage() {
 
               {/* Một hàng duy nhất; màn hẹp thì cuộn ngang thay vì xuống dòng. */}
               <div className="flex flex-nowrap gap-1 overflow-x-auto pb-1 print:hidden">
-                {TABS.filter((t) => t.key !== "finance" || access.can_view_finance).map((t) => {
+                {TABS.filter(
+                  (t) => (t.key !== "finance" || access.can_view_finance) && (t.key !== "members" || access.can_manage_members)
+                ).map((t) => {
                   const Icon = t.icon;
                   const active = tab === t.key;
                   return (

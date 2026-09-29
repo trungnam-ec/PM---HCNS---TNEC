@@ -14,9 +14,16 @@ import { supabase } from "@/lib/supabase";
 import { splitEmails } from "@/lib/emailMatch";
 import { Search, X } from "lucide-react";
 
-export type PickedEmployee = { name: string; email: string; department: string; role: string };
+// email = email đầu tiên (dùng khớp quyền như trước); workEmail = ưu tiên mail công ty.
+export type PickedEmployee = { name: string; email: string; department: string; role: string; phone?: string; workEmail?: string };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Hộp thư cá nhân — email không thuộc các miền này coi là mail công ty.
+const PERSONAL_DOMAINS = ["gmail.com", "googlemail.com", "yahoo.com", "yahoo.com.vn", "outlook.com", "hotmail.com", "live.com", "icloud.com"];
+function pickWorkEmail(list: string[]): string {
+  return list.find((x) => !PERSONAL_DOMAINS.includes(x.split("@")[1] || "")) || list[0] || "";
+}
 
 // Bỏ dấu để gõ "son" vẫn ra "Sơn".
 function fold(s: string): string {
@@ -38,12 +45,20 @@ let cache: Promise<PickedEmployee[]> | null = null;
 function loadDirectory(): Promise<PickedEmployee[]> {
   if (!cache) {
     cache = (async () => {
-      const { data } = await supabase.from("employees_directory").select("name, email, department, role").order("name");
+      const { data } = await supabase.from("employees_directory").select("name, email, department, role, phone").order("name");
       const list: PickedEmployee[] = [];
-      ((data as { name: string; email: string | null; department: string | null; role: string | null }[]) || []).forEach((e) => {
+      ((data as { name: string; email: string | null; department: string | null; role: string | null; phone: string | null }[]) || []).forEach((e) => {
         // Bỏ hồ sơ không có email thật (ô ghi "n/a"…).
-        const first = splitEmails(e.email).find((x) => EMAIL_RE.test(x));
-        if (first) list.push({ name: e.name, email: first, department: e.department || "", role: e.role || "" });
+        const valid = splitEmails(e.email).filter((x) => EMAIL_RE.test(x));
+        if (valid.length)
+          list.push({
+            name: e.name,
+            email: valid[0],
+            department: e.department || "",
+            role: e.role || "",
+            phone: e.phone || "",
+            workEmail: pickWorkEmail(valid),
+          });
       });
       // Rỗng (phiên đăng nhập chưa sẵn / lỗi mạng) thì không giữ, lần sau nạp lại.
       if (!list.length) cache = null;
@@ -51,6 +66,19 @@ function loadDirectory(): Promise<PickedEmployee[]> {
     })();
   }
   return cache;
+}
+
+// Danh sách phòng ban/bộ phận có trong danh bạ (cho dropdown lọc).
+export async function listDirectoryDepartments(): Promise<string[]> {
+  const list = await loadDirectory();
+  return [...new Set(list.map((e) => e.department).filter(Boolean))].sort((a, b) => a.localeCompare(b, "vi"));
+}
+
+// Tra hồ sơ theo email đã lưu (dòng thành viên cũ chưa chụp phòng ban/chức danh).
+export async function findEmployeeByEmail(email: string): Promise<PickedEmployee | null> {
+  const e = (email || "").toLowerCase();
+  if (!e) return null;
+  return (await loadDirectory()).find((x) => x.email === e) || null;
 }
 
 export function Avatar({ name }: { name: string }) {
@@ -65,12 +93,14 @@ export default function EmployeePicker({
   value,
   onChange,
   bdhName,
+  department,
   freeText,
   placeholder = "Tìm tên, email hoặc phòng ban…",
 }: {
   value: PickedEmployee | null;
   onChange: (v: PickedEmployee | null) => void;
   bdhName?: string;
+  department?: string; // chỉ hiện nhân sự của phòng ban này
   freeText?: "email" | "name";
   placeholder?: string;
 }) {
@@ -104,9 +134,10 @@ export default function EmployeePicker({
 
   const options = useMemo(() => {
     const q = fold(search.trim());
-    const list = q ? emps.filter((e) => fold(`${e.name} ${e.email} ${e.department} ${e.role}`).includes(q)) : emps;
+    const base = department ? emps.filter((e) => e.department === department) : emps;
+    const list = q ? base.filter((e) => fold(`${e.name} ${e.email} ${e.department} ${e.role}`).includes(q)) : base;
     return list.slice(0, 60);
-  }, [emps, search]);
+  }, [emps, search, department]);
 
   const typed = search.trim();
   let custom: PickedEmployee | null = null;

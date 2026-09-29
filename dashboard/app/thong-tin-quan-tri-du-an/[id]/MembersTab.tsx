@@ -11,7 +11,7 @@
 // Mã dự án ở tab Tổng quan — mỗi BĐH trỏ đúng 1 dự án.
 // Phòng ban, chức danh, SĐT, email: chụp từ danh bạ nhân sự lúc thêm.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { fetchProjectCatalog } from "@/lib/projectCatalog";
 import {
@@ -29,7 +29,9 @@ import {
 } from "@/lib/projectControl";
 import { Card, Field, Select, TextInput, PrimaryButton, ErrorLine, inputCls } from "./ui";
 import EmployeePicker, { findEmployeeByEmail, listDirectoryDepartments, type PickedEmployee } from "./EmployeePicker";
-import { Trash2, Loader2, UserPlus } from "lucide-react";
+import { buildMembersPdfDoc, type MembersPdfRow } from "./membersPdf";
+import { buildMembersWorkbook } from "./membersXlsx";
+import { Trash2, Loader2, UserPlus, FileDown, FileSpreadsheet } from "lucide-react";
 
 type Draft = {
   unit_group: string;
@@ -61,6 +63,7 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
     status: "JOINED",
   }));
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState<"pdf" | "xlsx" | null>(null);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
@@ -136,6 +139,20 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
     }
   }
 
+  async function runExport(kind: "pdf" | "xlsx") {
+    setExporting(kind);
+    setErr(null);
+    const meta = { projectCode, projectName, bdhName: project.bdh_name };
+    try {
+      if (kind === "pdf") await exportMembersPdf(members, meta);
+      else await exportMembersXlsx(members, meta);
+    } catch {
+      setErr(`Không tạo được file ${kind === "pdf" ? "PDF" : "Excel"}. Thử lại sau.`);
+    } finally {
+      setExporting(null);
+    }
+  }
+
   async function remove(m: PcMember) {
     const e = await pcDelete("pc_project_members", { id: m.id });
     if (e) return setErr(e);
@@ -143,22 +160,20 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
   }
 
   const setD = (k: keyof Draft) => (e: { target: { value: string } }) => setDraft((d) => ({ ...d, [k]: e.target.value }));
-  const cell = `${inputCls} !py-1 !px-2 !text-[11px] min-w-[120px]`;
-
-  // Ô gõ tay trong bảng: sửa tại chỗ, lưu khi rời ô.
+  // Ô gõ tay trong bảng: sửa tại chỗ, lưu khi rời ô; chữ dài tự xuống dòng.
   const textCell = (m: PcMember, k: TextKey) =>
     canManage ? (
-      <input
+      <AutoTextarea
         key={`${m.id}-${k}-${m[k] ?? ""}`}
-        defaultValue={m[k] || ""}
-        className={cell}
-        onBlur={(e) => {
-          const v = e.target.value.trim() || null;
+        initial={m[k] || ""}
+        className={`${inputCls} !py-1 !px-2 !text-[11px] ${TEXT_COL_WIDTH[k]}`}
+        onCommit={(raw) => {
+          const v = raw.trim() || null;
           if (v !== (m[k] || null)) patch(m, { [k]: v });
         }}
       />
     ) : (
-      <span className="text-slate-600">{m[k] || "—"}</span>
+      <span className={`block text-slate-600 whitespace-pre-wrap break-words ${TEXT_COL_WIDTH[k]}`}>{m[k] || "—"}</span>
     );
 
   return (
@@ -238,7 +253,21 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
         </Card>
       )}
 
-      <Card title={`Thành viên dự án (${members.length})`}>
+      <Card
+        title={`Thành viên dự án (${members.length})`}
+        action={
+          members.length > 0 ? (
+            <div className="flex gap-2">
+              <PrimaryButton busy={exporting === "xlsx"} disabled={exporting !== null} onClick={() => runExport("xlsx")}>
+                <FileSpreadsheet size={13} /> Tải Excel
+              </PrimaryButton>
+              <PrimaryButton busy={exporting === "pdf"} disabled={exporting !== null} onClick={() => runExport("pdf")}>
+                <FileDown size={13} /> Xuất PDF
+              </PrimaryButton>
+            </div>
+          ) : null
+        }
+      >
         <ErrorLine msg={err} />
         {loading ? (
           <div className="flex justify-center py-6">
@@ -272,7 +301,7 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
                 {members.map((m, i) => {
                   const st = MEMBER_STATUSES.find((s) => s.value === (m.status || "JOINED")) || MEMBER_STATUSES[1];
                   return (
-                    <tr key={m.id} className="border-t border-slate-100 align-middle">
+                    <tr key={m.id} className="border-t border-slate-100 align-top [&>td]:py-1.5">
                       <td className="py-1.5 pr-2 text-center font-bold text-slate-500">{i + 1}</td>
                       <td className="px-1 font-bold text-slate-700 whitespace-nowrap">{projectCode}</td>
                       <td className="px-1 text-slate-600 min-w-[160px]">{projectName}</td>
@@ -340,4 +369,96 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
       </Card>
     </div>
   );
+}
+
+// Độ rộng tối thiểu cho các cột gõ tay — cột chữ dài rộng hơn để ít phải xuống dòng.
+const TEXT_COL_WIDTH: Record<TextKey, string> = {
+  unit_group: "min-w-[140px]",
+  project_role: "min-w-[240px]",
+  duty: "min-w-[260px]",
+  reports_to: "min-w-[160px]",
+};
+
+// Ô nhiều dòng tự cao theo nội dung (không bị cắt chữ như input 1 dòng).
+function AutoTextarea({ initial, className, onCommit }: { initial: string; className: string; onCommit: (v: string) => void }) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+  const fit = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + 2}px`;
+  };
+  useLayoutEffect(fit, []);
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      defaultValue={initial}
+      onInput={fit}
+      onBlur={(e) => onCommit(e.target.value)}
+      className={`${className} block resize-none overflow-hidden leading-snug whitespace-pre-wrap break-words`}
+    />
+  );
+}
+
+// Dữ liệu thành viên -> hàng xuất file (dùng chung cho PDF và Excel).
+function toPdfRows(members: PcMember[]): MembersPdfRow[] {
+  return members.map((m) => {
+    const status = m.status || "JOINED";
+    return {
+      name: m.name || m.email,
+      unitGroup: m.unit_group || "",
+      department: m.department || "",
+      title: m.title || "",
+      projectRole: m.project_role || "",
+      duty: m.duty || "",
+      reportsTo: m.reports_to || "",
+      phone: m.phone || "",
+      email: m.contact_email || m.email,
+      status,
+      statusLabel: MEMBER_STATUSES.find((x) => x.value === status)?.label || "",
+      role: m.role,
+      roleLabel: roleLabel(m.role),
+    };
+  });
+}
+
+// Xuất PDF: dựng file ngay trong trình duyệt bằng pdfmake (font Roboto kèm sẵn, đủ
+// dấu tiếng Việt) rồi tải thẳng về máy. Thư viện chỉ nạp khi bấm nút. Bố cục/màu
+// nằm ở membersPdf.ts.
+async function exportMembersPdf(
+  members: PcMember[],
+  meta: { projectCode: string; projectName: string; bdhName: string }
+): Promise<void> {
+  const [pdfMake, vfsMod] = await Promise.all([import("pdfmake/build/pdfmake"), import("pdfmake/build/vfs_fonts")]);
+  pdfMake.addVirtualFileSystem(vfsMod.default);
+
+  const now = new Date();
+  const today = now.toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+  const stamp = now.toLocaleDateString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" }); // yyyy-mm-dd
+  const rows = toPdfRows(members);
+  const doc = buildMembersPdfDoc(rows, { ...meta, today });
+  await pdfMake.createPdf(doc as Parameters<typeof pdfMake.createPdf>[0]).download(`DS-thanh-vien-${meta.projectCode || "du-an"}-${stamp}.pdf`);
+}
+
+// Tải Excel: dựng workbook mới bằng exceljs (đã có sẵn trong dự án), tải thẳng về máy.
+// Thư viện chỉ nạp khi bấm nút. Bố cục/màu ở membersXlsx.ts, dùng chung với bản PDF.
+async function exportMembersXlsx(
+  members: PcMember[],
+  meta: { projectCode: string; projectName: string; bdhName: string }
+): Promise<void> {
+  const ExcelJS = (await import("exceljs")).default;
+  const now = new Date();
+  const today = now.toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+  const stamp = now.toLocaleDateString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" }); // yyyy-mm-dd
+  const wb = await buildMembersWorkbook(ExcelJS.Workbook, toPdfRows(members), { ...meta, today });
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `DS-thanh-vien-${meta.projectCode || "du-an"}-${stamp}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }

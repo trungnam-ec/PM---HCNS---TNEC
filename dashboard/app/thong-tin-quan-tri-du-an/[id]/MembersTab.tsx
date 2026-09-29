@@ -54,7 +54,7 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
   const [draft, setDraft] = useState<Draft>(() => ({
     unit_group: "",
     department: project.bdh_name || "",
-    role: "KY_SU",
+    role: "VIEW",
     project_role: "",
     duty: "",
     reports_to: "",
@@ -226,7 +226,7 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
               <Select value={draft.role} onChange={setD("role")}>
                 {ROLES.map((r) => (
                   <option key={r.value} value={r.value}>
-                    {r.label} — {r.desc}
+                    {r.label}
                   </option>
                 ))}
               </Select>
@@ -235,9 +235,6 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
               <UserPlus size={13} /> Thêm
             </PrimaryButton>
           </div>
-          <p className="text-[10px] text-slate-400 mt-2">
-            Quyền hệ thống chỉ cấp thêm quyền sửa trong dự án này; người có cờ quyền (Ban lãnh đạo, GĐDA/Chỉ huy trưởng…) luôn được ưu tiên, không cần gán ở đây. &quot;Giám đốc dự án&quot; chỉ cần gán tay khi người đó không thuộc BĐH này. Trạng thái chỉ để hiển thị, không tắt quyền.
-          </p>
         </Card>
       )}
 
@@ -306,9 +303,25 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
                         )}
                       </td>
                       <td className="px-1">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#005BAC] whitespace-nowrap">
-                          {roleLabel(m.role)}
-                        </span>
+                        {canManage ? (
+                          <select
+                            value={m.role}
+                            onChange={(e) => patch(m, { role: e.target.value as PcRole })}
+                            className={`${inputCls} !py-1 !px-2 !text-[11px] min-w-[130px]`}
+                          >
+                            {/* Dòng gán tay cũ (GDDA/TC_KT) vẫn hiện đúng nhãn, đổi sang Xem/Chỉnh sửa được. */}
+                            {!ROLES.some((r) => r.value === m.role) && <option value={m.role}>{roleLabel(m.role)}</option>}
+                            {ROLES.map((r) => (
+                              <option key={r.value} value={r.value}>
+                                {r.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#005BAC] whitespace-nowrap">
+                            {roleLabel(m.role)}
+                          </span>
+                        )}
                       </td>
                       {canManage && (
                         <td className="px-1 text-center">

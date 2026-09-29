@@ -28,23 +28,28 @@ export function statusMeta(s: string | null | undefined) {
   return PROJECT_STATUS.find((x) => x.value === s) || PROJECT_STATUS[0];
 }
 
-export type PcRole = "GDDA" | "CHT" | "QS" | "QA_QC" | "VP_BDH" | "KY_SU" | "TC_KT" | "VAT_TU";
+// Migration 113: chỉ còn 2 quyền gán ở tab Thành viên — VIEW / EDIT. GDDA, TC_KT là
+// dòng gán tay cũ còn giữ (vẫn chạy) tới khi user tick cờ rồi tự đổi. Quản lý dự án
+// + tiền đi theo cờ toàn công ty (GĐDA/CHT theo BĐH, TC-KT, Ban lãnh đạo).
+export type PcRole = "VIEW" | "EDIT" | "GDDA" | "TC_KT";
 
 export const ROLES: { value: PcRole; label: string; desc: string }[] = [
-  { value: "GDDA", label: "Giám đốc dự án", desc: "Toàn quyền dự án, xem tiền, gán thành viên" },
-  { value: "CHT", label: "Chỉ huy trưởng", desc: "Nhập nhật ký sản lượng hằng ngày" },
-  { value: "QS", label: "QS – Khối lượng", desc: "Sửa lý trình, hạng mục; duyệt nhật ký" },
-  { value: "QA_QC", label: "QA/QC", desc: "Quản lý chất lượng — chỉ xem, không thấy tiền" },
-  { value: "VP_BDH", label: "Văn phòng BĐH", desc: "Sửa lý trình, hạng mục; nhập theo tuần" },
-  { value: "KY_SU", label: "Kỹ sư hiện trường", desc: "Chỉ xem, không thấy tiền" },
-  { value: "TC_KT", label: "Tài chính – Kế toán", desc: "Xem & sửa tiền dự án này" },
-  { value: "VAT_TU", label: "Vật tư", desc: "Nhập dự toán vật tư, cấp phát, đơn giá thực tế (thấy giá vật tư)" },
+  { value: "VIEW", label: "Quyền xem", desc: "Xem mọi tab trừ Tài chính, không thấy tiền" },
+  {
+    value: "EDIT",
+    label: "Quyền chỉnh sửa",
+    desc: "Sửa Lý trình, Nhà thầu & HĐ, Kế hoạch, Pháp lý, Sản lượng, Vật tư, Cảnh báo, Báo cáo — không thấy tiền, không duyệt nhật ký",
+  },
 ];
 
+const LEGACY_ROLE_LABELS: Record<string, string> = {
+  GDDA: "Giám đốc dự án (gán tay cũ)",
+  TC_KT: "Tài chính – Kế toán (gán tay cũ)",
+  BDH_MANAGER: "GĐDA/CHT (cờ)", // cờ can_manage_bdh_project — migration 112
+};
+
 export function roleLabel(r: string): string {
-  // BDH_MANAGER: cờ "GĐDA/Chỉ huy trưởng" (migration 112), không phải vai trò gán tay.
-  if (r === "BDH_MANAGER") return "GĐDA/CHT (cờ)";
-  return ROLES.find((x) => x.value === r)?.label || r;
+  return ROLES.find((x) => x.value === r)?.label || LEGACY_ROLE_LABELS[r] || r;
 }
 
 export const SEGMENT_TYPES: { value: string; label: string }[] = [

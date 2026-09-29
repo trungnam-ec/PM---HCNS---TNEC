@@ -49,7 +49,10 @@ function fold(s: string): string {
 }
 
 export default function ContractsTab({ projectId, access }: { projectId: string; access: PcAccess }) {
-  const canEdit = access.can_edit_finance;
+  // Thông tin HĐ + phạm vi: quyền Chỉnh sửa (migration 113). Tiền (giá trị, phụ lục,
+  // đơn giá) và XOÁ HĐ/phạm vi (kéo theo xoá tiền) chỉ người có quyền tài chính.
+  const canEdit = access.can_edit_structure || access.can_edit_finance;
+  const canEditFin = access.can_edit_finance;
   const canFin = access.can_view_finance;
   const { ask, confirmNode } = useConfirmBox();
   const [loading, setLoading] = useState(true);
@@ -211,9 +214,11 @@ export default function ContractsTab({ projectId, access }: { projectId: string;
                   <GhostButton onClick={() => setEditing(c)}>
                     <Pencil size={12} />
                   </GhostButton>
-                  <GhostButton danger onClick={() => removeContract(c)}>
-                    <Trash2 size={12} />
-                  </GhostButton>
+                  {canEditFin && (
+                    <GhostButton danger onClick={() => removeContract(c)}>
+                      <Trash2 size={12} />
+                    </GhostButton>
+                  )}
                 </div>
               )}
             </div>
@@ -249,7 +254,7 @@ export default function ContractsTab({ projectId, access }: { projectId: string;
                     {s.scope_desc ? ` — ${s.scope_desc}` : ""}
                   </span>
                   {canFin && <span className="font-mono text-slate-600">{scopeVal[s.id] != null ? formatMoneyShort(scopeVal[s.id]) : ""}</span>}
-                  {canEdit && (
+                  {canEditFin && (
                     <button onClick={() => removeScope(s)} className="text-slate-300 hover:text-rose-500">
                       <Trash2 size={11} />
                     </button>
@@ -260,12 +265,12 @@ export default function ContractsTab({ projectId, access }: { projectId: string;
           )}
         </div>
 
-        {canFin && (myAdd.length > 0 || canEdit) && (
+        {canFin && (myAdd.length > 0 || canEditFin) && (
           <div className="bg-slate-50/60 rounded-lg px-3 py-2 space-y-1">
             <div className="flex items-center gap-2">
               <FileSignature size={12} className="text-slate-400" />
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 flex-1">Phụ lục / phát sinh</span>
-              {canEdit && (
+              {canEditFin && (
                 <button onClick={() => setAddendumFor(c)} className="text-[10px] font-bold text-[#005BAC] hover:text-blue-700 flex items-center gap-0.5">
                   <Plus size={11} /> Thêm phụ lục
                 </button>
@@ -280,7 +285,7 @@ export default function ContractsTab({ projectId, access }: { projectId: string;
                   {Number(a.value_change) > 0 ? "+" : ""}
                   {formatMoneyShort(a.value_change)}
                 </span>
-                {canEdit && (
+                {canEditFin && (
                   <button onClick={() => removeAddendum(a)} className="text-slate-300 hover:text-rose-500">
                     <Trash2 size={11} />
                   </button>
@@ -378,7 +383,7 @@ export default function ContractsTab({ projectId, access }: { projectId: string;
           scopes={scopes.filter((x) => x.contract_id === priceFor.id)}
           segments={segments}
           catalog={catalog}
-          canEdit={canEdit}
+          canEdit={canEditFin}
           onClose={() => setPriceFor(null)}
         />
       )}

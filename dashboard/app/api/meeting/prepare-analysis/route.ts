@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       system_prompt: systemPrompt,
-      user_content: `Hãy chắt lọc các ý chính trọng tâm từ bản gỡ băng sau và trả về JSON theo đúng định dạng:\n\n${transcriptForAI}`,
+      user_content: `Hãy dựng biên bản đầy đủ, bao phủ toàn bộ cuộc họp từ đầu đến cuối (không rút gọn quá mức) từ bản gỡ băng sau và trả về JSON theo đúng định dạng:\n\n${transcriptForAI}`,
       timeline_mode: timelineMode,
       default_model: process.env.OPENAI_MODEL || DEFAULT_ANALYSIS_MODEL,
       reasoning_effort: ANALYSIS_REASONING_EFFORT,

@@ -19,6 +19,7 @@ export type AtldItem = {
   min_stock: number;
   gia_nhap: number | null;    // migration 125 — giá tham khảo của danh mục, không vào sổ kho
   gia_ban: number | null;
+  ncc: string | null;         // migration 127 — NCC/PVT gõ tay
   note: string | null;
   active: boolean;
   created_at: string;
@@ -109,6 +110,8 @@ export function atldErrorMessage(err: { message?: string; code?: string } | null
     return "Chưa chạy migration 116 (Kho BHLĐ) trong Supabase > SQL Editor.";
   if (/gia_nhap|gia_ban/i.test(msg) && /column|schema cache/i.test(msg))
     return "Chưa chạy migration 125 (giá nhập / giá bán của mã SP) trong Supabase > SQL Editor.";
+  if (/'ncc' column|column .*ncc/i.test(msg))
+    return "Chưa chạy migration 127 (ô NCC/PVT của mã SP) trong Supabase > SQL Editor.";
   if (/atld_items_code_unique/i.test(msg)) return "Mã SP này đã có trong danh mục.";
   if (/atld_partners_name_unique/i.test(msg)) return "Đối tác này đã có trong danh mục.";
   if (/foreign key/i.test(msg)) return "Mục này đã được dùng trong phiếu kho nên không xoá được — hãy chuyển sang \"Ngừng dùng\".";
@@ -216,6 +219,7 @@ export type ItemInput = {
   min_stock: number;
   gia_nhap: number | null;
   gia_ban: number | null;
+  ncc: string;
   note: string;
 };
 
@@ -229,6 +233,7 @@ function cleanItem(v: ItemInput) {
     min_stock: Number.isFinite(v.min_stock) && v.min_stock > 0 ? v.min_stock : 0,
     gia_nhap: v.gia_nhap != null && Number.isFinite(v.gia_nhap) && v.gia_nhap >= 0 ? v.gia_nhap : null,
     gia_ban: v.gia_ban != null && Number.isFinite(v.gia_ban) && v.gia_ban >= 0 ? v.gia_ban : null,
+    ncc: v.ncc.trim().replace(/\s+/g, " ") || null,
     note: v.note.trim() || null,
   };
 }
@@ -240,15 +245,38 @@ export async function createItem(v: ItemInput): Promise<{ id: string | null; err
   return id ? { id, error: null } : { id: null, error: "Không tạo được — tài khoản chưa có quyền Thủ kho ATLĐ." };
 }
 
+// NCC gõ tay -> id trong atld_partners (khớp tên bỏ hoa/thường + khoảng trắng thừa;
+// chưa có thì tạo mới). Bảng nhỏ nên đọc hết rồi so ở client — tránh ilike nhầm
+// ký tự % _ trong tên.
+async function nccPartnerId(name: string): Promise<{ id: string | null; error: string | null }> {
+  const norm = (t: string) => t.trim().replace(/\s+/g, " ");
+  const clean = norm(name);
+  if (!clean) return { id: null, error: null };
+  const key = clean.toLowerCase();
+  const find = async () => {
+    const { data } = await supabase.from("atld_partners").select("id, name").eq("kind", "ncc");
+    return ((data as { id: string; name: string }[]) || []).find((p) => norm(p.name).toLowerCase() === key)?.id || null;
+  };
+  const found = await find();
+  if (found) return { id: found, error: null };
+  const { data, error } = await supabase.from("atld_partners").insert({ kind: "ncc", name: clean }).select("id").single();
+  if (data) return { id: (data as { id: string }).id, error: null };
+  // Trùng tên do người khác vừa tạo cùng lúc -> đọc lại.
+  const again = await find();
+  return again ? { id: again, error: null } : { id: null, error: atldErrorMessage(error) };
+}
+
 // Nhập kho NGAY từ form mã SP (user yêu cầu 02/10/2026: tạo SP phải nhập được số
 // lượng). Đi đúng đường phiếu nhập thường: lập phiếu nhập 1 dòng rồi gọi hàm ghi sổ
 // atld_post_receipt (116) -> có lô FIFO, hiện ở cột Nhập SP của Tổng kho và dòng
 // Nhập ở tab Giá nhập kho. Ghi sổ lỗi thì xoá phiếu nháp vừa lập để không sót rác.
-export async function receiveItemStock(itemId: string, qty: number, unitPrice: number, ngay: string, lyDo: string): Promise<string | null> {
+export async function receiveItemStock(itemId: string, qty: number, unitPrice: number, ngay: string, lyDo: string, ncc: string): Promise<string | null> {
   const { data: me } = await supabase.auth.getUser();
+  const partner = await nccPartnerId(ncc);
+  if (partner.error) return partner.error;
   const { data: v, error: e1 } = await supabase
     .from("atld_vouchers")
-    .insert({ loai: "nhap", ngay, ly_do: lyDo, created_by_name: (me.user?.user_metadata?.full_name as string) || null })
+    .insert({ loai: "nhap", ngay, ly_do: lyDo, partner_id: partner.id, created_by_name: (me.user?.user_metadata?.full_name as string) || null })
     .select("id")
     .single();
   if (e1 || !v) return atldErrorMessage(e1);

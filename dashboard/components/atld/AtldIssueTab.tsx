@@ -8,7 +8,8 @@
 // Tổng tiền (giá bán + VAT + vận chuyển) · Trạng thái. Bấm dòng để xem các dòng hàng.
 // Thao tác theo bước (hàm SQL atld_* là chốt chặn thật):
 //   Thủ kho  : Tạo phiếu, Sửa / Gửi duyệt / Xoá phiếu Nháp – Bị trả lại.
-//   TP/PP    : Duyệt (lúc này mới trừ kho -> cột Xuất SP Tổng kho) / Trả lại / Huỷ.
+//   TP/PP    : Duyệt (lúc này mới trừ kho -> cột Xuất SP Tổng kho) / Trả lại / Huỷ /
+//              Xoá mọi trạng thái trừ Đã duyệt (cùng Admin, migration 128).
 // Chuông + email: lib/atldVouchers.notifyIssue.
 // ============================================================
 
@@ -28,6 +29,8 @@ import {
   returnIssue,
   cancelIssue,
   deleteIssueDraft,
+  deleteIssueAsApprover,
+  removeIssueOriginalFile,
   notifyIssue,
   issuePrintData,
 } from "@/lib/atldVouchers";
@@ -147,11 +150,22 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
       onConfirm: () => act(r, () => approveIssue(r.id), "duyet"),
     });
 
-  const askDelete = (r: IssueRow) =>
+  // Thủ kho xoá Nháp / Bị trả lại qua RLS; Admin + cờ Duyệt xuất xoá mọi trạng
+  // thái trừ Đã duyệt qua hàm atld_delete_issue (128). Tệp chứng từ gốc xoá SAU
+  // khi CSDL đã xoá xong phiếu.
+  const askDelete = (r: IssueRow, asApprover: boolean) =>
     ask({
       title: `Xoá phiếu ${r.so_phieu}?`,
-      message: "Phiếu chưa được duyệt nên chưa đụng tồn kho. Xoá cả phiếu (mọi dòng hàng), không hoàn tác được.",
-      onConfirm: () => act(r, () => deleteIssueDraft(r.id)),
+      message:
+        r.status === "cancelled"
+          ? "Phiếu đã huỷ — kho đã được cộng lại từ lúc huỷ nên xoá không làm đổi tồn. Xoá hẳn phiếu (mọi dòng hàng, chứng từ gốc), không hoàn tác được."
+          : "Phiếu chưa được duyệt nên chưa đụng tồn kho. Xoá cả phiếu (mọi dòng hàng, chứng từ gốc), không hoàn tác được.",
+      onConfirm: () =>
+        act(r, async () => {
+          const e = asApprover ? await deleteIssueAsApprover(r.id) : await deleteIssueDraft(r.id);
+          if (!e && r.goc_file_path) await removeIssueOriginalFile(r.goc_file_path);
+          return e;
+        }),
     });
 
   const toggle = (id: string) =>
@@ -277,7 +291,7 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
                 const open = expanded.has(r.id);
                 const meta = ISSUE_STATUS_META[r.status];
                 const canKeeper = canEdit && (r.status === "draft" || r.status === "returned");
-                const canApprover = canApprove && (r.status === "pending" || r.status === "posted");
+                const canApprover = canApprove;
                 const reason = r.status === "returned" ? r.return_reason : r.status === "cancelled" ? r.cancel_reason : null;
                 return (
                   <Fragment key={r.id}>
@@ -322,7 +336,7 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
                             <>
                               <IconAct title="Sửa phiếu" onClick={() => setIssueModal({ id: r.id })}><Pencil size={13} /></IconAct>
                               <IconAct title="Gửi duyệt" onClick={() => act(r, () => submitIssue(r.id), "trinh")}><Send size={13} /></IconAct>
-                              <IconAct title="Xoá phiếu" danger onClick={() => askDelete(r)}><Trash2 size={13} /></IconAct>
+                              <IconAct title="Xoá phiếu" danger onClick={() => askDelete(r, false)}><Trash2 size={13} /></IconAct>
                             </>
                           )}
                           {canApprove && r.status === "pending" && (
@@ -333,6 +347,9 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
                           )}
                           {canApprove && r.status === "posted" && (
                             <IconAct title="Huỷ phiếu (cộng lại kho)" danger onClick={() => setReasonBox({ mode: "cancel", row: r })}><XCircle size={13} /></IconAct>
+                          )}
+                          {canApprove && r.status !== "posted" && !canKeeper && (
+                            <IconAct title="Xoá phiếu" danger onClick={() => askDelete(r, true)}><Trash2 size={13} /></IconAct>
                           )}
                           {!canKeeper && !canApprover && (
                             <span className="text-slate-300" title="Không có thao tác cho bạn ở bước này"><Lock size={13} /></span>

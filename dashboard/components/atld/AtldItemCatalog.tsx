@@ -44,6 +44,7 @@ import {
   formatQty,
   formatMoney,
 } from "@/lib/atldStock";
+import { deleteInactiveItem } from "@/lib/atldVouchers";
 import { Search, Plus, Pencil, Trash2, Loader2, AlertCircle, X, Boxes, PackageX, TriangleAlert, Wallet, EyeOff, Eye, ChevronLeft, ChevronRight, CalendarDays, FileDown } from "lucide-react";
 
 // Bộ lọc trạng thái: 3 mức tồn xét theo TỒN CUỐI KỲ của tháng đang xem; "Tất cả"
@@ -79,7 +80,8 @@ function exportStockExcel(rows: Row[], month: string) {
   XLSX.writeFile(wb, `Tong_kho_ATLD_T${m}_${y}.xlsx`);
 }
 
-export default function AtldItemCatalog({ canEdit }: { canEdit: boolean }) {
+// canApprove (Admin + cờ Duyệt xuất): xoá HẲN mã Ngừng dùng kể cả mã đã có phiếu (129).
+export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: boolean; canApprove: boolean }) {
   const [items, setItems] = useState<AtldItem[]>([]);
   const [stock, setStock] = useState<Map<string, PeriodStock>>(new Map());
   const [month, setMonth] = useState<string>(() => currentMonthVN());
@@ -140,6 +142,19 @@ export default function AtldItemCatalog({ canEdit }: { canEdit: boolean }) {
     if (err) return setRowErr(err);
     load();
   };
+
+  const removeInactive = (r: Row) =>
+    ask({
+      title: `Xoá hẳn mã ${r.code}?`,
+      message:
+        "Xoá luôn mọi phiếu nhập / xuất CHỈ chứa mã này, sổ kho và lịch sử giá của mã — tồn kho của mã mất theo, không hoàn tác được. Mã nằm chung phiếu với mã khác (VD phiếu tồn đầu kỳ) thì hệ thống sẽ chặn.",
+      onConfirm: async () => {
+        setRowErr(null);
+        const err = await deleteInactiveItem(r.id);
+        if (err) return setRowErr(err);
+        load();
+      },
+    });
 
   const remove = (r: Row) =>
     ask({
@@ -306,7 +321,7 @@ export default function AtldItemCatalog({ canEdit }: { canEdit: boolean }) {
                 <th className="px-3 py-3 text-right">Tồn cuối kỳ</th>
                 <th className="px-4 py-3 text-right">Tối thiểu</th>
                 <th className="px-4 py-3">Trạng thái</th>
-                {canEdit && <th className="px-4 py-3 w-28" />}
+                {(canEdit || canApprove) && <th className="px-4 py-3 w-28" />}
               </tr>
             </thead>
             <tbody>
@@ -334,14 +349,22 @@ export default function AtldItemCatalog({ canEdit }: { canEdit: boolean }) {
                         <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 whitespace-nowrap">Ngừng dùng</span>
                       )}
                     </td>
-                    {canEdit && (
+                    {(canEdit || canApprove) && (
                       <td className="px-4 py-2.5">
                         <div className="flex items-center justify-end gap-1">
-                          <IconBtn title="Sửa" onClick={() => setEditing(r)}><Pencil size={13} /></IconBtn>
-                          <IconBtn title={r.active ? "Ngừng dùng" : "Dùng lại"} onClick={() => toggleActive(r)}>
-                            {r.active ? <EyeOff size={13} /> : <Eye size={13} />}
-                          </IconBtn>
-                          <IconBtn title="Xoá" danger onClick={() => remove(r)}><Trash2 size={13} /></IconBtn>
+                          {canEdit && (
+                            <>
+                              <IconBtn title="Sửa" onClick={() => setEditing(r)}><Pencil size={13} /></IconBtn>
+                              <IconBtn title={r.active ? "Ngừng dùng" : "Dùng lại"} onClick={() => toggleActive(r)}>
+                                {r.active ? <EyeOff size={13} /> : <Eye size={13} />}
+                              </IconBtn>
+                            </>
+                          )}
+                          {!r.active && canApprove ? (
+                            <IconBtn title="Xoá hẳn (kèm phiếu + sổ kho của mã)" danger onClick={() => removeInactive(r)}><Trash2 size={13} /></IconBtn>
+                          ) : (
+                            canEdit && <IconBtn title="Xoá" danger onClick={() => remove(r)}><Trash2 size={13} /></IconBtn>
+                          )}
                         </div>
                       </td>
                     )}
@@ -464,6 +487,7 @@ function ItemModal({
     min_stock: item?.min_stock ?? 0,
     gia_nhap: item?.gia_nhap ?? null,
     gia_ban: item?.gia_ban ?? null,
+    ncc: item?.ncc ?? "",
     note: item?.note ?? "",
   });
   const [saving, setSaving] = useState(false);
@@ -520,7 +544,7 @@ function ItemModal({
       if (id) setCreatedId(id);
     }
     if (!e && id && qty > 0) {
-      const er = await receiveItemStock(id, qty, v.gia_nhap ?? 0, ngayNhap, item ? "Nhập thêm từ danh mục SP" : "Nhập kho khi tạo mã SP");
+      const er = await receiveItemStock(id, qty, v.gia_nhap ?? 0, ngayNhap, item ? "Nhập thêm từ danh mục SP" : "Nhập kho khi tạo mã SP", v.ncc);
       if (er) e = `Đã lưu mã SP nhưng CHƯA nhập kho được: ${er} — bấm Lưu để thử nhập lại.`;
     }
     savingRef.current = false;
@@ -624,6 +648,10 @@ function ItemModal({
               {item && " Tồn hiện có không bị ghi đè, chỉ cộng thêm."}
             </p>
           )}
+          <label className="block space-y-1 sm:col-span-3">
+            <span className="text-[10px] font-bold text-slate-500">NCC/PVT</span>
+            <input value={v.ncc} onChange={(e) => set("ncc", e.target.value)} placeholder="Nhà cung cấp / Phòng Vật tư — gõ tay" className={inputCls} />
+          </label>
           <label className="block space-y-1 sm:col-span-3">
             <span className="text-[10px] font-bold text-slate-500">Ghi chú</span>
             <input value={v.note} onChange={(e) => set("note", e.target.value)} className={inputCls} />

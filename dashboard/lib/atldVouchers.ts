@@ -146,6 +146,17 @@ export async function deleteIssueDraft(id: string): Promise<string | null> {
   return null;
 }
 
+// Xoá phiếu bởi Admin / người có cờ Duyệt xuất (migration 128): mọi trạng thái
+// trừ Đã duyệt (phải Huỷ trước). Hàm SQL soát sổ kho cân về 0 rồi mới xoá.
+export async function deleteIssueAsApprover(id: string): Promise<string | null> {
+  const { error } = await supabase.rpc("atld_delete_issue", { p_voucher: id });
+  if (!error) return null;
+  if (/Could not find the function .*atld_delete_issue/i.test(error.message || "")) {
+    return "Chưa chạy migration 128 (xoá phiếu xuất) trong Supabase > SQL Editor.";
+  }
+  return atldErrorMessage(error);
+}
+
 // ─── Email (chạy ngầm, không chặn thao tác) ───
 // Người nhận cấp duyệt = mọi email trong dòng approval_permissions có cờ duyệt xuất.
 async function approverEmails(): Promise<string[]> {
@@ -403,6 +414,20 @@ export async function removeIssueOriginalFile(path: string): Promise<void> {
   } catch {
     // tệp mồ côi không ảnh hưởng ai — không chặn luồng chính
   }
+}
+
+// Xoá HẲN mã SP đang Ngừng dùng kèm phiếu chỉ chứa mã đó + sổ kho (migration 129).
+// Tệp chứng từ gốc của các phiếu bị xoá dọn SAU khi CSDL xoá xong.
+export async function deleteInactiveItem(itemId: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc("atld_delete_inactive_item", { p_item: itemId });
+  if (error) {
+    if (/Could not find the function .*atld_delete_inactive_item/i.test(error.message || "")) {
+      return "Chưa chạy migration 129 (xoá hẳn mã Ngừng dùng) trong Supabase > SQL Editor.";
+    }
+    return atldErrorMessage(error);
+  }
+  for (const p of (data as string[] | null) || []) await removeIssueOriginalFile(p);
+  return null;
 }
 
 export async function resolveIssueOriginalUrl(path: string): Promise<string | null> {

@@ -77,7 +77,7 @@ export default function SafetyWarehousePage() {
             })}
           </div>
 
-          {tab === "items" && <AtldItemCatalog canEdit={access.keeper} />}
+          {tab === "items" && <AtldItemCatalog canEdit={access.keeper} canApprove={access.approver} />}
           {tab === "prices" && (
             <AtldPriceTab
               canEdit={access.keeper}

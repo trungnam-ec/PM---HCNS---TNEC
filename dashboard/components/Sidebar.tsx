@@ -32,6 +32,7 @@ import {
   ReceiptText,
   FolderKanban,
   ClipboardType,
+  HardHat,
   Gauge
 } from "lucide-react";
 import { useSidebar } from "./SidebarContext";
@@ -112,9 +113,10 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
     { label: "Tuyển dụng", href: "/recruitment", icon: Briefcase },
     { label: "Danh sách nhân viên", href: "/employees", icon: Users },
     { label: "Lương & Phúc lợi (C&B)", href: "/cb", icon: Calculator },
-    { label: "Hành chính & VPP", href: "/administration", icon: Building2 },
+    { label: "Đề nghị thanh toán", href: "/administration", icon: Building2 },
     { label: "Hồ sơ trình ký", href: "/ho-so-trinh-ky", icon: TrendingUp },
     { label: "Văn Thư", href: "/document-control", icon: FileText },
+    { label: "P. An toàn lao động", href: "/an-toan-lao-dong", icon: HardHat },
     { label: "Biên bản họp (Meeting)", href: "/meeting-team", icon: Mic },
     { label: "Góp ý & Kiến nghị", href: "/suggestions", icon: MessageSquare },
     { label: "Cài đặt hệ thống", href: "/settings?tab=system", icon: Settings },
@@ -249,7 +251,7 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
     </div>
   );
 
-  // Nhóm "Kế toán" — chèn ngay dưới "Hành chính & VPP" nếu gói cho phép.
+  // Nhóm "Kế toán" — chèn ngay dưới "Đề nghị thanh toán" nếu gói cho phép.
   const keToanAllowed = isPathAllowed("/ke-toan");
   const keToanChildren = [
     { label: "Hồ sơ thanh toán", href: "/ke-toan/ho-so-thanh-toan", icon: ReceiptText },
@@ -344,7 +346,7 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
           );
         }
 
-        // Chèn nhóm "Kế toán" ngay sau mục "Hành chính & VPP" (nếu gói cho phép)
+        // Chèn nhóm "Kế toán" ngay sau mục "Đề nghị thanh toán" (nếu gói cho phép)
         if (item.href === "/administration") {
           return (
             <div key={item.href} className="space-y-2.5">

@@ -95,6 +95,15 @@ const FLAG_GROUPS: { title: string; note?: string; flags: { key: string; label: 
       { key: "can_approve_signing_accounting", label: "Kế toán — Xác nhận chi", desc: "Bước 4: nhận phiếu đã duyệt và xác nhận đã thanh toán" },
     ],
   },
+  {
+    // Kho BHLĐ (migration 116). Mọi tài khoản đều XEM được tồn kho + đơn giá;
+    // hai cờ dưới chỉ mở quyền GHI. Tách 2 người để thủ kho không tự duyệt/huỷ.
+    title: "Kho BHLĐ — P. An toàn lao động",
+    flags: [
+      { key: "can_manage_atld_stock", label: "Thủ kho ATLĐ", desc: "Tạo danh mục sản phẩm / đối tác, lập phiếu, ghi sổ phiếu nhập, gửi duyệt phiếu xuất" },
+      { key: "can_approve_atld_issue", label: "Duyệt xuất kho ATLĐ", desc: "TP / PP ATLĐ: duyệt hoặc trả lại phiếu xuất, huỷ phiếu đã ghi sổ" },
+    ],
+  },
 ];
 
 const ALL_FLAG_KEYS = FLAG_GROUPS.flatMap(g => g.flags.map(f => f.key));

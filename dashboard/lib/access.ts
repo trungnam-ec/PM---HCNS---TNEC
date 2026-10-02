@@ -64,6 +64,7 @@ export type ModuleKey =
   | "administration"
   | "accounting"
   | "meeting"
+  | "safety"
   | "employees"
   | "cb"
   | "suggestions"
@@ -97,6 +98,9 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleDef> = {
   // (requireFlag = điều kiện VÀ, giống module Báo cáo).
   accounting:     { minPlan: "basic", route: "/ke-toan", grantFlag: "canViewAccounting", requireFlag: true },
   meeting:        { minPlan: "basic", route: "/meeting-team" },
+  // P. An toàn lao động — Kho BHLĐ (migration 116). Ai cũng XEM được tồn + đơn
+  // giá (user chốt 02/10/2026); quyền GHI đi theo cờ ở RLS + hàm atld_*.
+  safety:         { minPlan: "basic", route: "/an-toan-lao-dong", grantFlag: "canManageAtldStock" },
   project_locations: { minPlan: "basic", route: "/vi-tri-du-an" },
   // Quản trị dự án (migration 096): gói chỉ mở CỬA trang; thấy dự án nào, thấy
   // tiền hay không do RLS theo vai trò trong từng dự án quyết định.

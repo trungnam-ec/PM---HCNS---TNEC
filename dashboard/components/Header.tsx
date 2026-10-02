@@ -955,8 +955,52 @@ export default function Header({ title, subtitle }: Props) {
           timestamp: s.updated_at ? new Date(s.updated_at).getTime() : 0,
         }));
 
+      // Phiếu xuất kho BHLĐ (P. An toàn lao động, migration 116/123). User chốt
+      // 02/10/2026: phiếu chờ duyệt báo CHUÔNG + email.
+      //  - TP/PP có cờ "Duyệt xuất kho ATLĐ" (và Admin): phiếu đang Chờ duyệt.
+      //  - NGƯỜI LẬP: phiếu của mình Bị trả lại — việc họ phải sửa rồi gửi lại.
+      let mappedAtld: any[] = [];
+      try {
+        const canApproveAtld = isUserAdmin || perms.canApproveAtldIssue;
+        const { data, error } = await supabase
+          .from("atld_vouchers")
+          .select("id, so_phieu, status, created_by, created_by_name, contractor_name, nguoi_nhan, bdh_name, return_reason, returned_by, updated_at")
+          .eq("loai", "xuat")
+          .in("status", ["pending", "returned"]);
+        if (error) {
+          // Chưa chạy migration 116 thì bảng chưa có — chuông các mục khác vẫn chạy.
+          console.warn("[Header] Không đọc được phiếu xuất kho ATLĐ cho chuông:", error.message);
+        } else {
+          const meAtld = (userObj.email || "").toLowerCase();
+          mappedAtld = (data || [])
+            .filter((v: any) =>
+              v.status === "pending" ? canApproveAtld : !!meAtld && (v.created_by || "").toLowerCase() === meAtld
+            )
+            .map((v: any) => {
+              const who = [v.contractor_name, v.nguoi_nhan, v.bdh_name].filter(Boolean).join(" · ");
+              return {
+                id: v.id,
+                type: "atld",
+                typeText: v.status === "returned" ? "Phiếu xuất bị trả lại" : "Phiếu xuất kho ATLĐ",
+                message:
+                  `${v.so_phieu}${who ? ` · ${who}` : ""}` +
+                  (v.status === "returned"
+                    ? ` — bị trả lại${v.returned_by ? ` bởi ${v.returned_by}` : ""}${v.return_reason ? `: ${v.return_reason}` : ""}`
+                    : ` — chờ duyệt${v.created_by_name ? ` (${v.created_by_name} lập)` : ""}`),
+                time: v.updated_at
+                  ? new Date(v.updated_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) +
+                    " " + new Date(v.updated_at).toLocaleDateString("vi-VN")
+                  : "",
+                timestamp: v.updated_at ? new Date(v.updated_at).getTime() : 0,
+              };
+            });
+        }
+      } catch (err) {
+        console.warn("Could not fetch ATLĐ vouchers for header:", err);
+      }
+
       // Combine and sort by timestamp descending
-      const allNotifications = [...mappedTasks, ...mappedJustifications, ...mappedBookings, ...mappedBenefitClaims, ...mappedVppRequests, ...mappedSigning, ...mappedNotes, ...mappedComments, ...mappedAttendeeBookings].sort((a, b) => b.timestamp - a.timestamp);
+      const allNotifications = [...mappedTasks, ...mappedJustifications, ...mappedBookings, ...mappedBenefitClaims, ...mappedVppRequests, ...mappedSigning, ...mappedAtld, ...mappedNotes, ...mappedComments, ...mappedAttendeeBookings].sort((a, b) => b.timestamp - a.timestamp);
       setNotifications(allNotifications);
     } catch (err) {
       console.error("Error fetching notifications for header:", err);
@@ -1059,6 +1103,14 @@ export default function Header({ title, subtitle }: Props) {
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "signing_submissions" },
+          () => {
+            fetchNotifications(currentUser);
+          }
+        )
+        // Phiếu xuất kho BHLĐ: gửi duyệt / duyệt / trả lại thì chuông cập nhật ngay.
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "atld_vouchers" },
           () => {
             fetchNotifications(currentUser);
           }
@@ -1173,6 +1225,9 @@ export default function Header({ title, subtitle }: Props) {
                           : notif.type === "signing"
                           // Mở thẳng module Hồ sơ trình ký > Phiếu trình ký
                           ? "/ho-so-trinh-ky"
+                          : notif.type === "atld"
+                          // Mở thẳng P. An toàn lao động > tab Xuất kho cho BĐH/Đối tác
+                          ? "/an-toan-lao-dong?tab=issues"
                           : notif.type === "leave"
                           ? "/settings?tab=approvals&subtab=leave"
                           : notif.type === "trip"
@@ -1199,6 +1254,8 @@ export default function Header({ title, subtitle }: Props) {
                             ? "bg-violet-50 text-violet-700"
                             : notif.type === "signing"
                             ? "bg-amber-50 text-amber-700"
+                            : notif.type === "atld"
+                            ? "bg-orange-50 text-orange-700"
                             : notif.type === "comment"
                             // Xanh dương nhạt — cùng tông với nút "Gửi ý kiến"
                             ? "bg-blue-50 text-blue-700"

@@ -72,6 +72,10 @@ export type ApprovalPermissions = {
   canApproveSigningVatTu: boolean;
   canApproveSigningDirector: boolean;
   canApproveSigningAccounting: boolean;
+  // ─── Kho BHLĐ — P. An toàn lao động (migration 116) ───
+  // Chốt chặn thật nằm ở RLS + hàm SQL atld_*; hai cờ này chỉ để ẩn/hiện nút.
+  canManageAtldStock: boolean;   // Thủ kho: danh mục, lập phiếu, ghi sổ nhập, gửi duyệt xuất
+  canApproveAtldIssue: boolean;  // TP/PP ATLĐ: duyệt / trả lại phiếu xuất, huỷ phiếu
   // Quan hệ giám sát: tên hiển thị (khớp cột `assignee` dạng text) của người mà chủ
   // dòng này được thấy task, ngoài task của chính họ. VD: Như Quỳnh -> "Thanh Hằng".
   supervisesName: string | null;
@@ -110,6 +114,8 @@ export const NO_APPROVAL_PERMISSIONS: ApprovalPermissions = {
   canApproveSigningVatTu: false,
   canApproveSigningDirector: false,
   canApproveSigningAccounting: false,
+  canManageAtldStock: false,
+  canApproveAtldIssue: false,
   supervisesName: null,
 };
 
@@ -729,6 +735,8 @@ export async function fetchApprovalPermissions(email?: string | null): Promise<A
       canApproveSigningVatTu: !!row.can_approve_signing_vat_tu,
       canApproveSigningDirector: !!row.can_approve_signing_director,
       canApproveSigningAccounting: !!row.can_approve_signing_accounting,
+      canManageAtldStock: !!row.can_manage_atld_stock,
+      canApproveAtldIssue: !!row.can_approve_atld_issue,
       supervisesName: row.supervises_name || null,
     };
   } catch {

@@ -2398,22 +2398,86 @@ export default function TaskManagementPage() {
                 </div>
               </div>
 
-              {/* Progress Slider */}
+              {/* Progress Slider — ray dày, phần đã làm tô màu, núm to cho dễ kéo,
+                  vạch mốc mỗi 10% bấm thẳng được. Ray + nhãn mốc lùi vào 12px mỗi
+                  bên (= nửa núm 24px) để tâm núm trùng đúng vạch mốc ở mọi giá trị.
+                  Màu theo mức: 10–70% VÀNG (đang làm), 80–100% XANH LÁ (sắp/đã xong),
+                  0% xám. Class viết nguyên chuỗi để Tailwind quét ra được. */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <label className="text-slate-500">Tiến độ công việc (%)</label>
-                  <span className="text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-lg text-xs">{editProgress}%</span>
+                  <span className={`text-white font-black px-2.5 py-0.5 rounded-lg text-sm shadow-sm ${
+                    editProgress >= 80 ? "bg-emerald-600" : editProgress > 0 ? "bg-amber-500" : "bg-slate-400"
+                  }`}>{editProgress}%</span>
                 </div>
-                <div className="flex items-center gap-4">
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="5"
-                    value={editProgress}
-                    onChange={(e) => setEditProgress(Number(e.target.value))}
-                    className="flex-1 h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-600 focus:outline-none"
-                  />
+                <div className="flex items-start gap-4">
+                  <div className="flex-1">
+                    <div className="relative h-8 flex items-center">
+                      <div className="absolute left-3 right-3 h-3.5 rounded-full bg-slate-200 overflow-hidden shadow-inner">
+                        <div
+                          className={`h-full rounded-full bg-gradient-to-r transition-[width] duration-150 ${
+                            editProgress >= 80 ? "from-emerald-500 to-emerald-600" : "from-amber-400 to-amber-500"
+                          }`}
+                          style={{ width: `${editProgress}%` }}
+                        />
+                      </div>
+                      {/* Chấm mốc trên ray: 10 → 90 */}
+                      <div className="absolute left-3 right-3 h-3.5 pointer-events-none">
+                        {[10, 20, 30, 40, 50, 60, 70, 80, 90].map(p => (
+                          <span
+                            key={p}
+                            className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${
+                              editProgress >= p ? "bg-white/80" : "bg-slate-400"
+                            }`}
+                            style={{ left: `${p}%` }}
+                          />
+                        ))}
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="10"
+                        value={editProgress}
+                        onChange={(e) => setEditProgress(Number(e.target.value))}
+                        aria-label="Tiến độ công việc"
+                        className={`relative w-full h-8 appearance-none bg-transparent cursor-pointer focus:outline-none
+                          [&::-webkit-slider-runnable-track]:bg-transparent [&::-moz-range-track]:bg-transparent
+                          [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6
+                          [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-4
+                          [&::-webkit-slider-thumb]:border-solid [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-grab
+                          [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white
+                          [&::-moz-range-thumb]:border-4 [&::-moz-range-thumb]:border-solid [&::-moz-range-thumb]:shadow-md
+                          focus-visible:[&::-webkit-slider-thumb]:ring-4 ${
+                          editProgress >= 80
+                            ? "[&::-webkit-slider-thumb]:border-emerald-600 [&::-moz-range-thumb]:border-emerald-600 focus-visible:[&::-webkit-slider-thumb]:ring-emerald-500/30"
+                            : editProgress > 0
+                              ? "[&::-webkit-slider-thumb]:border-amber-500 [&::-moz-range-thumb]:border-amber-500 focus-visible:[&::-webkit-slider-thumb]:ring-amber-500/30"
+                              : "[&::-webkit-slider-thumb]:border-slate-400 [&::-moz-range-thumb]:border-slate-400 focus-visible:[&::-webkit-slider-thumb]:ring-slate-400/30"
+                        }`}
+                      />
+                    </div>
+                    {/* Nhãn mốc — bấm vào là nhảy tới mốc đó */}
+                    <div className="relative h-5 mx-3">
+                      {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(p => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setEditProgress(p)}
+                          className={`absolute top-0 -translate-x-1/2 text-[10px] leading-5 px-0.5 rounded cursor-pointer transition-colors ${
+                            editProgress === p
+                              ? (p >= 80 ? "font-black text-emerald-600" : p > 0 ? "font-black text-amber-600" : "font-black text-slate-600")
+                              : editProgress > p
+                                ? (editProgress >= 80 ? "font-bold text-emerald-500 hover:text-emerald-700" : "font-bold text-amber-500 hover:text-amber-700")
+                                : "font-semibold text-slate-400 hover:text-slate-600"
+                          }`}
+                          style={{ left: `${p}%` }}
+                        >
+                          {p}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <input
                     type="number"
                     min="0"

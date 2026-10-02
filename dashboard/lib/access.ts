@@ -84,7 +84,16 @@ export type ModuleDef = {
   // VD Báo cáo doanh thu: phòng ở gói Enterprise vẫn phải cấp cờ từng người.
   // Bỏ trống = hành vi cũ của mọi module còn lại (gói phủ là vào được).
   requireFlag?: boolean;
+  // Cờ khác CŨNG tính là được cấp phép vào module (điều kiện HOẶC với grantFlag).
+  // VD P. An toàn lao động: Thủ kho / người duyệt xuất tự vào được, khỏi tích
+  // thêm cờ Xem.
+  altFlags?: (keyof ApprovalPermissions)[];
 };
+
+function hasModuleFlag(m: ModuleDef | null | undefined, perms: ApprovalPermissions): boolean {
+  if (!m) return false;
+  return [m.grantFlag, ...(m.altFlags || [])].some((f) => !!f && perms[f] === true);
+}
 
 export const MODULE_REGISTRY: Record<ModuleKey, ModuleDef> = {
   // ── Basic ──
@@ -98,9 +107,6 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleDef> = {
   // (requireFlag = điều kiện VÀ, giống module Báo cáo).
   accounting:     { minPlan: "basic", route: "/ke-toan", grantFlag: "canViewAccounting", requireFlag: true },
   meeting:        { minPlan: "basic", route: "/meeting-team" },
-  // P. An toàn lao động — Kho BHLĐ (migration 116). Ai cũng XEM được tồn + đơn
-  // giá (user chốt 02/10/2026); quyền GHI đi theo cờ ở RLS + hàm atld_*.
-  safety:         { minPlan: "basic", route: "/an-toan-lao-dong", grantFlag: "canManageAtldStock" },
   project_locations: { minPlan: "basic", route: "/vi-tri-du-an" },
   // Quản trị dự án (migration 096): gói chỉ mở CỬA trang; thấy dự án nào, thấy
   // tiền hay không do RLS theo vai trò trong từng dự án quyết định.
@@ -135,6 +141,17 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleDef> = {
   tong_hop:       { minPlan: "professional", route: "/tong-hop" },
   // ── Enterprise ──
   ai_search:      { minPlan: "enterprise" }, // tính năng, không có route riêng
+  // P. An toàn lao động — Kho BHLĐ. User chốt 02/10/2026: gói Enterprise + BẮT
+  // BUỘC cờ (requireFlag): Admin luôn vào; người khác cần cờ Xem (can_view_atld)
+  // hoặc một trong hai cờ thao tác (Thủ kho / Duyệt xuất). RLS migration 126
+  // (atld_can_view) chặn đọc dữ liệu theo đúng luật này.
+  safety:         {
+    minPlan: "enterprise",
+    route: "/an-toan-lao-dong",
+    grantFlag: "canViewAtld",
+    altFlags: ["canManageAtldStock", "canApproveAtldIssue"],
+    requireFlag: true,
+  },
 };
 
 // Nhân dạng tối thiểu để quyết định quyền — mọi trang truyền đúng shape này.
@@ -149,7 +166,7 @@ export type AccessUser = {
 export function canAccess(user: AccessUser, moduleKey: ModuleKey): boolean {
   if (user.isAdmin) return true;
   const m = MODULE_REGISTRY[moduleKey];
-  const hasFlag = !!(m.grantFlag && user.perms[m.grantFlag] === true);
+  const hasFlag = hasModuleFlag(m, user.perms);
   // 0. Module bắt buộc cờ: gói KHÔNG tự mở, phải có cờ VÀ tenant đủ license.
   if (m.requireFlag) {
     return hasFlag && isPlanAtLeast(user.tenantPlan, m.minPlan);
@@ -184,7 +201,7 @@ export function canAccessPath(user: AccessUser, pathname: string): boolean {
   const minPlan = getMinPlanForPath(pathname);
   const key = moduleForPath(pathname);
   const m = key ? MODULE_REGISTRY[key] : null;
-  const hasFlag = !!(m?.grantFlag && user.perms[m.grantFlag] === true);
+  const hasFlag = hasModuleFlag(m, user.perms);
   // Module bắt buộc cờ phải xét TRƯỚC nhánh gói bên dưới — nếu không, phòng đã
   // ở đúng gói sẽ vào được mà chẳng cần cờ, đúng cái mà requireFlag muốn chặn.
   if (m?.requireFlag) {

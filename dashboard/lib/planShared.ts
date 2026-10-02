@@ -36,7 +36,8 @@ export function isPlanAtLeast(current: Plan, min: Plan): boolean {
 //                 Tin tức, Hồ sơ trình ký
 // Professional: + Danh sách nhân viên, Góp ý & Kiến nghị, Tuyển dụng,
 //                 Văn thư, Tổng hợp
-// Enterprise:   + Tìm kiếm AI thông minh
+// Enterprise:   + Tìm kiếm AI thông minh, P. An toàn lao động (bắt buộc thêm cờ —
+//                 lib/access.ts MODULE_REGISTRY.safety)
 //
 // LƯU Ý HỒ SƠ TRÌNH KÝ: module mở từ Basic (22/09/2026) để mọi nhân viên lập được
 // phiếu trình ký. Ba nhóm BÁO CÁO QUẢN TRỊ nằm cùng trang (Kế hoạch thu chi, Sản
@@ -63,6 +64,7 @@ export const ROUTE_MIN_PLAN: { prefix: string; min: Plan }[] = [
   { prefix: "/document-control", min: "professional" },
   { prefix: "/van-thu", min: "professional" },
   { prefix: "/tong-hop", min: "professional" },
+  { prefix: "/an-toan-lao-dong", min: "enterprise" },
 ];
 
 // ─── PHÂN GÓI THEO TÍNH NĂNG (không gắn với route riêng) ───

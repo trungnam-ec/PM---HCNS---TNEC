@@ -96,10 +96,12 @@ const FLAG_GROUPS: { title: string; note?: string; flags: { key: string; label: 
     ],
   },
   {
-    // Kho BHLĐ (migration 116). Mọi tài khoản đều XEM được tồn kho + đơn giá;
-    // hai cờ dưới chỉ mở quyền GHI. Tách 2 người để thủ kho không tự duyệt/huỷ.
+    // Kho BHLĐ (116 + 126). Module gói Enterprise, BẮT BUỘC cờ: "Xem module" cho
+    // người chỉ cần vào xem; Thủ kho / Duyệt xuất là quyền thao tác và tự kèm quyền
+    // xem. Tách 2 cờ thao tác để thủ kho không tự duyệt/huỷ phiếu của mình.
     title: "Kho BHLĐ — P. An toàn lao động",
     flags: [
+      { key: "can_view_atld", label: "Xem module P. An toàn lao động", desc: "Vào được module: xem tồn kho, đơn giá, danh sách xuất – nhập, phiếu xuất. Không lập/duyệt được gì (Thủ kho / Duyệt xuất đã tự có quyền xem)" },
       { key: "can_manage_atld_stock", label: "Thủ kho ATLĐ", desc: "Tạo danh mục sản phẩm / đối tác, lập phiếu, ghi sổ phiếu nhập, gửi duyệt phiếu xuất" },
       { key: "can_approve_atld_issue", label: "Duyệt xuất kho ATLĐ", desc: "TP / PP ATLĐ: duyệt hoặc trả lại phiếu xuất, huỷ phiếu đã ghi sổ" },
     ],

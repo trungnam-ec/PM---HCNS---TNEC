@@ -1565,7 +1565,12 @@ export async function pushToPaymentDossier(
     ngay_nhap: ddmmyyyy(new Date()),
     ngay_de_nghi: row.created_at ? ddmmyyyy(new Date(row.created_at)) : ddmmyyyy(new Date()),
     nguoi_nhan_tien: ten || null,
-    noi_dung_tt: row.ve_viec || row.noi_dung_trinh || null,
+    // Phiếu chuyển tiền: ve_viec chỉ là câu trình ("Kính trình BLĐ phê duyệt"),
+    // nội dung thật nằm ở noi_dung_trinh — đúng thứ tự ô "Nội dung chuyển tiền"
+    // trong SigningPanel. Các loại phiếu khác giữ nguyên thứ tự cũ.
+    noi_dung_tt: (row.loai === "chuyen_tien"
+      ? row.noi_dung_trinh || row.ve_viec
+      : row.ve_viec || row.noi_dung_trinh) || null,
     so_tien_de_nghi: hasAmount ? fmtMoney(amount) : null,
     so_tien_de_nghi_num: hasAmount ? amount : null,
     du_an: row.du_an || null,

@@ -31,7 +31,8 @@ import {
   Filter,
   CheckCircle2,
   Building2,
-  Trash2
+  Trash2,
+  Download
 } from "lucide-react";
 import TaskAttachmentField from "@/components/TaskAttachmentField";
 import {
@@ -270,6 +271,9 @@ export default function TaskManagementPage() {
   // Lọc theo dự án — cũng hiện với MỌI tài khoản. Giá trị đặc biệt "__none__"
   // để soi riêng nhóm việc không gắn dự án nào.
   const [filterProject, setFilterProject] = useState("all");
+
+  // Nút "Tải công việc hoàn thành" — khoá trong lúc dựng file.
+  const [exportingDone, setExportingDone] = useState(false);
 
   // Danh mục dự án / nhóm / nguồn công việc (Cài đặt hệ thống -> Danh mục công việc).
   // Chưa chạy migration 037 thì cả 3 danh sách rỗng — form vẫn mở, chỉ là 3 ô
@@ -516,18 +520,15 @@ export default function TaskManagementPage() {
     if (!taskId) return;
 
     const isCompleting = columnId === "completed";
-    // Đưa việc vào diện theo dõi sau hoàn thành cũng là quyết định của cấp quản
-    // lý, y như kết luận "đã xong" — gate chung một chỗ.
-    const isTracking = columnId === "tracking";
 
     // Chỉ Trưởng phòng / Phó phòng / Tổ trưởng / Admin được kết luận công việc
     // đã xong — nhân viên tự kéo vào "Đã hoàn thành" sẽ bị chặn.
-    if ((isCompleting || isTracking) && !canManageTasks) {
+    // Cột "Update thông tin" thì MỌI tài khoản được kéo vào (user mở 02/10/2026):
+    // nhân viên tự đưa việc sang diện theo dõi tiếp, không cần chờ cấp quản lý.
+    if (isCompleting && !canManageTasks) {
       alert(
-        isTracking
-          ? 'Chỉ cấp quản lý mới được chuyển công việc sang "Update thông tin" để theo dõi tiếp.'
-          : 'Chỉ Trưởng phòng, Phó phòng, Tổ trưởng hoặc Admin mới được chuyển công việc sang "Đã hoàn thành".\n\n' +
-            "Bạn hãy cập nhật tiến độ và chuyển sang \"Chờ phê duyệt\" để cấp quản lý xác nhận."
+        'Chỉ Trưởng phòng, Phó phòng, Tổ trưởng hoặc Admin mới được chuyển công việc sang "Đã hoàn thành".\n\n' +
+        "Bạn hãy cập nhật tiến độ và chuyển sang \"Chờ phê duyệt\" để cấp quản lý xác nhận."
       );
       setDraggedTaskId(null);
       return;
@@ -1254,6 +1255,73 @@ export default function TaskManagementPage() {
   const lockStartDate = !canManageTasks && !!editingTask?.start_date;
   const lockDueDate = !canManageTasks && !!editingTask?.due_date;
 
+  // ─── Tải công việc hoàn thành ra Excel ───
+  // Lấy ĐÚNG những thẻ đang hiện ở cột "Đã hoàn thành" — tức là đã qua đủ bộ lọc
+  // (tìm kiếm, thời gian, ưu tiên, dự án, phòng ban/BĐH) VÀ phạm vi quyền xem
+  // của tài khoản. Không truy vấn lại DB: file luôn khớp với cái người dùng thấy.
+  const completedTasks = filteredTasks.filter(t => t.status === "completed");
+  const handleExportCompleted = async () => {
+    if (exportingDone || completedTasks.length === 0) return;
+    setExportingDone(true);
+    try {
+      const XLSX = await import("xlsx");
+      const period =
+        taskFrom === monthFirstDay(taskMonth) && taskTo === monthLastDay(taskMonth)
+          ? `Tháng ${parseInt(taskMonth.slice(5), 10)}/${taskMonth.slice(0, 4)}`
+          : `${fmtD(taskFrom)} – ${fmtD(taskTo)}`;
+
+      const header = [
+        "STT", "Tên công việc", "Người thực hiện", "Phòng ban", "Mã dự án", "Tên dự án",
+        "Nhóm công việc", "Nguồn công việc", "Mức ưu tiên", "Ngày bắt đầu", "Deadline",
+        "Tiến độ (%)", "Mô tả", "Link", "Tệp đính kèm",
+      ];
+      // Sắp theo người thực hiện rồi tới deadline — đọc file theo từng người.
+      const rows = [...completedTasks].sort((a, b) =>
+        a.assignee.localeCompare(b.assignee, "vi") || dayKey(a.due_date).localeCompare(dayKey(b.due_date))
+      );
+      const body = rows.map((t, i) => [
+        i + 1,
+        t.title,
+        t.assignee,
+        findEmployeeByName(t.assignee)?.department || "",
+        t.project_code || "",
+        t.project_name || "",
+        t.work_group || "",
+        t.work_source || "",
+        t.priority || "Trung bình",
+        fmtD(dayKey(t.start_date)),
+        fmtD(dayKey(t.due_date)),
+        Number(t.progress) || 0,
+        t.description || "",
+        t.link || "",
+        t.attachment_files.map(f => f.name).join("; "),
+      ]);
+
+      const sheet = XLSX.utils.aoa_to_sheet([
+        ["DANH SÁCH CÔNG VIỆC ĐÃ HOÀN THÀNH"],
+        [`Kỳ: ${period}`, "", `Số công việc: ${rows.length}`, "",
+         `Xuất lúc: ${new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}`],
+        [],
+        header,
+        ...body,
+      ]);
+      sheet["!cols"] = [
+        { wch: 5 }, { wch: 42 }, { wch: 24 }, { wch: 24 }, { wch: 12 }, { wch: 28 },
+        { wch: 18 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+        { wch: 10 }, { wch: 48 }, { wch: 30 }, { wch: 30 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, sheet, "Đã hoàn thành");
+      XLSX.writeFile(wb, `cong-viec-hoan-thanh_${taskFrom || "dau"}_${taskTo || "cuoi"}.xlsx`);
+    } catch (err) {
+      console.error("Export completed tasks error:", err);
+      alert("Không xuất được Excel: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setExportingDone(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-[#F7F9FC]">
       <Sidebar />
@@ -1453,6 +1521,20 @@ export default function TaskManagementPage() {
                 </>
               )}
             </div>
+
+            <button
+              onClick={handleExportCompleted}
+              disabled={loading || exportingDone || completedTasks.length === 0}
+              title={
+                completedTasks.length === 0
+                  ? "Không có công việc hoàn thành nào trong danh sách đang lọc"
+                  : `Tải ${completedTasks.length} công việc đã hoàn thành (theo bộ lọc hiện tại)`
+              }
+              className="flex items-center gap-1.5 bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+            >
+              {exportingDone ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+              Tải công việc hoàn thành
+            </button>
 
             <button
               onClick={() => {

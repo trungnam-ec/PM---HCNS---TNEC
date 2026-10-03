@@ -1558,10 +1558,12 @@ export default function TaskManagementPage() {
             </div>
           ) : (
             /* Kanban Board Container —
-               xl:grid-cols-6 (trước là lg:grid-cols-5) cho cột "Update thông tin".
-               Thêm mốc xl để màn hình vừa không bị bóp 6 cột quá hẹp: từ 1280px
-               trở xuống chia 3 cột/2 hàng, rộng hơn mới trải hết 6 cột một hàng. */
-            <div className="flex overflow-x-auto pb-4 gap-4 items-start md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 md:overflow-x-visible">
+               Từ md trở lên dùng auto-fit thay cho mốc cố định grid-cols-2/3/6:
+               mốc cố định tính theo bề rộng CỬA SỔ, nhưng sidebar đã ăn 240px nên
+               ở ~1280px 6 cột chỉ còn ~150px/cột, nhỏ hơn min-w-[220px] của cột ->
+               cột tràn đè lên cột bên cạnh. auto-fit tự xếp số cột vừa đúng chỗ
+               trống (mỗi cột tối thiểu 220px), thiếu chỗ thì xuống hàng. */
+            <div className="flex overflow-x-auto pb-4 gap-4 items-start md:grid md:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] md:overflow-x-visible">
               {COLUMNS.map((col) => {
                 const colTasks = filteredTasks.filter(t => t.status === col.id);
 
@@ -2404,12 +2406,7 @@ export default function TaskManagementPage() {
                   Màu theo mức: 10–70% VÀNG (đang làm), 80–100% XANH LÁ (sắp/đã xong),
                   0% xám. Class viết nguyên chuỗi để Tailwind quét ra được. */}
               <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-slate-500">Tiến độ công việc (%)</label>
-                  <span className={`text-white font-black px-2.5 py-0.5 rounded-lg text-sm shadow-sm ${
-                    editProgress >= 80 ? "bg-emerald-600" : editProgress > 0 ? "bg-amber-500" : "bg-slate-400"
-                  }`}>{editProgress}%</span>
-                </div>
+                <label className="text-slate-500">Tiến độ công việc (%)</label>
                 <div className="flex items-start gap-4">
                   <div className="flex-1">
                     <div className="relative h-8 flex items-center">
@@ -2478,19 +2475,13 @@ export default function TaskManagementPage() {
                       ))}
                     </div>
                   </div>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={editProgress}
-                    onChange={(e) => {
-                      let val = Number(e.target.value);
-                      if (val < 0) val = 0;
-                      if (val > 100) val = 100;
-                      setEditProgress(val);
-                    }}
-                    className="w-16 border border-slate-200 rounded-xl p-1.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-center font-bold text-slate-800"
-                  />
+                  {/* Ô % đặt ngang ray (h-8 = cao ray), rộng cố định để ray không
+                      co giãn khi số đổi giữa 0% và 100% */}
+                  <div className="h-8 flex items-center">
+                    <span className={`w-16 text-center text-white font-black py-0.5 rounded-lg text-sm shadow-sm ${
+                      editProgress >= 80 ? "bg-emerald-600" : editProgress > 0 ? "bg-amber-500" : "bg-slate-400"
+                    }`}>{editProgress}%</span>
+                  </div>
                 </div>
               </div>
 

@@ -1692,7 +1692,7 @@ export default function CBPage() {
                 // chứng đi làm. Không quét thẻ thì giữ 0.5, phải giải trình mới đủ ngày.
                 if (hasSwipeOfDay) vanPhong += 0.5;
               } else {
-                // Phép năm, phép tang, kết hôn, nghỉ bù... đều cty trả lương -> tính công.
+                // Phép năm, phép tang, kết hôn, nghỉ bù, nghỉ lễ... đều cty trả lương -> tính công.
                 tag = "P";
                 phepCoLuong += 1;
               }
@@ -1917,7 +1917,7 @@ export default function CBPage() {
       ["OL", "Làm online thứ 7 (tính đủ công)", "FF99F6E4"],
       ["CT", "Công tác (đã duyệt)", "FFBFDBFE"],
       ["GT", "Giải trình chấm công (đã duyệt)", "FFFDBA74"],
-      ["P", "Nghỉ phép hưởng lương (phép năm, tang, kết hôn, nghỉ bù)", "FFBBF7D0"],
+      ["P", "Nghỉ phép hưởng lương (phép năm, tang, kết hôn, nghỉ bù, nghỉ lễ)", "FFBBF7D0"],
       ["P/2", "Phép nửa ngày", "FFBBF7D0"],
       ["OM", "Nghỉ ốm chế độ BHXH (BHXH trả, cty không tính công)", "FFDDD6FE"],
       ["TS", "Nghỉ thai sản (BHXH trả, cty không tính công)", "FFDDD6FE"],
@@ -2357,7 +2357,7 @@ export default function CBPage() {
   // computeLeaveQuota đọc lại chuỗi này, còn bảng công dò để ra ký hiệu ngày.
   // LƯU Ý: label KHÔNG được chứa dấu ngoặc "()" — regex đọc số ngày sẽ vỡ.
   //  • CHỈ "Phép năm" TRỪ vào hạn mức phép năm.
-  //  • Phép năm / Tang / Kết hôn / Nghỉ bù: cty trả lương -> bảng công "P".
+  //  • Phép năm / Tang / Kết hôn / Nghỉ bù / Nghỉ lễ: cty trả lương -> bảng công "P".
   //  • Ốm BHXH / Thai sản: BHXH trả, cty KHÔNG trả -> bảng công "OM" / "TS",
   //    không tính vào ngày công.
   //  • Không lương: bảng công "Ro".
@@ -2376,6 +2376,8 @@ export default function CBPage() {
       ? "Nghỉ kết hôn"
       : type === "Nghỉ bù"
       ? "Nghỉ bù hưởng lương"
+      : type === "Nghỉ lễ"
+      ? "Nghỉ lễ trong năm hưởng lương"
       : type === "Không lương"
       ? "Nghỉ không hưởng lương"
       : "Nghỉ phép năm hưởng lương";
@@ -6883,6 +6885,7 @@ export default function CBPage() {
                                 <option value="Tang">Nghỉ phép tang</option>
                                 <option value="Kết hôn">Nghỉ kết hôn</option>
                                 <option value="Nghỉ bù">Nghỉ bù</option>
+                                <option value="Nghỉ lễ">Nghỉ lễ trong năm</option>
                                 <option value="Không lương">Nghỉ không hưởng lương</option>
                                 <option value="Làm online">Làm online thứ 7</option>
                               </select>
@@ -6958,6 +6961,7 @@ export default function CBPage() {
                                         <option value="Tang">Nghỉ phép tang (có lương)</option>
                                         <option value="Kết hôn">Nghỉ kết hôn (có lương)</option>
                                         <option value="Nghỉ bù">Nghỉ bù (có lương, không trừ)</option>
+                                        <option value="Nghỉ lễ">Nghỉ lễ trong năm (có lương, không trừ)</option>
                                         <option value="Không lương">Nghỉ không hưởng lương</option>
                                         <option value="Làm online">Làm online thứ 7 (tính đủ công)</option>
                                       </select>
@@ -9654,7 +9658,7 @@ export default function CBPage() {
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-[#005BAC] text-white shrink-0">
                   <div>
                     <h3 className="font-heading font-black text-sm">Bảng tổng hợp ngày công trong tháng {timesheetMonth}</h3>
-                    <p className="text-white/80 text-[10px] font-bold mt-0.5">x = Đi làm · x/2 = Làm nửa ngày · OL = Làm online thứ 7 · CT = Công tác · GT = Giải trình chấm công (đã duyệt) · P = Phép hưởng lương (phép năm, tang, kết hôn, nghỉ bù) · P/2 = Phép nửa ngày · OM = Ốm chế độ BHXH · TS = Thai sản · Ro = Nghỉ không lương · Ro/2 = Nghỉ không lương nửa ngày</p>
+                    <p className="text-white/80 text-[10px] font-bold mt-0.5">x = Đi làm · x/2 = Làm nửa ngày · OL = Làm online thứ 7 · CT = Công tác · GT = Giải trình chấm công (đã duyệt) · P = Phép hưởng lương (phép năm, tang, kết hôn, nghỉ bù, nghỉ lễ) · P/2 = Phép nửa ngày · OM = Ốm chế độ BHXH · TS = Thai sản · Ro = Nghỉ không lương · Ro/2 = Nghỉ không lương nửa ngày</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <select

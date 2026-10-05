@@ -1510,12 +1510,15 @@ export default function CBPage() {
     return { month, year };
   };
 
-  const timesheetMatrix = useMemo(() => {
-    if (parsedEmployees.length === 0) return { rows: [] as TimesheetMatrixRow[], daysInMonth: 0, month: 0, year: 0 };
-    const { month, year } = parseMonthYear(timesheetMonth);
+  // Dùng chung cho 2 nguồn: file máy chấm công Văn phòng và dữ liệu chấm công GPS
+  // của các BĐH — cùng một luật xếp ký hiệu (P/L/CT/GT/OL...) nên hai bảng không lệch nhau.
+  type TimesheetSourceEmployee = Pick<ParsedEmployeeAttendance, "employeeCode" | "name" | "department" | "details">;
+  const buildTimesheetMatrix = (srcEmployees: TimesheetSourceEmployee[], monthStr: string) => {
+    if (srcEmployees.length === 0) return { rows: [] as TimesheetMatrixRow[], daysInMonth: 0, month: 0, year: 0 };
+    const { month, year } = parseMonthYear(monthStr);
     const daysInMonth = new Date(year, month, 0).getDate();
 
-    const rows: TimesheetMatrixRow[] = parsedEmployees.map(emp => {
+    const rows: TimesheetMatrixRow[] = srcEmployees.map(emp => {
       const days: string[] = [];
       let vanPhong = 0, phepCoLuong = 0, congTac = 0, nghiKhongLuong = 0;
 
@@ -1722,7 +1725,23 @@ export default function CBPage() {
     });
 
     return { rows, daysInMonth, month, year };
-  }, [parsedEmployees, leaves, explanations, travels, timesheetMonth]);
+  };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const timesheetMatrix = useMemo(() => buildTimesheetMatrix(parsedEmployees, timesheetMonth), [parsedEmployees, leaves, explanations, travels, timesheetMonth]);
+
+  // Bảng tổng hợp đang mở lấy từ nguồn nào. "gps" = khối Chấm công GPS gửi dữ liệu
+  // tháng đang xem sang (phòng ban = tên BĐH), không cần import file.
+  const [timesheetSource, setTimesheetSource] = useState<"office" | "gps">("office");
+  const [gpsTimesheet, setGpsTimesheet] = useState<{ month: string; employees: TimesheetSourceEmployee[] } | null>(null);
+  const gpsTimesheetMatrix = useMemo(
+    () => buildTimesheetMatrix(gpsTimesheet?.employees || [], gpsTimesheet?.month || ""),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [gpsTimesheet, leaves, explanations, travels]
+  );
+  const isGpsTimesheet = timesheetSource === "gps";
+  const activeTimesheetMatrix = isGpsTimesheet ? gpsTimesheetMatrix : timesheetMatrix;
+  const activeTimesheetMonth = isGpsTimesheet ? gpsTimesheet?.month || "" : timesheetMonth;
 
   // Số ngày công CHÍNH THỨC của mỗi nhân viên = đúng cột "Tổng ngày công" của bảng tổng hợp
   // (văn phòng + công tác + phép có lương, đã ưu tiên giải trình trước ngày phép).
@@ -1741,14 +1760,14 @@ export default function CBPage() {
   // Bộ lọc phòng ban của bảng tổng hợp: "" = tất cả các phòng
   const timesheetDeptOptions = useMemo(() => {
     const names = new Set<string>();
-    timesheetMatrix.rows.forEach(row => names.add(row.department || "Chưa xếp phòng"));
+    activeTimesheetMatrix.rows.forEach(row => names.add(row.department || "Chưa xếp phòng"));
     return Array.from(names).sort((a, b) => a.localeCompare(b, "vi"));
-  }, [timesheetMatrix]);
+  }, [activeTimesheetMatrix]);
 
   const timesheetMatrixRows = useMemo(() => {
-    if (!timesheetDeptFilter) return timesheetMatrix.rows;
-    return timesheetMatrix.rows.filter(row => (row.department || "Chưa xếp phòng") === timesheetDeptFilter);
-  }, [timesheetMatrix, timesheetDeptFilter]);
+    if (!timesheetDeptFilter) return activeTimesheetMatrix.rows;
+    return activeTimesheetMatrix.rows.filter(row => (row.department || "Chưa xếp phòng") === timesheetDeptFilter);
+  }, [activeTimesheetMatrix, timesheetDeptFilter]);
 
   // Tải file công tháng khác mà phòng đang lọc không còn thì tự trả về "tất cả"
   useEffect(() => {
@@ -1764,8 +1783,10 @@ export default function CBPage() {
       alert("Chưa có dữ liệu chấm công để xuất bảng tổng hợp!");
       return;
     }
-    const { daysInMonth, month, year } = timesheetMatrix;
-    const deptTitle = timesheetDeptFilter
+    const { daysInMonth, month, year } = activeTimesheetMatrix;
+    const deptTitle = isGpsTimesheet
+      ? (timesheetDeptFilter ? timesheetDeptFilter.toUpperCase() : "CÁC BAN ĐIỀU HÀNH")
+      : timesheetDeptFilter
       ? (timesheetDeptFilter.toUpperCase().includes("HCNS") || timesheetDeptFilter.toUpperCase().includes("HÀNH CHÍNH")
         ? "PHÒNG HCNS"
         : `PHÒNG ${timesheetDeptFilter.toUpperCase()}`)
@@ -1972,7 +1993,7 @@ export default function CBPage() {
     const deptSlug = timesheetDeptFilter
       ? "_" + normalizeText(timesheetDeptFilter).replace(/\s+/g, "_")
       : "";
-    a.download = `Bang_tong_hop_cham_cong${deptSlug}_${month}_${year}.xlsx`;
+    a.download = `Bang_tong_hop_cham_cong${isGpsTimesheet ? "_GPS" : ""}${deptSlug}_${month}_${year}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -5788,7 +5809,7 @@ export default function CBPage() {
                       <div className="flex flex-wrap gap-2">
                         {parsedEmployees.length > 0 && canViewTimesheetSummary && (
                           <button
-                            onClick={() => setShowTimesheetMatrixModal(true)}
+                            onClick={() => { setTimesheetSource("office"); setTimesheetDeptFilter(""); setShowTimesheetMatrixModal(true); }}
                             className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer border border-indigo-100"
                           >
                             <FileText size={13} />
@@ -6113,6 +6134,12 @@ export default function CBPage() {
                   <GpsCheckinList
                     smtpConfig={smtpConfig}
                     onNeedSmtp={() => setShowEmailConfigModal(true)}
+                    onOpenTimesheet={canViewTimesheetSummary ? (month, employees) => {
+                      setGpsTimesheet({ month, employees });
+                      setTimesheetSource("gps");
+                      setTimesheetDeptFilter("");
+                      setShowTimesheetMatrixModal(true);
+                    } : undefined}
                   />
 
                 </div>
@@ -9666,7 +9693,7 @@ export default function CBPage() {
               <div className="bg-white w-full max-w-6xl rounded-2xl shadow-premium border border-slate-100 overflow-hidden transform transition-all animate-scale-up max-h-[88vh] flex flex-col">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-[#005BAC] text-white shrink-0">
                   <div>
-                    <h3 className="font-heading font-black text-sm">Bảng tổng hợp ngày công trong tháng {timesheetMonth}</h3>
+                    <h3 className="font-heading font-black text-sm">Bảng tổng hợp ngày công trong tháng {activeTimesheetMonth}{isGpsTimesheet ? " — Chấm công GPS (Ban điều hành)" : ""}</h3>
                     <p className="text-white/80 text-[10px] font-bold mt-0.5">x = Đi làm · x/2 = Làm nửa ngày · OL = Làm online thứ 7 · CT = Công tác · GT = Giải trình chấm công (đã duyệt) · P = Phép hưởng lương (phép năm, tang, kết hôn, nghỉ bù) · P/2 = Phép nửa ngày · L = Nghỉ lễ trong năm (có lương) · L/2 = Nghỉ lễ nửa ngày · OM = Ốm chế độ BHXH · TS = Thai sản · Ro = Nghỉ không lương · Ro/2 = Nghỉ không lương nửa ngày</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -9675,10 +9702,10 @@ export default function CBPage() {
                       onChange={e => setTimesheetDeptFilter(e.target.value)}
                       className="px-3 py-1.5 rounded-lg bg-white/95 text-[#005BAC] font-bold text-[11px] cursor-pointer border-0 outline-none shadow max-w-[220px]"
                     >
-                      <option value="">Tất cả phòng ban ({timesheetMatrix.rows.length})</option>
+                      <option value="">{isGpsTimesheet ? "Tất cả Ban điều hành" : "Tất cả phòng ban"} ({activeTimesheetMatrix.rows.length})</option>
                       {timesheetDeptOptions.map(dept => (
                         <option key={dept} value={dept}>
-                          {dept} ({timesheetMatrix.rows.filter(r => (r.department || "Chưa xếp phòng") === dept).length})
+                          {dept} ({activeTimesheetMatrix.rows.filter(r => (r.department || "Chưa xếp phòng") === dept).length})
                         </option>
                       ))}
                     </select>
@@ -9700,7 +9727,7 @@ export default function CBPage() {
                 <div className="p-4 overflow-auto flex-1">
                   {timesheetMatrixRows.some(r => r.hasDateMismatch) && (
                     <div className="mb-3 px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[10px] font-bold leading-relaxed">
-                      Có dữ liệu chấm công không rơi vào tháng {timesheetMonth} nên không xếp được vào bảng:{" "}
+                      Có dữ liệu chấm công không rơi vào tháng {activeTimesheetMonth} nên không xếp được vào bảng:{" "}
                       {timesheetMatrixRows.filter(r => r.hasDateMismatch).map(r => r.name).join(", ")}. Vui lòng kiểm tra lại cột "Ngày" trong file Excel.
                     </div>
                   )}
@@ -9708,8 +9735,8 @@ export default function CBPage() {
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-extrabold uppercase tracking-wider">
                         <th className="py-1.5 px-2 sticky left-0 bg-slate-50 text-left z-10">Họ và Tên</th>
-                        {Array.from({ length: timesheetMatrix.daysInMonth }, (_, i) => i + 1).map(d => {
-                          const dow = new Date(timesheetMatrix.year, timesheetMatrix.month - 1, d).getDay();
+                        {Array.from({ length: activeTimesheetMatrix.daysInMonth }, (_, i) => i + 1).map(d => {
+                          const dow = new Date(activeTimesheetMatrix.year, activeTimesheetMatrix.month - 1, d).getDay();
                           return (
                             <th key={d} className={`py-1.5 px-1 w-5 ${dow === 0 ? "bg-slate-200" : ""}`}>{String(d).padStart(2, "0")}</th>
                           );
@@ -9726,7 +9753,7 @@ export default function CBPage() {
                         <tr key={idx} className="hover:bg-slate-50/50">
                           <td className="py-1.5 px-2 text-left sticky left-0 bg-white whitespace-nowrap">{row.name}</td>
                           {row.days.map((tag, dIdx) => {
-                            const dow = new Date(timesheetMatrix.year, timesheetMatrix.month - 1, dIdx + 1).getDay();
+                            const dow = new Date(activeTimesheetMatrix.year, activeTimesheetMatrix.month - 1, dIdx + 1).getDay();
                             return (
                               <td key={dIdx} className={`py-1.5 px-1 ${
                                 dow === 0 ? "bg-slate-100 text-slate-400" :

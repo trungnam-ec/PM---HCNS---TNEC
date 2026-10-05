@@ -19,7 +19,7 @@ import { useDepartments } from "@/lib/departments";
 import { useConfirmBox, useNoticeBox } from "@/components/ConfirmDialog";
 import {
   Fingerprint, Folder, FolderOpen, Eye, Download, Trash2, Search, Send,
-  Loader2, X, MapPin, Users, CheckCircle2, ChevronDown, ChevronRight, ImageIcon,
+  Loader2, X, MapPin, Users, CheckCircle2, ChevronDown, ChevronRight, ImageIcon, FileText,
 } from "lucide-react";
 
 type SmtpConfig = { user: string; pass: string; host?: string; port?: number; secure?: boolean };
@@ -49,6 +49,7 @@ type DayDetail = {
   late: number;         // phút
   early: number;        // phút
   overtime: number;     // giờ
+  workday: number;      // công: đủ vào + ra = 1, chỉ 1 lượt = 0.5
   distanceIn: number | null;
   distanceOut: number | null;
   photoIn: string | null;
@@ -83,12 +84,26 @@ const shiftMin = (s: string | null | undefined, def: number) => {
   return +s.slice(0, 2) * 60 + +s.slice(3, 5);
 };
 
+// Dữ liệu gửi sang bảng tổng hợp ngày công của trang C&B (department = tên BĐH).
+export type GpsTimesheetEmployee = {
+  employeeCode: string;
+  name: string;
+  department: string;
+  details: { date: string; dayOfWeek: string; checkin: string; checkout: string; hours: number; late: number; early: number; status: string; workday: number }[];
+};
+
+const WEEKDAY_SHORT = ["CN", "Hai", "Ba", "Tư", "Năm", "Sáu", "Bảy"];
+const hmToMin = (s: string) => (/^\d{1,2}:\d{2}/.test(s) ? +s.split(":")[0] * 60 + +s.split(":")[1] : null);
+
 export default function GpsCheckinList({
   smtpConfig,
   onNeedSmtp,
+  onOpenTimesheet,
 }: {
   smtpConfig: SmtpConfig;
   onNeedSmtp: () => void;
+  /** month dạng "MM/YYYY". Không truyền = không có quyền xem bảng tổng hợp. */
+  onOpenTimesheet?: (month: string, employees: GpsTimesheetEmployee[]) => void;
 }) {
   const deps = useDepartments();
   const { ask, confirmNode } = useConfirmBox();
@@ -171,10 +186,10 @@ export default function GpsCheckinList({
     return Array.from(byYear.entries()).sort((a, b) => b[0].localeCompare(a[0]));
   }, [filteredRows]);
 
-  // ─── Tổng hợp ngày công cho tháng đang xem ───
-  const summaries = useMemo<EmpSummary[]>(() => {
-    if (!month) return [];
-    const monthRows = filteredRows.filter((r) => monthKeyOf(r.captured_at) === month);
+  // ─── Tổng hợp ngày công của 1 tháng (mk = yyyy-mm) ───
+  const summarizeMonth = useCallback((mk: string): EmpSummary[] => {
+    if (!mk) return [];
+    const monthRows = filteredRows.filter((r) => monthKeyOf(r.captured_at) === mk);
     const byEmp = new Map<string, Checkin[]>();
     monthRows.forEach((r) => {
       if (!byEmp.has(r.user_email)) byEmp.set(r.user_email, []);
@@ -201,7 +216,8 @@ export default function GpsCheckinList({
         const firstIn = ins[0] || null;
         const lastOut = outs[outs.length - 1] || null;
         const hasIn = !!firstIn, hasOut = !!lastOut;
-        totalDays += hasIn && hasOut ? 1 : (hasIn || hasOut ? 0.5 : 0);
+        const workday = hasIn && hasOut ? 1 : (hasIn || hasOut ? 0.5 : 0);
+        totalDays += workday;
         const inMin = firstIn ? minutesOf(firstIn.captured_at) : 0;
         const outMin = lastOut ? minutesOf(lastOut.captured_at) : 0;
         const late = hasIn && inMin > sh.in ? inMin - sh.in : 0;
@@ -217,6 +233,7 @@ export default function GpsCheckinList({
           checkout: lastOut ? hmOf(lastOut.captured_at) : "",
           hours,
           late, early, overtime: Math.round(ot * 10) / 10,
+          workday,
           distanceIn: firstIn?.distance_m ?? null,
           distanceOut: lastOut?.distance_m ?? null,
           photoIn: firstIn?.photo_path ?? null,
@@ -237,7 +254,9 @@ export default function GpsCheckinList({
       });
     });
     return out.sort((a, b) => a.name.localeCompare(b.name, "vi"));
-  }, [month, filteredRows, shiftMap]);
+  }, [filteredRows, shiftMap]);
+
+  const summaries = useMemo(() => summarizeMonth(month), [summarizeMonth, month]);
 
   const monthLabel = month ? `${month.slice(5, 7)}/${month.slice(0, 4)}` : "";
   const validLots = useMemo(
@@ -318,20 +337,34 @@ export default function GpsCheckinList({
     );
   }
 
-  // ─── Xuất CSV một tháng ───
+  // ─── Xuất CSV một tháng — cùng bộ cột với file "Chi tiết chấm công" của máy chấm
+  // công Văn phòng: mỗi nhân sự đủ mọi ngày trong tháng, ngày không chấm ghi Ca "V". ───
   function exportMonthCsv(mk: string) {
-    const list = filteredRows.filter((r) => monthKeyOf(r.captured_at) === mk);
-    const header = ["Mã NV", "Họ tên", "Email", "BĐH", "Ngày", "Giờ", "Buổi", "Khoảng cách (m)", "Sai số (m)"];
-    const lines = list
-      .slice()
-      .sort((a, b) => +new Date(a.captured_at) - +new Date(b.captured_at))
-      .map((r) => [
-        r.employee_code || "", r.employee_name || "", r.user_email, r.bdh_name,
-        ddmmyyyy(dayKeyOf(r.captured_at)), hmOf(r.captured_at),
-        r.kind === "in" ? "Vào" : "Ra",
-        r.distance_m != null ? Math.round(r.distance_m) : "",
-        r.accuracy_m != null ? Math.round(r.accuracy_m) : "",
-      ]);
+    const [y, m] = mk.split("-").map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const header = ["STT", "Mã nhân viên", "Tên nhân viên", "Phòng ban", "Ngày", "Thứ", "Giờ vào", "Giờ ra", "Trễ", "Sớm", "Công", "Tổng giờ", "Tăng ca", "Tổng toàn bộ", "Ca"];
+    const lines: (string | number)[][] = [];
+    summarizeMonth(mk).forEach((s) => {
+      const sh = shiftMap[s.bdh] || { in: 480, out: 1020 };
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dk = `${mk}-${String(d).padStart(2, "0")}`;
+        const det = s.details.find((x) => x.dateKey === dk);
+        const inMin = det ? hmToMin(det.checkin) : null;
+        const outMin = det ? hmToMin(det.checkout) : null;
+        const both = inMin != null && outMin != null;
+        // Tổng giờ = phần nằm trong ca chuẩn của BĐH; Tổng toàn bộ = giờ ra − giờ vào.
+        const inShift = both ? Math.max(0, Math.min(outMin, sh.out) - Math.max(inMin, sh.in)) / 60 : 0;
+        const span = both ? Math.max(0, outMin - inMin) / 60 : 0;
+        lines.push([
+          lines.length + 1, s.employeeCode, s.name, s.bdh, ddmmyyyy(dk),
+          WEEKDAY_SHORT[new Date(y, m - 1, d).getDay()],
+          det?.checkin || "", det?.checkout || "",
+          det?.late || 0, det?.early || 0, det?.workday || 0,
+          Math.round(inShift * 100) / 100, det?.overtime || 0, Math.round(span * 100) / 100,
+          det ? "HC" : "V",
+        ]);
+      }
+    });
     const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
     const csv = "﻿" + [header, ...lines].map((row) => row.map(esc).join(",")).join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -340,6 +373,15 @@ export default function GpsCheckinList({
     a.href = url; a.download = `Cham_cong_GPS_${mk}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // Mở bảng tổng hợp ngày công (dùng chung với Văn phòng) cho tháng đang xem.
+  function openTimesheet() {
+    if (!onOpenTimesheet || !month) return;
+    onOpenTimesheet(
+      `${month.slice(5, 7)}/${month.slice(0, 4)}`,
+      summaries.map((s) => ({ employeeCode: s.employeeCode, name: s.name, department: s.bdh, details: s.details }))
+    );
   }
 
   // ─── Xoá một tháng (kèm ảnh) ───
@@ -387,6 +429,15 @@ export default function GpsCheckinList({
           >
             {smtpConfig.user ? `SMTP: ${smtpConfig.user}` : "Cấu hình gửi email"}
           </button>
+          {onOpenTimesheet && month && summaries.length > 0 && (
+            <button
+              onClick={openTimesheet}
+              className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl active:scale-95 transition-all text-xs cursor-pointer border border-indigo-100"
+            >
+              <FileText size={13} />
+              Bảng tổng hợp ngày công trong tháng
+            </button>
+          )}
           {month && summaries.length > 0 && (
             <button
               onClick={sendAll}

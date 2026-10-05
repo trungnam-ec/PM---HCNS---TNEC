@@ -458,10 +458,10 @@ export default function GpsCheckinList({
                               {month === m.mk ? <FolderOpen size={13} className="text-[#005BAC]" /> : <Folder size={13} className="text-slate-400" />}
                               <span className="truncate">Tháng {m.mn} · {m.emps} NS · {m.lots} lượt</span>
                             </button>
-                            <button onClick={() => exportMonthCsv(m.mk)} title="Tải CSV" className="p-1 text-slate-400 hover:text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => exportMonthCsv(m.mk)} title="Tải CSV" className="p-1 text-slate-400 hover:text-emerald-600">
                               <Download size={12} />
                             </button>
-                            <button onClick={() => deleteMonth(m.mk)} title="Xoá tháng" className="p-1 text-slate-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => deleteMonth(m.mk)} title="Xoá tháng" className="p-1 text-slate-400 hover:text-rose-600">
                               <Trash2 size={12} />
                             </button>
                           </div>

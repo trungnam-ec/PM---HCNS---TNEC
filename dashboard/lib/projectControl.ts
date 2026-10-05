@@ -153,6 +153,7 @@ export type PcMember = {
   duty?: string | null;
   reports_to?: string | null;
   status?: PcMemberStatus;
+  sort_order?: number; // migration 130 — thứ tự kéo thả
   created_at?: string;
 };
 

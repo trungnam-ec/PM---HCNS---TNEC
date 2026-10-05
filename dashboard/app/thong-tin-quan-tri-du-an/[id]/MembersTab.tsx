@@ -32,7 +32,7 @@ import EmployeePicker, { findEmployeeByEmail, listDirectoryDepartments, type Pic
 import MembersImport from "./MembersImport";
 import { buildMembersPdfDoc, type MembersPdfRow } from "./membersPdf";
 import { buildMembersWorkbook } from "./membersXlsx";
-import { Trash2, Loader2, UserPlus, FileDown, FileSpreadsheet } from "lucide-react";
+import { Trash2, Loader2, UserPlus, FileDown, FileSpreadsheet, GripVertical } from "lucide-react";
 
 type Draft = {
   unit_group: string;
@@ -68,12 +68,21 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState<"pdf" | "xlsx" | null>(null);
 
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+
   const load = useCallback(async () => {
-    const { data, error } = await supabase
+    let res = await supabase
       .from("pc_project_members")
       .select("*")
       .eq("project_id", project.id)
+      .order("sort_order")
       .order("created_at");
+    // Chưa chạy migration 130 (chưa có cột sort_order) -> quay về thứ tự tạo.
+    if (res.error) {
+      res = await supabase.from("pc_project_members").select("*").eq("project_id", project.id).order("created_at");
+    }
+    const { data, error } = res;
     if (error) setErr(pcErrorMessage(error));
     const rows = (data as PcMember[]) || [];
     // Dòng thêm trước migration 111 chưa chụp phòng ban/chức danh → tra danh bạ để hiện.
@@ -118,6 +127,7 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
     setErr(null);
     const { error } = await supabase.from("pc_project_members").insert({
       project_id: project.id,
+      sort_order: members.reduce((mx, m) => Math.max(mx, m.sort_order ?? 0), 0) + 1,
       email,
       name: emp?.name || null,
       role: draft.role,
@@ -143,6 +153,26 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
     const e = await pcUpdate("pc_project_members", { id: m.id }, change);
     if (e) {
       setErr(e);
+      load();
+    }
+  }
+
+  // Kéo dòng `fromId` thả lên vị trí của dòng `toId`, rồi lưu lại thứ tự 1..n.
+  async function moveRow(fromId: string, toId: string) {
+    if (fromId === toId) return;
+    const from = members.findIndex((m) => m.id === fromId);
+    const to = members.findIndex((m) => m.id === toId);
+    if (from < 0 || to < 0) return;
+    const next = [...members];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    const renumbered = next.map((m, i) => ({ ...m, sort_order: i + 1 }));
+    setMembers(renumbered);
+    const changed = renumbered.filter((m, i) => (members.find((x) => x.id === m.id)?.sort_order ?? -1) !== i + 1);
+    const errs = await Promise.all(changed.map((m) => pcUpdate("pc_project_members", { id: m.id }, { sort_order: m.sort_order })));
+    const bad = errs.find((e) => e);
+    if (bad) {
+      setErr(bad);
       load();
     }
   }
@@ -288,6 +318,7 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
             <table className="w-full text-[11px]">
               <thead>
                 <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-left whitespace-nowrap">
+                  {canManage && <th className="w-5" />}
                   <th className="py-1.5 pr-2 w-8 text-center">STT</th>
                   <th className="py-1.5 px-1">Mã dự án</th>
                   <th className="py-1.5 px-1">Tên dự án</th>
@@ -309,7 +340,42 @@ export default function MembersTab({ project, access }: { project: PcProject; ac
                 {members.map((m, i) => {
                   const st = MEMBER_STATUSES.find((s) => s.value === (m.status || "JOINED")) || MEMBER_STATUSES[1];
                   return (
-                    <tr key={m.id} className="border-t border-slate-100 align-top [&>td]:py-1.5">
+                    <tr
+                      key={m.id}
+                      onDragOver={(e) => {
+                        if (!dragId) return;
+                        e.preventDefault();
+                        if (overId !== m.id) setOverId(m.id);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (dragId) moveRow(dragId, m.id);
+                        setDragId(null);
+                        setOverId(null);
+                      }}
+                      className={`border-t border-slate-100 align-top [&>td]:py-1.5 ${dragId === m.id ? "opacity-40" : ""} ${
+                        dragId && overId === m.id && dragId !== m.id ? "bg-blue-50" : ""
+                      }`}
+                    >
+                      {canManage && (
+                        <td className="px-0.5 pt-2">
+                          <span
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.effectAllowed = "move";
+                              setDragId(m.id);
+                            }}
+                            onDragEnd={() => {
+                              setDragId(null);
+                              setOverId(null);
+                            }}
+                            className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-[#005BAC] inline-block"
+                            title="Kéo để đổi vị trí"
+                          >
+                            <GripVertical size={14} />
+                          </span>
+                        </td>
+                      )}
                       <td className="py-1.5 pr-2 text-center font-bold text-slate-500">{i + 1}</td>
                       <td className="px-1 font-bold text-slate-700 whitespace-nowrap">{projectCode}</td>
                       <td className="px-1 text-slate-600 min-w-[160px]">{projectName}</td>

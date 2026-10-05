@@ -796,11 +796,25 @@ export default function AdministrationPage() {
   const [tempEndDate, setTempEndDate] = useState(currentMonthLastDay);
 
   // Form metadata for document generation
-  const [employeeName, setEmployeeName] = useState(TENANT_DEFAULTS.admin_staff[0]?.full_name || TENANT_DEFAULTS.admin_staff[0]?.name || "");
-  const [employeeDept, setEmployeeDept] = useState("Phòng Hành chính nhân sự");
-  const [paymentMission, setPaymentMission] = useState("Thanh toán chi phí hành chính tháng 06");
-  const [documentType, setDocumentType] = useState<"payment" | "transfer">("transfer");
-  const [projectName, setProjectName] = useState("Văn phòng HCM");
+  // Họ tên + phòng/BĐH lấy từ tài khoản đăng nhập (effect bên dưới); nội dung và dự án người dùng tự điền.
+  const [employeeName, setEmployeeName] = useState("");
+  const [employeeDept, setEmployeeDept] = useState("");
+  const [paymentMission, setPaymentMission] = useState("");
+  const [missionEdited, setMissionEdited] = useState(false);
+  const [documentType, setDocumentType] = useState<"payment" | "transfer" | "advance">("transfer");
+  const [advanceAmount, setAdvanceAmount] = useState(0);
+  const [projectName, setProjectName] = useState("");
+  // Nội dung thanh toán tự lấy theo hóa đơn AI đã bóc, trừ khi người dùng đã gõ tay.
+  useEffect(() => {
+    if (missionEdited) return;
+    const descs = invoiceQueue.filter(i => i.status === "success" && i.desc).map(i => i.desc);
+    setPaymentMission(Array.from(new Set(descs)).join("; "));
+  }, [invoiceQueue, missionEdited]);
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.name) setEmployeeName(currentUser.name);
+    if (currentUser.department) setEmployeeDept(currentUser.department);
+  }, [currentUser?.name, currentUser?.department]);
   const [supplierName, setSupplierName] = useState("");
   const [bankAccount, setBankAccount] = useState("");
   const [bankNameBranch, setBankNameBranch] = useState("");
@@ -4315,7 +4329,7 @@ export default function AdministrationPage() {
 
     setExportLoading(true);
     try {
-      const response = await apiFetch("/api/export-invoice-payment", {
+      const response = await apiFetch(documentType === "advance" ? "/api/export-advance-settlement" : "/api/export-invoice-payment", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -4331,20 +4345,22 @@ export default function AdministrationPage() {
           bankAccount: activePreviewInvoice ? (activePreviewInvoice.bank_account || "") : bankAccount,
           bankNameBranch: activePreviewInvoice ? (activePreviewInvoice.bank_name_branch || "") : bankNameBranch,
           templateType: documentType,
+          advanceAmount,
           items: successItems
         })
       });
 
       if (!response.ok) {
-        throw new Error("Không thể xuất phiếu thanh toán/chuyển tiền");
+        const errBody = await response.json().catch(() => null);
+        throw new Error(errBody?.error || "Không thể xuất phiếu thanh toán/chuyển tiền");
       }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const docPrefix = documentType === "payment" ? "Phieu_De_Nghi_Thanh_Toan" : "Giay_De_Nghi_Chuyen_Tien";
-      a.download = `${docPrefix}_${employeeName.replace(/\s+/g, "_")}.docx`;
+      const docPrefix = documentType === "payment" ? "Phieu_De_Nghi_Thanh_Toan" : documentType === "advance" ? "Phieu_Thanh_Toan_Tam_Ung" : "Giay_De_Nghi_Chuyen_Tien";
+      a.download = `${docPrefix}_${employeeName.replace(/\s+/g, "_")}.${documentType === "advance" ? "xlsx" : "docx"}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -7525,6 +7541,13 @@ export default function AdministrationPage() {
                                     >
                                       Đề nghị Thanh toán
                                     </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDocumentType("advance")}
+                                      className={`px-2 py-0.5 rounded transition-all cursor-pointer ${documentType === "advance" ? "bg-white text-amber-600 shadow-sm" : "text-slate-400"}`}
+                                    >
+                                      Phiếu thanh toán tạm ứng
+                                    </button>
                                   </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
@@ -7548,12 +7571,12 @@ export default function AdministrationPage() {
                                   </div>
                                 </div>
                                 <div className="space-y-1">
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase">Lý do xin thanh toán/chuyển tiền chung</label>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase">Nội dung thanh toán</label>
                                   <input
                                     type="text"
                                     value={paymentMission}
-                                    onChange={(e) => setPaymentMission(e.target.value)}
-                                    placeholder="Ví dụ: Thanh toán chi phí tiếp khách văn phòng..."
+                                    onChange={(e) => { setMissionEdited(true); setPaymentMission(e.target.value); }}
+                                    placeholder="Tự lấy theo hóa đơn AI bóc, có thể sửa tay..."
                                     className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white outline-none focus:ring-1 focus:ring-blue-500/30"
                                   />
                                 </div>
@@ -7568,6 +7591,20 @@ export default function AdministrationPage() {
                                     className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white outline-none focus:ring-1 focus:ring-blue-500/30"
                                   />
                                 </div>
+
+                                {documentType === "advance" && (
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase">Số tiền đã tạm ứng (VNĐ)</label>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={advanceAmount || ""}
+                                      onChange={(e) => setAdvanceAmount(Number(e.target.value))}
+                                      placeholder="Ví dụ: 3000000"
+                                      className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 bg-white outline-none focus:ring-1 focus:ring-blue-500/30"
+                                    />
+                                  </div>
+                                )}
 
                                 {documentType === "transfer" && (
                                   <>
@@ -7642,7 +7679,7 @@ export default function AdministrationPage() {
                             ) : (
                               <>
                                 <Download size={12} />
-                                {documentType === "payment" ? "Xuất phiếu thanh toán (Word)" : "Xuất giấy chuyển tiền (Word)"}
+                                {documentType === "payment" ? "Xuất phiếu thanh toán (Word)" : documentType === "advance" ? "Xuất phiếu tạm ứng (Excel)" : "Xuất giấy chuyển tiền (Word)"}
                               </>
                             )}
                           </button>
@@ -8810,10 +8847,10 @@ export default function AdministrationPage() {
                 </div>
                 <div>
                   <h3 className="font-heading font-extrabold text-slate-800 text-sm">
-                    {documentType === "payment" ? "Xem trước Phiếu đề nghị thanh toán" : "Xem trước Giấy đề nghị chuyển tiền"}
+                    {documentType === "payment" ? "Xem trước Phiếu đề nghị thanh toán" : documentType === "advance" ? "Xem trước Phiếu thanh toán tạm ứng" : "Xem trước Giấy đề nghị chuyển tiền"}
                   </h3>
                   <p className="text-slate-400 text-[10px] font-semibold mt-0.5">
-                    {documentType === "payment" ? "Biểu mẫu TCKT/BM/003" : "Biểu mẫu HC-BM021/ĐNCT"} (Xem trước nội dung điền tự động)
+                    {documentType === "payment" ? "Biểu mẫu TCKT/BM/003" : documentType === "advance" ? "Biểu mẫu Phieu_thanh_toan_tam_ung.xlsx" : "Biểu mẫu HC-BM021/ĐNCT"} (Xem trước nội dung điền tự động)
                   </p>
                 </div>
               </div>
@@ -8834,10 +8871,10 @@ export default function AdministrationPage() {
                 </div>
                 <div className="text-center">
                   <div className="text-[13px] font-bold tracking-wide">
-                    {documentType === "payment" ? "PHIẾU ĐỀ NGHỊ THANH TOÁN" : "GIẤY ĐỀ NGHỊ CHUYỂN TIỀN"}
+                    {documentType === "payment" ? "PHIẾU ĐỀ NGHỊ THANH TOÁN" : documentType === "advance" ? "PHIẾU THANH TOÁN TẠM ỨNG" : "GIẤY ĐỀ NGHỊ CHUYỂN TIỀN"}
                   </div>
                   <div className="text-[9.5px] font-bold underline mt-0.5">
-                    {documentType === "payment" ? "TCKT/BM/003" : "HC-BM021/ĐNCT"}
+                    {documentType === "payment" ? "TCKT/BM/003" : documentType === "advance" ? "" : "HC-BM021/ĐNCT"}
                   </div>
                 </div>
               </div>
@@ -8954,6 +8991,18 @@ export default function AdministrationPage() {
                     ? "Tôi xin chịu trách nhiệm về nội dung thanh toán và các hóa đơn chứng từ kèm theo."
                     : "Tôi xin chịu trách nhiệm về nội dung đề nghị và các hóa đơn chứng từ kèm theo."}
                 </div>
+                {documentType === "advance" && (() => {
+                  const total = activePreviewInvoice
+                    ? activePreviewInvoice.amount
+                    : invoiceQueue.filter(item => item.status === "success").reduce((sum, item) => sum + item.amount, 0);
+                  return (
+                    <div className="font-bold space-y-0.5 not-italic">
+                      <div className="flex justify-between"><span>Tổng tiền ứng (2)</span><span className="font-mono">{advanceAmount.toLocaleString("vi-VN")}</span></div>
+                      <div className="flex justify-between"><span>Số tiền được thanh toán thêm (3.1) = (1)-(2)</span><span className="font-mono">{Math.max(total - advanceAmount, 0).toLocaleString("vi-VN")}</span></div>
+                      <div className="flex justify-between"><span>Số tiền phải hoàn ứng lại (3.2) = (2)-(1)</span><span className="font-mono">{Math.max(advanceAmount - total, 0).toLocaleString("vi-VN")}</span></div>
+                    </div>
+                  );
+                })()}
                 <div className="italic">(Kèm theo .................................................... chứng từ gốc).</div>
               </div>
 
@@ -8992,7 +9041,7 @@ export default function AdministrationPage() {
                 }}
                 className="flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs active:scale-95 transition-all shadow cursor-pointer"
               >
-                <Download size={13} /> Tải xuống file Word
+                <Download size={13} /> {documentType === "advance" ? "Tải xuống file Excel" : "Tải xuống file Word"}
               </button>
             </div>
 

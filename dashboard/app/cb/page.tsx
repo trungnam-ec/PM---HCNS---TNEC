@@ -1494,7 +1494,7 @@ export default function CBPage() {
     employeeCode: string;
     name: string;
     department: string;
-    days: string[]; // tag mỗi ngày: "x" | "x/2" | "CT" | "GT" | "P" | "P/2" | "Ro" | "Ro/2" | "OM" | "TS" | ""
+    days: string[]; // tag mỗi ngày: "x" | "x/2" | "CT" | "GT" | "P" | "P/2" | "L" | "L/2" | "Ro" | "Ro/2" | "OM" | "TS" | ""
     vanPhong: number;
     phepCoLuong: number;
     congTac: number;
@@ -1566,6 +1566,10 @@ export default function CBPage() {
           && !halfPaidLeaveType.includes("om che do")
           && !halfPaidLeaveType.includes("khong luong");
 
+        // Nghỉ lễ trong năm (HCNS đăng ký hàng loạt) — tính công y hệt phép có lương,
+        // chỉ khác ký hiệu "L" / "L/2" thay cho "P" / "P/2" để nhận ra ngày lễ trên bảng.
+        const isHolidayLeave = halfPaidLeaveType.includes("nghi le");
+
         // Nghỉ KHÔNG hưởng lương nửa ngày — buổi nghỉ không có công, buổi còn lại vẫn
         // được 0.5 nếu có đi làm. Phải nhận diện ở CẢ nhánh chấm công máy, không thì
         // cùng một loại đơn lại ra hai ký hiệu khác nhau tuỳ máy ghi cột "Công" 0 hay 0.5.
@@ -1622,7 +1626,7 @@ export default function CBPage() {
             } else if (isPaidLeaveOfDay) {
               // Nửa buổi đi làm + nửa buổi phép hưởng lương => đủ 1 công. Đơn nguyên
               // ngày cũng vào đây: họ vẫn được trả đủ công cho phần không đi làm.
-              tag = "P/2";
+              tag = isHolidayLeave ? "L/2" : "P/2";
               phepCoLuong += 1 - wd;
             }
           } else {
@@ -1684,7 +1688,7 @@ export default function CBPage() {
                   nghiKhongLuong += 1;
                 }
               } else if (approvedLeave.days === 0.5) {
-                tag = "P/2";
+                tag = isHolidayLeave ? "L/2" : "P/2";
                 phepCoLuong += 0.5;
                 // Xin phép nửa buổi mà vẫn quét thẻ buổi còn lại => đủ 1 công.
                 // Ngày đó có dòng trong file nhưng cột "Công" bằng 0 nên nhánh chấm
@@ -1693,7 +1697,8 @@ export default function CBPage() {
                 if (hasSwipeOfDay) vanPhong += 0.5;
               } else {
                 // Phép năm, phép tang, kết hôn, nghỉ bù, nghỉ lễ... đều cty trả lương -> tính công.
-                tag = "P";
+                // Nghỉ lễ ghi "L" thay cho "P", số công y hệt.
+                tag = isHolidayLeave ? "L" : "P";
                 phepCoLuong += 1;
               }
             }
@@ -1876,6 +1881,8 @@ export default function CBPage() {
             cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFDBA74" } };
           } else if (tag === "P" || tag === "P/2") {
             cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFBBF7D0" } };
+          } else if (tag === "L" || tag === "L/2") {
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFECACA" } };
           } else if (tag === "Ro" || tag === "Ro/2") {
             cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF08A" } };
           } else if (tag === "OM" || tag === "TS") {
@@ -1917,8 +1924,9 @@ export default function CBPage() {
       ["OL", "Làm online thứ 7 (tính đủ công)", "FF99F6E4"],
       ["CT", "Công tác (đã duyệt)", "FFBFDBFE"],
       ["GT", "Giải trình chấm công (đã duyệt)", "FFFDBA74"],
-      ["P", "Nghỉ phép hưởng lương (phép năm, tang, kết hôn, nghỉ bù, nghỉ lễ)", "FFBBF7D0"],
+      ["P", "Nghỉ phép hưởng lương (phép năm, tang, kết hôn, nghỉ bù)", "FFBBF7D0"],
       ["P/2", "Phép nửa ngày", "FFBBF7D0"],
+      ["L, L/2", "Nghỉ lễ trong năm hưởng lương (cả ngày / nửa ngày) — tính vào cột Phép có hưởng lương", "FFFECACA"],
       ["OM", "Nghỉ ốm chế độ BHXH (BHXH trả, cty không tính công)", "FFDDD6FE"],
       ["TS", "Nghỉ thai sản (BHXH trả, cty không tính công)", "FFDDD6FE"],
       ["Ro", "Nghỉ không hưởng lương", "FFFEF08A"],
@@ -2357,7 +2365,8 @@ export default function CBPage() {
   // computeLeaveQuota đọc lại chuỗi này, còn bảng công dò để ra ký hiệu ngày.
   // LƯU Ý: label KHÔNG được chứa dấu ngoặc "()" — regex đọc số ngày sẽ vỡ.
   //  • CHỈ "Phép năm" TRỪ vào hạn mức phép năm.
-  //  • Phép năm / Tang / Kết hôn / Nghỉ bù / Nghỉ lễ: cty trả lương -> bảng công "P".
+  //  • Phép năm / Tang / Kết hôn / Nghỉ bù: cty trả lương -> bảng công "P".
+  //  • Nghỉ lễ: cty trả lương, tính công như "P" nhưng bảng công ghi "L".
   //  • Ốm BHXH / Thai sản: BHXH trả, cty KHÔNG trả -> bảng công "OM" / "TS",
   //    không tính vào ngày công.
   //  • Không lương: bảng công "Ro".
@@ -9658,7 +9667,7 @@ export default function CBPage() {
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-[#005BAC] text-white shrink-0">
                   <div>
                     <h3 className="font-heading font-black text-sm">Bảng tổng hợp ngày công trong tháng {timesheetMonth}</h3>
-                    <p className="text-white/80 text-[10px] font-bold mt-0.5">x = Đi làm · x/2 = Làm nửa ngày · OL = Làm online thứ 7 · CT = Công tác · GT = Giải trình chấm công (đã duyệt) · P = Phép hưởng lương (phép năm, tang, kết hôn, nghỉ bù, nghỉ lễ) · P/2 = Phép nửa ngày · OM = Ốm chế độ BHXH · TS = Thai sản · Ro = Nghỉ không lương · Ro/2 = Nghỉ không lương nửa ngày</p>
+                    <p className="text-white/80 text-[10px] font-bold mt-0.5">x = Đi làm · x/2 = Làm nửa ngày · OL = Làm online thứ 7 · CT = Công tác · GT = Giải trình chấm công (đã duyệt) · P = Phép hưởng lương (phép năm, tang, kết hôn, nghỉ bù) · P/2 = Phép nửa ngày · L = Nghỉ lễ trong năm (có lương) · L/2 = Nghỉ lễ nửa ngày · OM = Ốm chế độ BHXH · TS = Thai sản · Ro = Nghỉ không lương · Ro/2 = Nghỉ không lương nửa ngày</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <select
@@ -9724,6 +9733,7 @@ export default function CBPage() {
                                 tag === "CT" ? "bg-blue-50 text-blue-700" :
                                 tag === "GT" ? "bg-orange-100 text-orange-700" :
                                 tag === "P" || tag === "P/2" ? "bg-emerald-50 text-emerald-700" :
+                                tag === "L" || tag === "L/2" ? "bg-rose-50 text-rose-700" :
                                 tag === "OM" || tag === "TS" ? "bg-violet-50 text-violet-700" :
                                 tag === "OL" ? "bg-teal-50 text-teal-700" :
                                 tag === "Ro" || tag === "Ro/2" ? "bg-amber-50 text-amber-700" : ""

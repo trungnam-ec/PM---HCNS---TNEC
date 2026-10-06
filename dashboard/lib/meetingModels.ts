@@ -15,8 +15,8 @@ export const TRANSCRIBE_MODEL = "gpt-4o-transcribe-diarize";
 // ─── Model dựng biên bản ───
 export const ANALYSIS_MODELS = [
   {
-    id: "gpt-5.6-sol",
-    label: "GPT-5.6 Sol — chính xác nhất (mặc định)",
+    id: "gpt-6.1-sol",
+    label: "GPT-6.1 Sol — chính xác nhất (mặc định)",
     hint: "Họp 1–2 tiếng, nhiều số liệu. ~$0.35/cuộc họp.",
   },
   {
@@ -26,9 +26,9 @@ export const ANALYSIS_MODELS = [
   },
 ] as const;
 
-export const DEFAULT_ANALYSIS_MODEL = "gpt-5.6-sol";
+export const DEFAULT_ANALYSIS_MODEL = "gpt-6.1-sol";
 
-// Dòng 5.6 là model suy luận: KHÔNG truyền temperature, dùng reasoning_effort.
+// Dòng 5.6 / 6.1 là model suy luận: KHÔNG truyền temperature, dùng reasoning_effort.
 export const ANALYSIS_REASONING_EFFORT = "high";
 
 // ─── Giới hạn của OpenAI ───

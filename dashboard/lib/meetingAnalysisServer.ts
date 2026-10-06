@@ -88,6 +88,41 @@ ${TIMELINE_RULES[timelineMode]}
      - "coop" là bộ phận phối hợp (không có thì ""), "deadline" là hạn hoàn thành như đã nói trong họp (không có thì "").
    - "ts": BẮT BUỘC với mọi DÒNG NỘI DUNG (dòng tiêu đề mục và dòng dự án để null) — điền số giây (nguyên, lấy từ ts=<số> của dòng transcript làm căn cứ chính cho nội dung đó) để người kiểm tra bấm vào là nghe lại đúng đoạn. ${timelineMode === "none" ? "Chế độ hiện tại không có mốc thời gian nên để null." : "Không được bỏ trống, không được đoán bừa — lấy đúng ts của dòng transcript mà bạn dựa vào."}
 
+━━ RÀ SOÁT NGHIỆP VỤ BẮT BUỘC (hợp đồng – tài chính – tiến độ) ━━
+Hãy hiểu TOÀN BỘ cuộc họp trước khi viết, không chỉ lấy vài câu nổi bật. Một vấn đề được nhắc nhiều lần ở các thời điểm khác nhau phải được GỘP thành một nội dung hoàn chỉnh (trong "summary" và trong dòng nội dung tương ứng của "action_items"). Không suy diễn, không thêm thông tin không có trong transcript.
+Chủ động tìm trong toàn bộ transcript và KHÔNG ĐƯỢC BỎ SÓT bất kỳ thông tin nào thuộc các nhóm sau; mỗi nhóm có nhắc tới thì phải xuất hiện trong "summary" (đoạn của chủ đề đó) và, nếu có việc phải làm, trong "action_items":
+1. HỢP ĐỒNG: tên/số hợp đồng, giá trị (trước/sau thuế), phạm vi, điều khoản quan trọng, thời hạn, ngày ký, phụ lục, phát sinh/điều chỉnh (giá trị, khối lượng, tiến độ), điều kiện nghiệm thu và thanh toán, các điểm đang tranh luận.
+2. SỐ TIỀN: giá trị hợp đồng, phát sinh, đã thực hiện, đã nghiệm thu, đã thanh toán, còn phải thanh toán, tạm ứng, thu hồi tạm ứng, công nợ, chi phí, đơn giá, %, VAT, khấu trừ, giữ lại, phạt.
+3. THANH TOÁN: đã/còn phải thanh toán bao nhiêu, cho hạng mục nào, điều kiện, hồ sơ cần có, thời điểm dự kiến, bên chịu trách nhiệm, vướng mắc gây chậm.
+4. TẠM ỨNG: số tiền, tỷ lệ, đã tạm ứng chưa, thời điểm, điều kiện, chứng từ, kế hoạch thu hồi, đã thu hồi, còn phải thu hồi.
+5. BẢO LÃNH (tạm ứng, thực hiện hợp đồng, thanh toán, bảo hành, loại khác): giá trị, tỷ lệ, thời hạn, ngày bắt đầu/hết hạn, điều kiện phát hành/gia hạn/giải tỏa, ngân hàng phát hành, người chịu trách nhiệm, rủi ro đang bàn.
+6. THANH TOÁN THEO ĐỢT: nếu có nhiều đợt thì TÁCH RIÊNG từng đợt (điều kiện, giá trị, tỷ lệ, hồ sơ, thời điểm), không gộp thành một khoản chung khi transcript đủ để phân biệt.
+7. TIẾN ĐỘ – NGHIỆM THU – QUYẾT TOÁN: mốc thời gian, khối lượng đã/chưa hoàn thành, hồ sơ nghiệm thu/quyết toán, vấn đề ảnh hưởng tiến độ thanh toán/quyết toán.
+8. RỦI RO: chậm tiến độ/thanh toán/nghiệm thu/quyết toán, phát sinh chi phí, tranh chấp, rủi ro tài chính – pháp lý – bảo lãnh – công nợ.
+Trong "summary", các nhóm trên được trình bày ngay trong các đoạn diễn biến của chủ đề liên quan; ở đoạn cuối, ngoài chỉ đạo của chủ trì, nêu thêm các vấn đề CHƯA GIẢI QUYẾT và RỦI RO cần theo dõi.
+
+NGUYÊN TẮC SỐ LIỆU (nghiêm ngặt):
+- Giữ NGUYÊN số tiền, tỷ lệ, ngày tháng, số hợp đồng và đơn vị như người nói ("500 triệu đồng", "2,5 tỷ đồng", "10%"). Không làm tròn, không đổi đơn vị, không bỏ số 0 đầu của mã/số hợp đồng, không gộp các khoản khác nhau.
+- Không nhầm "giá trị hợp đồng" với "đã thanh toán" và "còn lại".
+- Người nói nói không rõ hoặc không chính xác thì ghi đúng như transcript và thêm "(cần xác nhận)".
+- Nếu transcript có thông tin mâu thuẫn hoặc chưa thống nhất, KHÔNG tự chọn một con số; ghi "Transcript có thông tin chưa thống nhất: ..." và nêu rõ các giá trị liên quan.
+- Công việc trong "action_items" mà không xác định được người phụ trách hoặc thời hạn thì "assignee"/"deadline" ghi "Chưa xác định" (chỉ áp dụng cho DÒNG NỘI DUNG; dòng tiêu đề mục và dòng dự án vẫn để "").
+
+ĐỘ CỤ THỂ VÀ CHỐNG TRÙNG LẶP (đọc kỹ):
+- Mỗi câu phải mang thông tin cụ thể: AI nói gì, con số/ngày/tên hạng mục nào, kết luận ra sao. CẤM câu chung chung kiểu "các bên đã trao đổi về tiến độ", "cần đẩy nhanh công việc" nếu transcript có chi tiết cụ thể hơn — phải viết chi tiết đó ra.
+- Trước khi viết mỗi đoạn/dòng, nhớ những gì ĐÃ ghi ở các đoạn trước. Một sự việc, con số, quyết định chỉ nêu ĐẦY ĐỦ MỘT LẦN, ở chỗ đúng chủ đề của nó. Chỗ khác cần nhắc lại thì chỉ tham chiếu ngắn, KHÔNG chép lại câu chữ.
+- Khi một vấn đề được bàn lại ở thời điểm sau: chỉ ghi PHẦN MỚI (ý kiến mới, con số thay đổi, kết luận mới), không viết lại phần đã ghi. Có thay đổi so với trước thì nêu rõ thay đổi đó.
+- Phân vai các phần, không để chúng nói cùng một thứ cùng một cách:
+  * "action_items" LÀ NỘI DUNG CHÍNH CỦA BIÊN BẢN và là phần DUY NHẤT được in ra file Word (summary và transcript_clean KHÔNG vào Word). Vì vậy mỗi dòng nội dung phải ĐỦ để người chỉ đọc file Word vẫn nắm được toàn bộ cuộc họp: tình hình/báo cáo, số liệu nguyên văn, vướng mắc, kết luận/chỉ đạo của chủ trì VÀ việc được giao (ai, hạn). Không được rút gọn thành tiêu đề việc cụ thể thiếu bối cảnh. Mọi chủ đề có thực chất trong cuộc họp đều phải có chỗ trong bảng này, dưới đúng dòng dự án.
+  * "summary" = diễn biến theo trình tự thời gian, dùng để tra cứu trong phần mềm. Không chép nguyên câu chữ từ action_items sang; chỉ nêu bối cảnh, lập luận, ai đề xuất gì theo dòng thời gian.
+  * "transcript_clean" = lời phát biểu đã biên tập.
+  * Trong action_items, mỗi sự việc/việc giao chỉ xuất hiện MỘT dòng; cùng một vấn đề bàn nhiều lần thì gộp vào một dòng.
+- Độ dài đến từ lượng thông tin thật, KHÔNG được độn bằng cách lặp ý hay diễn đạt lại cùng một nội dung.
+
+TỰ KIỂM TRA TRƯỚC KHI TRẢ KẾT QUẢ: còn số tiền / phần trăm / điều khoản / ngày hạn quan trọng nào được nhắc mà chưa đưa vào? Có khoản tạm ứng, đợt thanh toán, bảo lãnh nào bị bỏ sót? Có quyết định hay người/bộ phận chịu trách nhiệm nào chưa ghi? Có vấn đề bàn nhiều lần mà chưa có kết luận (phải nêu rõ là chưa kết luận)? Có mâu thuẫn giữa các đoạn khác nhau?
+
+ĐỘ CHI TIẾT: cuộc họp càng dài càng phải phân tích đầy đủ; độ dài biên bản phụ thuộc lượng thông tin thực tế, không đặt mục tiêu ngắn nhất. Thứ tự ưu tiên: CHÍNH XÁC → ĐẦY ĐỦ → CÓ CẤU TRÚC → DỄ TRA CỨU → NGẮN GỌN ở mức hợp lý.
+
 ━━━ ĐỊNH DẠNG ĐẦU RA (JSON CHUẨN, không kèm giải thích) ━━━
 {
   "title": "...",

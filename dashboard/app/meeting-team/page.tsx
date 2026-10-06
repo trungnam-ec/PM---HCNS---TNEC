@@ -216,7 +216,8 @@ function MeetingTeamContent() {
     const stored = localStorage.getItem("openai_api_key_hanh_chinh");
     if (stored) { setOpenaiKey(stored); setSavedKey(stored); }
     const savedModel = localStorage.getItem("meeting_analysis_model");
-    if (savedModel) setAnalysisModel(savedModel);
+    // Model cũ đã bị gỡ khỏi danh sách (vd. gpt-5.6-sol) -> về mặc định
+    if (savedModel && ANALYSIS_MODELS.some(m => m.id === savedModel)) setAnalysisModel(savedModel);
   }, []);
 
   const fetchMeetings = async () => {

@@ -19,7 +19,7 @@ import { useDepartments } from "@/lib/departments";
 import { useConfirmBox, useNoticeBox } from "@/components/ConfirmDialog";
 import {
   Fingerprint, Folder, FolderOpen, Eye, Download, Trash2, Search, Send,
-  Loader2, X, MapPin, Users, CheckCircle2, ChevronDown, ChevronRight, ImageIcon, FileText,
+  Loader2, X, MapPin, Users, CheckCircle2, ChevronDown, ChevronRight, ImageIcon, FileText, AlertCircle, AlertTriangle,
 } from "lucide-react";
 
 type SmtpConfig = { user: string; pass: string; host?: string; port?: number; secure?: boolean };
@@ -62,6 +62,7 @@ type EmpSummary = {
   name: string;
   employeeCode: string;
   bdh: string;
+  reportEmail: string;  // email nhận báo cáo theo danh bạ nhân sự (đủ email công ty + cá nhân)
   totalDays: number;
   totalLate: number;
   totalEarly: number;
@@ -92,6 +93,12 @@ export type GpsTimesheetEmployee = {
   details: { date: string; dayOfWeek: string; checkin: string; checkout: string; hours: number; late: number; early: number; status: string; workday: number }[];
 };
 
+// Khớp danh bạ giống khối Văn phòng: mã NV (bỏ số 0 đầu) hoặc họ tên không dấu.
+const cleanCode = (c: string | null | undefined) => String(c || "").replace(/^0+/, "").trim();
+const normName = (t: string | null | undefined) => String(t || "")
+  .toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d")
+  .replace(/[^a-z0-9\s]/g, "").trim();
+
 const WEEKDAY_SHORT = ["CN", "Hai", "Ba", "Tư", "Năm", "Sáu", "Bảy"];
 const hmToMin = (s: string) => (/^\d{1,2}:\d{2}/.test(s) ? +s.split(":")[0] * 60 + +s.split(":")[1] : null);
 
@@ -111,6 +118,7 @@ export default function GpsCheckinList({
 
   const [rows, setRows] = useState<Checkin[]>([]);
   const [shiftMap, setShiftMap] = useState<Record<string, { in: number; out: number }>>({});
+  const [directory, setDirectory] = useState<{ employee_code: string | null; name: string | null; email: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [month, setMonth] = useState<string>("");       // yyyy-mm đang xem
@@ -130,7 +138,7 @@ export default function GpsCheckinList({
   // ─── Tải dữ liệu ───
   const load = useCallback(async () => {
     setLoading(true);
-    const [ckRes, plRes] = await Promise.all([
+    const [ckRes, plRes, dirRes] = await Promise.all([
       supabase
         .from("gps_checkins")
         .select("id,user_email,employee_code,employee_name,bdh_name,kind,captured_at,lat,lng,distance_m,accuracy_m,photo_path")
@@ -138,7 +146,9 @@ export default function GpsCheckinList({
         .order("captured_at", { ascending: false })
         .limit(10000),
       supabase.from("project_locations").select("bdh_name, shift_in, shift_out"),
+      supabase.from("employees_directory").select("employee_code, name, email"),
     ]);
+    setDirectory((dirRes.data as { employee_code: string | null; name: string | null; email: string | null }[]) || []);
     const ck = (ckRes.data as Checkin[]) || [];
     setRows(ck);
     const sm: Record<string, { in: number; out: number }> = {};
@@ -198,6 +208,10 @@ export default function GpsCheckinList({
     const out: EmpSummary[] = [];
     byEmp.forEach((list, email) => {
       const last = list[0];
+      const dirEmp = directory.find((e) => {
+        const dc = cleanCode(e.employee_code), gc = cleanCode(last.employee_code);
+        return (dc && gc && dc === gc) || (!!e.name && normName(e.name) === normName(last.employee_name));
+      });
       const bdh = last.bdh_name;
       const sh = shiftMap[bdh] || { in: 480, out: 1020 };
       // gom theo ngày
@@ -246,6 +260,7 @@ export default function GpsCheckinList({
         name: last.employee_name || email,
         employeeCode: last.employee_code || "—",
         bdh,
+        reportEmail: dirEmp?.email || "",
         totalDays,
         totalLate,
         totalEarly,
@@ -254,7 +269,7 @@ export default function GpsCheckinList({
       });
     });
     return out.sort((a, b) => a.name.localeCompare(b.name, "vi"));
-  }, [filteredRows, shiftMap]);
+  }, [filteredRows, shiftMap, directory]);
 
   const summaries = useMemo(() => summarizeMonth(month), [summarizeMonth, month]);
 
@@ -272,10 +287,13 @@ export default function GpsCheckinList({
     else notify("Không mở được ảnh (có thể đã bị xoá).", "error");
   }
 
+  // Email nhận báo cáo: ô sửa tay (nếu có) > email trong danh bạ nhân sự.
+  const recipientOf = (s: EmpSummary) => emailOverride[s.email] ?? s.reportEmail;
+
   // ─── Gửi email 1 người. Trả về null nếu OK, chuỗi lỗi nếu thất bại. ───
   async function sendOne(s: EmpSummary): Promise<string | null> {
     if (!smtpConfig.user || !smtpConfig.pass) { onNeedSmtp(); return "Chưa cấu hình SMTP."; }
-    const recipientEmail = (emailOverride[s.email] ?? s.email)
+    const recipientEmail = recipientOf(s)
       .split(",").map((x) => x.trim()).filter(Boolean).join(", ");
     if (!recipientEmail) { return "Chưa có email nhận báo cáo."; }
     setSendStatus((m) => ({ ...m, [s.email]: "sending" }));
@@ -325,7 +343,7 @@ export default function GpsCheckinList({
     setSendingAll(true);
     let ok = 0, fail = 0, lastErr = "";
     for (const s of summaries) {
-      if (sendStatus[s.email] === "success") continue;
+      if (sendStatus[s.email] === "success" || !recipientOf(s).trim()) continue;
       const err = await sendOne(s);
       if (err) { fail++; lastErr = err; } else ok++;
     }
@@ -405,7 +423,8 @@ export default function GpsCheckinList({
     });
   }
 
-  const sendableCount = summaries.filter((s) => sendStatus[s.email] !== "success").length;
+  const sendableCount = summaries.filter((s) => sendStatus[s.email] !== "success" && recipientOf(s).trim()).length;
+  const missingEmailCount = summaries.filter((s) => !recipientOf(s).trim()).length;
 
   return (
     <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-5">
@@ -540,9 +559,16 @@ export default function GpsCheckinList({
           {/* Bảng */}
           <div className="lg:col-span-2 space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-bold text-slate-600">
-                {monthLabel ? `Tháng ${monthLabel}` : "Chọn một tháng ở thư mục bên trái"}
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-bold text-slate-600">
+                  {monthLabel ? `Tháng ${monthLabel}` : "Chọn một tháng ở thư mục bên trái"}
+                </p>
+                {month && missingEmailCount > 0 && (
+                  <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                    <AlertCircle size={10} /> Có {missingEmailCount} nhân viên chưa có email. Vui lòng cập nhật trực tiếp tại dòng tương ứng.
+                  </span>
+                )}
+              </div>
               <div className="flex rounded-xl bg-slate-100 p-0.5 text-[11px] font-bold">
                 <button onClick={() => setMode("summary")} className={`px-3 py-1 rounded-lg transition-all ${mode === "summary" ? "bg-white text-[#005BAC] shadow-sm" : "text-slate-500"}`}>Tổng hợp</button>
                 <button onClick={() => setMode("detail")} className={`px-3 py-1 rounded-lg transition-all ${mode === "detail" ? "bg-white text-[#005BAC] shadow-sm" : "text-slate-500"}`}>Chi tiết</button>
@@ -584,12 +610,19 @@ export default function GpsCheckinList({
                           <td className="py-2.5 px-2 text-center text-amber-500 font-semibold">{s.totalEarly || "—"}</td>
                           <td className="py-2.5 px-2 text-center text-emerald-600 font-semibold">{s.totalOvertime || "—"}</td>
                           <td className="py-2.5 px-3">
-                            <input
-                              value={emailOverride[s.email] ?? s.email}
-                              onChange={(e) => setEmailOverride((m) => ({ ...m, [s.email]: e.target.value }))}
-                              className="w-full min-w-[150px] text-[11px] font-medium text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#00AEEF]"
-                              placeholder="a@x.vn, b@y.vn"
-                            />
+                            <div className="relative flex items-center">
+                              <input
+                                value={recipientOf(s)}
+                                onChange={(e) => setEmailOverride((m) => ({ ...m, [s.email]: e.target.value }))}
+                                className={`w-full min-w-[150px] text-[11px] font-medium text-slate-600 bg-slate-50 border rounded-lg px-2 py-1.5 focus:outline-none ${
+                                  recipientOf(s).trim() ? "border-slate-100 focus:border-[#00AEEF]" : "border-amber-300 focus:border-amber-500 pr-6"
+                                }`}
+                                placeholder="Nhập email thủ công..."
+                              />
+                              {!recipientOf(s).trim() && (
+                                <AlertTriangle size={12} className="text-amber-500 absolute right-2 pointer-events-none animate-pulse" />
+                              )}
+                            </div>
                           </td>
                           <td className="py-2.5 px-2 text-center">
                             {st === "success" ? <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Đã gửi</span>

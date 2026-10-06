@@ -71,7 +71,7 @@ const FLAG_GROUPS: { title: string; note?: string; flags: { key: string; label: 
       { key: "can_view_all_tasks", label: "Xem toàn bộ công việc", desc: "Thấy mọi thẻ Kanban thay vì chỉ việc của mình" },
       { key: "can_manage_vpp", label: "Phụ trách VPP", desc: "Thấy mọi phiếu VPP của tất cả phòng ban" },
       { key: "can_manage_project_locations", label: "Quản lý vị trí dự án", desc: "Thêm/sửa/xoá toạ độ dự án trên bản đồ Vị trí dự án" },
-      { key: "can_manage_news", label: "Tin tức — Đăng bài", desc: "Đăng, sửa, xoá tin nội bộ (thông báo, giới thiệu, sự kiện)" },
+      { key: "can_manage_news", label: "Tin tức — Đăng bài", desc: "Đăng, sửa, xoá tin nội bộ (thông báo, giới thiệu, sự kiện) và thêm/xoá video Hướng dẫn EOP" },
       { key: "can_view_reports", label: "Hồ sơ trình ký", desc: "Kế hoạch thu chi, Sản lượng, Doanh thu — chỉ có tác dụng khi công ty ở gói Enterprise" },
       { key: "can_view_accounting", label: "Kế toán — Hồ sơ thanh toán", desc: "Trích xuất AI & sổ đề nghị thanh toán (module Kế toán). Admin luôn thấy, người khác cần cờ này" },
       { key: "can_view_all_projects", label: "Quản trị dự án — Ban lãnh đạo", desc: "Xem & sửa MỌI dự án kể cả tiền, lập hồ sơ dự án mới, gán GĐDA" },

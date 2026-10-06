@@ -54,6 +54,7 @@ export const ROUTE_MIN_PLAN: { prefix: string; min: Plan }[] = [
   { prefix: "/dashboard-du-an", min: "basic" },
   { prefix: "/cham-cong", min: "basic" },
   { prefix: "/tin-tuc", min: "basic" },
+  { prefix: "/huong-dan-eop", min: "basic" },
   { prefix: "/cb", min: "basic" },
   { prefix: "/employees", min: "professional" },
   { prefix: "/suggestions", min: "professional" },

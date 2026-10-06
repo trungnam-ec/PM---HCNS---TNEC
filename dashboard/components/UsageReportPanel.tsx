@@ -30,6 +30,7 @@ import {
 const W_DAY = 4;      // mỗi ngày có hoạt động
 const W_MODULE = 2;   // mỗi module khác nhau đã dùng
 const W_ACTION = 2;   // mỗi hành động ghi dữ liệu
+const W_TASKPT = 1;   // mỗi điểm thao tác công việc (tối đa 3 điểm/ngày: bình luận, tải tệp, cập nhật)
 const OPENS_PER_POINT = 5;   // 5 lượt mở = 1 điểm
 const OPENS_POINT_CAP = 20;  // ...nhưng tối đa 20 điểm từ lượt mở
 
@@ -41,6 +42,7 @@ type Row = {
   days: number;
   modules: number;
   actions: number;
+  taskPts: number;
   lastSeen: string | null;
   score: number;
 };
@@ -75,9 +77,10 @@ export default function UsageReportPanel() {
       const from = fromDate;
       const to = toDate;
 
-      const [sumRes, actRes, empRes] = await Promise.all([
+      const [sumRes, actRes, taskRes, empRes] = await Promise.all([
         supabase.rpc("admin_activity_summary", { p_from: from, p_to: to }),
         supabase.rpc("admin_activity_actions", { p_from: from, p_to: to }),
+        supabase.rpc("admin_task_activity_points", { p_from: from, p_to: to }),
         supabase.from("employees_directory").select("name, email, department, status"),
       ]);
 
@@ -101,7 +104,7 @@ export default function UsageReportPanel() {
         let r = map.get(email);
         if (!r) {
           const { name, department } = lookup(email);
-          r = { email, name, department, opens: 0, days: 0, modules: 0, actions: 0, lastSeen: null, score: 0 };
+          r = { email, name, department, opens: 0, days: 0, modules: 0, actions: 0, taskPts: 0, lastSeen: null, score: 0 };
           map.set(email, r);
         }
         return r;
@@ -118,6 +121,12 @@ export default function UsageReportPanel() {
         const r = ensure(a.user_email);
         r.actions += Number(a.action_count) || 0;
       }
+      // Chưa chạy migration 131 thì bỏ qua phần điểm công việc, không làm hỏng cả bảng.
+      for (const t of (taskRes.error ? [] : (taskRes.data || [])) as any[]) {
+        const r = ensure(t.user_email);
+        r.taskPts +=
+          (Number(t.comment_days) || 0) + (Number(t.upload_days) || 0) + (Number(t.update_days) || 0);
+      }
 
       const list = Array.from(map.values()).filter((r) => r.email);
       for (const r of list) {
@@ -125,6 +134,7 @@ export default function UsageReportPanel() {
           r.days * W_DAY +
           r.modules * W_MODULE +
           r.actions * W_ACTION +
+          r.taskPts * W_TASKPT +
           Math.min(Math.floor(r.opens / OPENS_PER_POINT), OPENS_POINT_CAP);
       }
       list.sort((a, b) => b.score - a.score || b.days - a.days || b.actions - a.actions);
@@ -168,18 +178,18 @@ export default function UsageReportPanel() {
         ["Bảng xếp hạng mức độ sử dụng phần mềm"],
         [`Kỳ: ${label}`, "", `Xuất lúc: ${new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}`],
         [],
-        ["STT", "Họ tên", "Email", "Phòng ban", "Ngày hoạt động", "Số module", "Hành động ghi", "Lượt mở", "Điểm", "Lần cuối"],
+        ["STT", "Họ tên", "Email", "Phòng ban", "Ngày hoạt động", "Số module", "Hành động ghi", "Điểm công việc", "Lượt mở", "Điểm", "Lần cuối"],
         ...rows.map((r, i) => [
-          i + 1, r.name, r.email, r.department, r.days, r.modules, r.actions, r.opens, r.score,
+          i + 1, r.name, r.email, r.department, r.days, r.modules, r.actions, r.taskPts, r.opens, r.score,
           r.lastSeen ? new Date(r.lastSeen).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }) : "",
         ]),
         [],
-        [`Điểm = (ngày hoạt động x ${W_DAY}) + (module x ${W_MODULE}) + (hành động ghi x ${W_ACTION}) + (lượt mở / ${OPENS_PER_POINT}, tối đa ${OPENS_POINT_CAP} điểm)`],
+        [`Điểm = (ngày hoạt động x ${W_DAY}) + (module x ${W_MODULE}) + (hành động ghi x ${W_ACTION}) + (điểm công việc x ${W_TASKPT}) + (lượt mở / ${OPENS_PER_POINT}, tối đa ${OPENS_POINT_CAP} điểm)`],
         ["Cột Hành động có số liệu hồi tố từ trước; các cột còn lại chỉ tính từ ngày bật tính năng."],
       ]);
       sheet1["!cols"] = [
         { wch: 5 }, { wch: 24 }, { wch: 30 }, { wch: 22 },
-        { wch: 14 }, { wch: 10 }, { wch: 13 }, { wch: 9 }, { wch: 8 }, { wch: 20 },
+        { wch: 14 }, { wch: 10 }, { wch: 13 }, { wch: 14 }, { wch: 9 }, { wch: 8 }, { wch: 20 },
       ];
 
       const sheet2 = XLSX.utils.aoa_to_sheet([
@@ -337,6 +347,7 @@ export default function UsageReportPanel() {
                   <th className="text-right py-2.5 px-3">Ngày HĐ</th>
                   <th className="text-right py-2.5 px-3">Module</th>
                   <th className="text-right py-2.5 px-3">Hành động</th>
+                  <th className="text-right py-2.5 px-3" title="Mỗi ngày: 1 điểm nếu có bình luận, 1 nếu tải tệp, 1 nếu cập nhật công việc (tối đa 3/ngày)">Điểm CV</th>
                   <th className="text-right py-2.5 px-3">Lượt mở</th>
                   <th className="text-right py-2.5 pl-3">Điểm</th>
                 </tr>
@@ -360,6 +371,7 @@ export default function UsageReportPanel() {
                     <td className="py-2.5 px-3 text-right font-extrabold text-emerald-600">{r.days}</td>
                     <td className="py-2.5 px-3 text-right font-semibold text-slate-600">{r.modules}</td>
                     <td className="py-2.5 px-3 text-right font-extrabold text-indigo-600">{r.actions}</td>
+                    <td className="py-2.5 px-3 text-right font-extrabold text-violet-600">{r.taskPts}</td>
                     <td className="py-2.5 px-3 text-right font-semibold text-slate-400">{r.opens}</td>
                     <td className="py-2.5 pl-3 text-right">
                       <span className="font-heading font-extrabold text-slate-800 text-sm">{r.score}</span>
@@ -373,8 +385,11 @@ export default function UsageReportPanel() {
 
         <p className="text-[10px] text-slate-400 font-medium mt-4 pt-3 border-t border-slate-100 leading-relaxed">
           <strong className="text-slate-500">Cách tính điểm:</strong> (ngày hoạt động × {W_DAY}) + (module × {W_MODULE}) +
-          (hành động ghi × {W_ACTION}) + (lượt mở ÷ {OPENS_PER_POINT}, tối đa {OPENS_POINT_CAP} điểm).
+          (hành động ghi × {W_ACTION}) + (điểm công việc × {W_TASKPT}) + (lượt mở ÷ {OPENS_PER_POINT}, tối đa {OPENS_POINT_CAP} điểm).
           Phần lượt mở bị chặn trần cố ý — để người mở đi mở lại nhiều lần không thể leo lên đầu bảng.
+          <strong className="text-slate-500">Điểm CV</strong>: mỗi ngày 1 điểm nếu có bình luận (từ 10 ký tự), 1 điểm nếu tải
+          tệp, 1 điểm nếu lưu/kéo thẻ công việc — tối đa 3 điểm/ngày, làm nhiều lần cũng không thêm; bình luận hồi tố
+          được, tải tệp và cập nhật chỉ tính từ ngày chạy migration 131.
           Cột <strong className="text-slate-500">Hành động</strong> có số liệu hồi tố từ trước; cột{" "}
           <strong className="text-slate-500">Ngày HĐ / Module / Lượt mở</strong> chỉ tính từ ngày bật tính năng.
         </p>

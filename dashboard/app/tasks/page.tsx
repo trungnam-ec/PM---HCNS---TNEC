@@ -39,6 +39,7 @@ import {
   TaskFile, parseTaskFiles, uploadTaskFile, resolveTaskFileUrl, removeTaskFile,
   isAllowedTaskFile, isImageName, humanSize, TASK_FILE_MAX_BYTES,
 } from "@/lib/taskFiles";
+import { logTaskActivity } from "@/lib/taskActivity";
 
 // Một dòng trong "Danh sách nhân viên" — gốc để suy ra task thuộc phòng nào.
 interface EmployeeRef {
@@ -553,6 +554,7 @@ export default function TaskManagementPage() {
         .eq("id", taskId);
 
       if (error) throw error;
+      logTaskActivity("update");
     } catch (err) {
       console.error("Error updating task status:", err);
       // Rollback on error
@@ -588,6 +590,7 @@ export default function TaskManagementPage() {
         try {
           const uploaded = await uploadTaskFile(file);
           setList(prev => [...prev, uploaded]);
+          logTaskActivity("upload");
         } catch (err: any) {
           problems.push(err?.message || String(err));
         }
@@ -955,6 +958,7 @@ export default function TaskManagementPage() {
         .eq("id", editingTask.id);
 
       if (error) throw error;
+      logTaskActivity("update");
 
       setIsEditModalOpen(false);
       setEditingTask(null);

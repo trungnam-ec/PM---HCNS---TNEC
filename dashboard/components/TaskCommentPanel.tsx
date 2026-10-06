@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { logTaskActivity } from "@/lib/taskActivity";
 import { MessageSquare, Send, Loader2 } from "lucide-react";
 
 export type TaskComment = {
@@ -174,6 +175,8 @@ export default function TaskCommentPanel({ taskId, me, onCountChange }: Props) {
         author_role: me.role || null,
       });
       if (error) throw error;
+      // Bình luận quá ngắn ("ok", ".") không tính điểm — cùng ngưỡng với migration 131.
+      if (body.length >= 10) logTaskActivity("comment");
       setText("");
       await load();
     } catch (e: any) {

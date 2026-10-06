@@ -99,6 +99,16 @@ export default function EopGuidePage() {
 
   const selected = useMemo(() => guides.find((g) => g.id === selectedId) || null, [guides, selectedId]);
   const video = useMemo(() => (selected ? parseEopVideo(selected.video_url) : null), [selected]);
+  // Điện thoại: khung nhúng (nhất là Google Drive) hay treo vòng xoay vô tận trong
+  // trình duyệt di động / webview, nên không nhúng mà mở video ở tab mới.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
   const selectedIndex = selected ? guides.findIndex((g) => g.id === selected.id) : -1;
 
   const closeForm = () => {
@@ -317,7 +327,7 @@ export default function EopGuidePage() {
               {/* Khung phát */}
               {selected && (
                 <div className="bg-white border border-slate-200/60 rounded-2xl shadow-sm overflow-hidden">
-                  {video ? (
+                  {video && !isMobile ? (
                     <div className="aspect-video bg-black">
                       <iframe
                         key={selected.id}
@@ -330,21 +340,32 @@ export default function EopGuidePage() {
                       />
                     </div>
                   ) : (
-                    <div className="aspect-video bg-slate-50 flex flex-col items-center justify-center gap-3 text-center p-6">
-                      <Video className="text-slate-300" size={44} />
-                      <p className="text-xs text-slate-500 font-semibold">
-                        Link này không nhúng được vào trang. Mở video ở tab mới để xem.
-                      </p>
-                      {isHttpUrl(selected.video_url) && (
-                        <a
-                          href={selected.video_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#005BAC] rounded-xl"
-                        >
-                          <ExternalLink size={13} /> Mở video
-                        </a>
+                    <div className="relative aspect-video bg-slate-900 flex flex-col items-center justify-center gap-3 text-center p-6 overflow-hidden">
+                      {selected.thumb_path && thumbUrls[selected.thumb_path] && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={thumbUrls[selected.thumb_path]}
+                          alt=""
+                          className="absolute inset-0 w-full h-full object-cover opacity-60"
+                        />
                       )}
+                      <div className="relative flex flex-col items-center gap-3">
+                        {!video && (
+                          <p className="text-xs text-white/80 font-semibold">
+                            Link này không nhúng được vào trang. Mở video ở tab mới để xem.
+                          </p>
+                        )}
+                        {isHttpUrl(selected.video_url) && (
+                          <a
+                            href={selected.video_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 px-5 py-3 text-xs font-bold text-white bg-[#005BAC] rounded-full shadow-lg active:scale-95"
+                          >
+                            <PlayCircle size={18} /> Xem video
+                          </a>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -356,7 +377,7 @@ export default function EopGuidePage() {
                     {selected.description && (
                       <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">{selected.description}</p>
                     )}
-                    {video && isHttpUrl(selected.video_url) && (
+                    {video && !isMobile && isHttpUrl(selected.video_url) && (
                       <a
                         href={selected.video_url}
                         target="_blank"

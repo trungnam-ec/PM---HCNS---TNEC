@@ -1135,6 +1135,39 @@ function BookingContent() {
     );
   }, [bookings, bookingType, currentUser, isHcnsApproverUser]);
 
+  // Lọc theo tháng (theo ngày bắt đầu) + xoá nhanh cả tháng — chỉ dùng ở bảng của người duyệt.
+  // Rỗng = hiện tất cả các tháng.
+  const [listMonth, setListMonth] = useState<string>(() => toDateKey(new Date()).slice(0, 7));
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const listBookings = useMemo(() => {
+    if (!isHcnsApproverUser || !listMonth) return myBookings;
+    return myBookings.filter((b) => toDateKey(new Date(b.start_time)).slice(0, 7) === listMonth);
+  }, [myBookings, isHcnsApproverUser, listMonth]);
+
+  const [showMonthDelete, setShowMonthDelete] = useState(false);
+  const monthUnfinished = listBookings.filter((b) => b.status === "pending_manager" || b.status === "pending_hcns").length;
+
+  const handleDeleteMonth = async () => {
+    if (!isHcnsApproverUser || !listMonth || listBookings.length === 0) return;
+    const [y, m] = listMonth.split("-");
+    setBulkDeleting(true);
+    try {
+      const { error } = await supabase
+        .from("resource_bookings")
+        .delete()
+        .in("id", listBookings.map((b) => b.id));
+      if (error) throw error;
+      showToast("success", `Đã xoá ${listBookings.length} đăng ký của tháng ${m}/${y}.`);
+      fetchBookings();
+    } catch (err: any) {
+      console.error("Error deleting month bookings:", err);
+      showToast("error", "Lỗi khi xoá danh sách tháng!");
+    } finally {
+      setBulkDeleting(false);
+      setShowMonthDelete(false);
+    }
+  };
+
   const upcomingBookings = useMemo(() => {
     const now = Date.now();
     return bookings
@@ -1599,6 +1632,62 @@ function BookingContent() {
                       ? "Xoá cả lịch"
                       : `Bỏ ${trimRemovedDays.length} ngày đã chọn`}
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Popup xác nhận xoá cả tháng — nằm giữa màn hình */}
+          {showMonthDelete && listMonth && (
+            <div
+              className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+              onClick={() => !bulkDeleting && setShowMonthDelete(false)}
+            >
+              <div
+                className="bg-white w-full max-w-md rounded-2xl shadow-premium overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="bg-rose-600 text-white px-6 py-4 flex items-center justify-between gap-3 shrink-0">
+                  <h3 className="font-heading font-bold text-sm flex items-center gap-2">
+                    <Trash2 size={16} /> Xoá cả tháng {listMonth.split("-")[1]}/{listMonth.split("-")[0]}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowMonthDelete(false)}
+                    disabled={bulkDeleting}
+                    className="text-white/80 hover:text-white cursor-pointer disabled:opacity-50"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="p-6 space-y-4 text-xs">
+                  <p className="text-slate-600 font-semibold leading-relaxed">
+                    Xoá toàn bộ <b className="text-rose-600">{listBookings.length}</b> đăng ký {isVehicle ? "xe" : "phòng họp"} của tháng này?
+                  </p>
+                  {monthUnfinished > 0 && (
+                    <p className="text-amber-600 font-semibold bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      Có {monthUnfinished} đăng ký chưa điều phối xong cũng sẽ bị xoá.
+                    </p>
+                  )}
+                  <p className="text-slate-400 font-semibold">Thao tác này không hoàn tác được.</p>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowMonthDelete(false)}
+                      disabled={bulkDeleting}
+                      className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer disabled:opacity-50"
+                    >
+                      Huỷ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteMonth}
+                      disabled={bulkDeleting}
+                      className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer disabled:opacity-60"
+                    >
+                      {bulkDeleting ? "Đang xoá..." : "Xoá tất cả"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2208,19 +2297,49 @@ function BookingContent() {
 
           {/* Đăng ký của tôi */}
           <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-4">
-            <h2 className="font-heading font-bold text-slate-800 text-sm flex items-center gap-2">
-              <ClipboardList size={16} className="text-blue-600" />
-              {isHcnsApproverUser ? `Toàn bộ đăng ký ${isVehicle ? "xe" : "phòng họp"}` : "Đăng ký của tôi"}
-            </h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-heading font-bold text-slate-800 text-sm flex items-center gap-2">
+                <ClipboardList size={16} className="text-blue-600" />
+                {isHcnsApproverUser ? `Toàn bộ đăng ký ${isVehicle ? "xe" : "phòng họp"}` : "Đăng ký của tôi"}
+              </h2>
+              {isHcnsApproverUser && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="month"
+                    value={listMonth}
+                    onChange={(e) => setListMonth(e.target.value)}
+                    className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-slate-700 bg-white outline-none focus:border-blue-400"
+                    aria-label="Lọc theo tháng"
+                  />
+                  {listMonth && (
+                    <button
+                      type="button"
+                      onClick={() => setListMonth("")}
+                      className="text-[10px] font-bold text-slate-500 hover:text-slate-800 px-2 py-1.5 rounded-lg border border-slate-200 bg-white cursor-pointer"
+                    >
+                      Tất cả
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowMonthDelete(true)}
+                    disabled={!listMonth || listBookings.length === 0 || bulkDeleting}
+                    className="inline-flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 size={11} /> {bulkDeleting ? "Đang xoá..." : `Xoá cả tháng${listMonth ? ` (${listBookings.length})` : ""}`}
+                  </button>
+                </div>
+              )}
+            </div>
             {loadingList ? (
               <div className="flex items-center justify-center py-8 text-slate-400 text-xs font-semibold gap-2">
                 <span className="w-4 h-4 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
                 Đang tải danh sách đăng ký...
               </div>
-            ) : myBookings.length === 0 ? (
+            ) : listBookings.length === 0 ? (
               <p className="text-center text-slate-400 text-xs italic py-6">
                 {isHcnsApproverUser
-                  ? `Chưa có đăng ký ${isVehicle ? "xe" : "phòng họp"} nào.`
+                  ? `Chưa có đăng ký ${isVehicle ? "xe" : "phòng họp"} nào${listMonth ? " trong tháng này" : ""}.`
                   : `Bạn chưa có đăng ký ${isVehicle ? "xe" : "phòng họp"} nào.`}
               </p>
             ) : (
@@ -2238,7 +2357,7 @@ function BookingContent() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
-                    {myBookings.map((b) => (
+                    {listBookings.map((b) => (
                       <tr key={b.id} className="hover:bg-slate-50/50 transition-all duration-150">
                         <td className="py-3 px-4 font-bold text-slate-800">{b.resource_name}</td>
                         <td className="py-3 px-4 text-slate-500 font-mono text-[10px] whitespace-nowrap">

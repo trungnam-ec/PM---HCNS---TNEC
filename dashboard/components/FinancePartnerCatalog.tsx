@@ -264,7 +264,7 @@ export default function FinancePartnerCatalog() {
   return (
     /* Giới hạn bề ngang: màn hình 2000px mà để tràn thì cột tên đối tác giãn ra
        vài trăm pixel trống, mắt phải quét ngang rất xa mới tới cột dự án. */
-    <div className="space-y-6 max-w-6xl animate-in fade-in duration-300">
+    <div className="space-y-6 w-full animate-in fade-in duration-300">
       {accountsBanner}
 
       {writeErr && (

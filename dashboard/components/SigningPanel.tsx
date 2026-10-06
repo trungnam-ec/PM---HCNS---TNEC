@@ -364,7 +364,7 @@ export default function SigningPanel() {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="space-y-5 w-full">
       {mailWarn && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-start gap-3">
           <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />
@@ -406,7 +406,7 @@ export default function SigningPanel() {
       )}
 
       {/* KPI */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Kpi label="Cần tôi xử lý" value={stats.canXuLy} icon={Inbox} grad="from-amber-500 to-orange-600" />
         <Kpi label="Đang luân chuyển" value={stats.dangChay} icon={CircleDot} grad="from-blue-500 to-cyan-600" />
         <Kpi label="Bị trả lại" value={stats.traLai} icon={Undo2} grad="from-rose-500 to-pink-600" />
@@ -479,7 +479,7 @@ export default function SigningPanel() {
               `title` — nhãn dài làm cụm nút rộng hơn cột phải của lưới.
               Ô lưới LUÔN được vẽ kể cả khi không có quyền lập phiếu, nếu không
               hàng tab bên dưới sẽ nhảy sang cột 2. */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {canCreate && (
               <>
               <button type="button" onClick={() => setCreating("ho_so")}
@@ -581,7 +581,7 @@ export default function SigningPanel() {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200/60 shadow-premium overflow-hidden">
-          <div className="max-h-[560px] overflow-y-auto">
+          <div className="max-h-[calc(100vh-380px)] min-h-[360px] overflow-y-auto">
             {/* Thanh tiêu đề nền xanh, chữ trắng. Bản trước dùng nền xám nhạt
                 + chữ slate-400 nên chìm nghỉm vào dòng dữ liệu, nhìn lướt không
                 thấy đâu là tiêu đề cột. Màu đặc nên hiện đúng ở cả nền sáng lẫn

@@ -1121,6 +1121,15 @@ function MeetingTeamContent() {
     })),
   ];
 
+  // Danh bạ nhân sự cho các ô Chủ trì / Thư ký / Thành phần tham dự (cùng kiểu
+  // ô tìm kiếm với bảng phân công, không dùng <datalist> của trình duyệt).
+  const peopleOptions: PersonOption[] = employees.map(e => ({
+    id: e.id,
+    name: e.name,
+    sub: `${e.department || "Chưa xếp phòng"}${e.role ? ` • ${e.role}` : ""}`,
+    initials: initialsOf(e),
+  }));
+
   // ─── Ô chọn người chủ trì (chọn MỘT người) ───
   const selectedChair = employees.find(e => e.name === chairperson);
   const chairQuery = chairSearch.trim().toLowerCase();
@@ -1784,31 +1793,23 @@ function MeetingTeamContent() {
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-500 uppercase">Chủ trì</label>
-                          <input
-                            type="text"
+                          <PersonSearchCell
                             value={editableChairperson}
-                            onChange={(e) => setEditableChairperson(e.target.value)}
-                            list="meeting_people"
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:outline-none text-slate-800 text-xs"
+                            options={peopleOptions}
+                            onChange={setEditableChairperson}
+                            placeholder="Tìm tên chủ trì…"
                           />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-500 uppercase">Thư ký</label>
-                          <input
-                            type="text"
+                          <PersonSearchCell
                             value={editableSecretary}
-                            onChange={(e) => setEditableSecretary(e.target.value)}
-                            list="meeting_people"
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:outline-none text-slate-800 text-xs"
+                            options={peopleOptions}
+                            onChange={setEditableSecretary}
+                            placeholder="Tìm tên thư ký…"
                           />
                         </div>
                       </div>
-
-                      {/* Ô gợi ý dùng <datalist> cho trình duyệt tự lọc: ô search tự lọc
-                          bằng React chết khi gõ tiếng Việt có dấu. */}
-                      <datalist id="meeting_people">
-                        {employees.map(emp => <option key={`dl_${emp.id}`} value={emp.name} />)}
-                      </datalist>
 
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
@@ -1833,14 +1834,11 @@ function MeetingTeamContent() {
 
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase">Thành phần tham dự</label>
-                        <input
-                          type="text"
-                          value={editableAttendeeInput}
-                          onChange={(e) => setEditableAttendeeInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addAttendeeTag(editableAttendeeInput); } }}
-                          list="meeting_people"
-                          placeholder="Gõ tên rồi bấm Enter..."
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:outline-none text-slate-800 text-xs"
+                        <PersonSearchCell
+                          value=""
+                          options={peopleOptions}
+                          onChange={(name) => { if (name.trim()) addAttendeeTag(name.trim()); }}
+                          placeholder="Tìm tên rồi chọn để thêm…"
                         />
                         <div className="flex flex-wrap gap-1 mt-1.5">
                           {editableAttendees.map(att => (

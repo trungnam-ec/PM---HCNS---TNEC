@@ -245,9 +245,8 @@ export default function AtldPenaltyTab({ canInput, canProcess }: { canInput: boo
               <tr className="text-white text-[10px] font-extrabold uppercase tracking-wider">
                 <th colSpan={10} className="px-3 py-1.5 bg-[#005BAC] text-left">P.ATLĐ nhập — thông tin đầu vào</th>
                 <th colSpan={6} className="px-3 py-1.5 bg-orange-500 text-left">P.KHĐT nhập — thông tin đầu ra</th>
-                <th colSpan={4} className="px-3 py-1.5 bg-emerald-600 text-left">Tự tính — không sửa tay</th>
-                {/* Ô tiêu đề cột thao tác: cùng nền thẻ bảng (khối xám đặc trước đây trông như lỗi). */}
-                <th rowSpan={2} className="px-3 py-1.5 bg-white" />
+                {/* Dải xanh lá phủ luôn cột Thao tác cho liền mạch tới mép bảng. */}
+                <th colSpan={5} className="px-3 py-1.5 bg-emerald-600 text-left">Tự tính — không sửa tay</th>
               </tr>
               <tr className="text-left">
                 {["Mã hồ sơ", "Loại hồ sơ", "Số QĐ", "Ngày ban hành", "Dự án", "Nhà thầu phụ", "Nội dung"].map((h) => (
@@ -266,6 +265,7 @@ export default function AtldPenaltyTab({ canInput, canProcess }: { canInput: boo
                 <th className={`${th} bg-emerald-50 text-emerald-700`}>Trạng thái</th>
                 <th className={`${th} bg-emerald-50 text-emerald-700 text-right`}>Số ngày theo dõi</th>
                 <th className={`${th} bg-emerald-50 text-emerald-700`}>Cảnh báo</th>
+                <th className={`${th} bg-emerald-50 text-emerald-700 text-right`}>Thao tác</th>
               </tr>
             </thead>
             <tbody>

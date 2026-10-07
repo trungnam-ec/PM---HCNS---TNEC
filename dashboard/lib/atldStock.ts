@@ -290,6 +290,24 @@ export async function receiveItemStock(itemId: string, qty: number, unitPrice: n
   return null;
 }
 
+// Chỉnh tay Tồn đầu kỳ (migration 136): ghi phiếu điều chỉnh ngày cuối tháng trước
+// cho phần chênh lệch — tồn cuối các tháng sau tự đổi theo.
+export async function setOpeningStock(itemId: string, monthStart: string, target: number): Promise<string | null> {
+  const { error } = await supabase.rpc("atld_set_opening", { p_item: itemId, p_from: monthStart, p_target: target });
+  if (!error) return null;
+  const missing = /atld_set_opening/i.test(error.message || "") && /find|exist/i.test(error.message || "");
+  return missing ? "Chưa chạy migration 136 (chỉnh tồn đầu kỳ) trong Supabase > SQL Editor." : atldErrorMessage(error);
+}
+
+// Chỉnh tay số Nhập SP của tháng (migration 137): tăng = lập 1 phiếu nhập, giảm = huỷ từng
+// phần các lô nhập trong tháng (mới nhất trước).
+export async function setMonthReceipt(itemId: string, from: string, to: string, target: number, ngay: string): Promise<string | null> {
+  const { error } = await supabase.rpc("atld_set_month_receipt", { p_item: itemId, p_from: from, p_to: to, p_target: target, p_ngay: ngay });
+  if (!error) return null;
+  const missing = /atld_set_month_receipt/i.test(error.message || "") && /find|exist/i.test(error.message || "");
+  return missing ? "Chưa chạy migration 137 (chỉnh Nhập SP) trong Supabase > SQL Editor." : atldErrorMessage(error);
+}
+
 export async function updateItem(id: string, v: ItemInput): Promise<string | null> {
   return writeChecked(
     () => supabase.from("atld_items").update(cleanItem(v)).eq("id", id).select("id"),

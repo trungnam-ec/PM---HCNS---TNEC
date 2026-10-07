@@ -32,6 +32,8 @@ import {
   createItem,
   updateItem,
   receiveItemStock,
+  setOpeningStock,
+  setMonthReceipt,
   setItemActive,
   deleteItem,
   itemSearchText,
@@ -45,7 +47,7 @@ import {
   formatMoney,
 } from "@/lib/atldStock";
 import { deleteInactiveItem } from "@/lib/atldVouchers";
-import { Search, Plus, Pencil, Trash2, Loader2, AlertCircle, X, Boxes, PackageX, TriangleAlert, Wallet, EyeOff, Eye, ChevronLeft, ChevronRight, CalendarDays, FileDown } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Loader2, AlertCircle, X, Boxes, PackageX, TriangleAlert, Wallet, EyeOff, Eye, ChevronLeft, ChevronRight, CalendarDays, FileDown, Check } from "lucide-react";
 
 // Bộ lọc trạng thái: 3 mức tồn xét theo TỒN CUỐI KỲ của tháng đang xem; "Tất cả"
 // và 3 mức chỉ tính mã đang dùng, "Ngừng dùng" là nhóm riêng.
@@ -81,6 +83,13 @@ function exportStockExcel(rows: Row[], month: string) {
 }
 
 // canApprove (Admin + cờ Duyệt xuất): xoá HẲN mã Ngừng dùng kể cả mã đã có phiếu (129).
+// Ngày phiếu khi chỉnh Nhập SP tăng: hôm nay nếu đang trong tháng xem, không thì ngày cuối tháng.
+function receiptDateFor(month: string): string {
+  const { from, to } = monthRange(month);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date());
+  return today >= from && today <= to ? today : to;
+}
+
 export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: boolean; canApprove: boolean }) {
   const [items, setItems] = useState<AtldItem[]>([]);
   const [stock, setStock] = useState<Map<string, PeriodStock>>(new Map());
@@ -91,6 +100,8 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
   const [filter, setFilter] = useState<Filter>("all");
   const [editing, setEditing] = useState<AtldItem | "new" | null>(null);
   const [rowErr, setRowErr] = useState<string | null>(null);
+  // Sửa nhanh Tồn đầu kỳ ngay tại ô của bảng.
+  const [quick, setQuick] = useState<{ id: string; field: "open" | "nhap"; text: string; busy: boolean } | null>(null);
   const { ask, confirmNode } = useConfirmBox();
 
   const load = useCallback(async () => {
@@ -106,6 +117,24 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
+
+  async function saveQuick(r: Row) {
+    if (!quick || quick.busy) return;
+    const n = Number(quick.text.replace(/\./g, "").replace(",", "."));
+    if (quick.text.trim() === "" || !Number.isFinite(n) || n < 0) return setRowErr("Số lượng phải là số không âm.");
+    const cur = quick.field === "open" ? r.tonDau : r.nhap;
+    if (n === cur) return setQuick(null);
+    setQuick({ ...quick, busy: true });
+    setRowErr(null);
+    const { from, to } = monthRange(month);
+    const er = quick.field === "open" ? await setOpeningStock(r.id, from, n) : await setMonthReceipt(r.id, from, to, n, receiptDateFor(month));
+    if (er) {
+      setRowErr(`${r.code}: ${er}`);
+      return setQuick({ ...quick, busy: false });
+    }
+    setQuick(null);
+    load();
+  }
 
   const rows: Row[] = useMemo(
     () =>
@@ -337,8 +366,78 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
                     <td className="px-4 py-2.5 font-semibold text-slate-600 whitespace-nowrap">{r.size || "—"}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap"><ColorTag color={r.color} /></td>
                     <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{r.unit || "—"}</td>
-                    <td className="px-3 py-2.5 text-right text-slate-600 tabular-nums">{formatQty(r.tonDau)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-600">{r.nhap ? formatQty(r.nhap) : <span className="text-slate-300">0</span>}</td>
+                    <td className="px-3 py-2.5 text-right text-slate-600 tabular-nums whitespace-nowrap">
+                      {quick?.id === r.id && quick.field === "open" ? (
+                        <span className="inline-flex items-center gap-1">
+                          <input
+                            autoFocus
+                            inputMode="decimal"
+                            value={quick.text}
+                            disabled={quick.busy}
+                            onChange={(e) => setQuick({ ...quick, text: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveQuick(r);
+                              if (e.key === "Escape") setQuick(null);
+                            }}
+                            className="w-20 text-xs font-bold text-right bg-white border border-[#00AEEF] rounded-md px-2 py-1 focus:outline-none"
+                          />
+                          <IconBtn title="Lưu tồn đầu kỳ (Enter)" onClick={() => saveQuick(r)}>
+                            {quick.busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                          </IconBtn>
+                          <IconBtn title="Bỏ (Esc)" onClick={() => setQuick(null)}><X size={13} /></IconBtn>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 group/od">
+                          {formatQty(r.tonDau)}
+                          {canEdit && (
+                            <button
+                              type="button"
+                              title="Sửa nhanh tồn đầu kỳ"
+                              onClick={() => setQuick({ id: r.id, field: "open", text: String(r.tonDau), busy: false })}
+                              className="text-slate-300 hover:text-[#005BAC] cursor-pointer"
+                            >
+                              <Pencil size={11} />
+                            </button>
+                          )}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-600 whitespace-nowrap">
+                      {quick?.id === r.id && quick.field === "nhap" ? (
+                        <span className="inline-flex items-center gap-1">
+                          <input
+                            autoFocus
+                            inputMode="decimal"
+                            value={quick.text}
+                            disabled={quick.busy}
+                            onChange={(e) => setQuick({ ...quick, text: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveQuick(r);
+                              if (e.key === "Escape") setQuick(null);
+                            }}
+                            className="w-20 text-xs font-bold text-right bg-white border border-[#00AEEF] rounded-md px-2 py-1 focus:outline-none"
+                          />
+                          <IconBtn title="Lưu Nhập SP (Enter)" onClick={() => saveQuick(r)}>
+                            {quick.busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                          </IconBtn>
+                          <IconBtn title="Bỏ (Esc)" onClick={() => setQuick(null)}><X size={13} /></IconBtn>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1">
+                          {r.nhap ? formatQty(r.nhap) : <span className="text-slate-300">0</span>}
+                          {canEdit && (
+                            <button
+                              type="button"
+                              title="Sửa nhanh số Nhập SP của tháng"
+                              onClick={() => setQuick({ id: r.id, field: "nhap", text: String(r.nhap), busy: false })}
+                              className="text-slate-300 hover:text-[#005BAC] cursor-pointer"
+                            >
+                              <Pencil size={11} />
+                            </button>
+                          )}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-rose-600">{r.xuat ? formatQty(r.xuat) : <span className="text-slate-300">0</span>}</td>
                     <td className="px-3 py-2.5 text-right font-extrabold text-slate-800 tabular-nums">{formatQty(r.tonCuoi)}</td>
                     <td className="px-4 py-2.5 text-right text-slate-500 tabular-nums">{r.min_stock > 0 ? formatQty(r.min_stock) : "—"}</td>
@@ -380,6 +479,10 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
         <ItemModal
           item={editing === "new" ? null : editing}
           allItems={items}
+          month={month}
+          onReload={load}
+          tonDau={editing === "new" ? 0 : (stock.get(editing.id) || EMPTY_PERIOD_STOCK).tonDau}
+          nhapKy={editing === "new" ? 0 : (stock.get(editing.id) || EMPTY_PERIOD_STOCK).nhap}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -470,11 +573,19 @@ const moneyText = (n: number | null) => (n == null ? "" : formatMoney(n));
 function ItemModal({
   item,
   allItems,
+  month,
+  tonDau,
+  nhapKy,
+  onReload,
   onClose,
   onSaved,
 }: {
   item: AtldItem | null;
   allItems: AtldItem[];
+  month: string;
+  tonDau: number;
+  nhapKy: number;
+  onReload: () => void;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -492,6 +603,7 @@ function ItemModal({
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
   const savingRef = useRef(false);
   // Số lượng nhập kho kèm theo (tạo mới: nhập lần đầu; sửa: nhập thêm) — lập phiếu
   // nhập + ghi sổ, KHÔNG sửa tồn trực tiếp.
@@ -501,6 +613,13 @@ function ItemModal({
   const [createdId, setCreatedId] = useState<string | null>(null);
   const selfId = item?.id ?? createdId;
   const qty = Number(qtyText.replace(/\./g, "").replace(",", ".")) || 0;
+  // Tồn đầu kỳ của tháng đang xem (chỉ khi sửa mã đã có). Để trống = không đổi.
+  const [openText, setOpenText] = useState(() => (item ? String(tonDau) : ""));
+  const openVal = openText.trim() === "" ? null : Number(openText.replace(/\./g, "").replace(",", "."));
+  const [nhapText, setNhapText] = useState(() => (item ? String(nhapKy) : ""));
+  const nhapVal = nhapText.trim() === "" ? null : Number(nhapText.replace(/\./g, "").replace(",", "."));
+  const nhapChanged = !!item && nhapVal != null && Number.isFinite(nhapVal) && nhapVal !== nhapKy;
+  const openChanged = !!item && openVal != null && Number.isFinite(openVal) && openVal !== tonDau;
 
   const names = useMemo(() => Array.from(new Set(allItems.map((i) => i.name))).sort((a, b) => a.localeCompare(b, "vi")), [allItems]);
   const sizes = useMemo(
@@ -527,12 +646,15 @@ function ItemModal({
     if (!v.code.trim()) return setErr("Nhập Mã SP.");
     if (!v.name.trim()) return setErr("Nhập Tên SP.");
     if (codeTaken) return setErr("Mã SP này đã có trong danh mục.");
-    if (qtyText.trim() && !(qty > 0)) return setErr("Số lượng nhập phải lớn hơn 0.");
-    if (qty > 0 && v.gia_nhap == null) return setErr("Nhập Giá nhập để ghi sổ nhập kho.");
-    if (qty > 0 && !ngayNhap) return setErr("Chọn Ngày nhập.");
+    if (!item && qtyText.trim() && !(qty > 0)) return setErr("Số lượng nhập phải lớn hơn 0.");
+    if (!item && qty > 0 && v.gia_nhap == null) return setErr("Nhập Giá nhập để ghi sổ nhập kho.");
+    if (!item && qty > 0 && !ngayNhap) return setErr("Chọn Ngày nhập.");
+    if (item && openText.trim() !== "" && !(openVal != null && Number.isFinite(openVal) && openVal >= 0)) return setErr("Tồn đầu kỳ phải là số không âm.");
+    if (item && nhapText.trim() !== "" && !(nhapVal != null && Number.isFinite(nhapVal) && nhapVal >= 0)) return setErr("Nhập SP phải là số không âm.");
     savingRef.current = true;
     setSaving(true);
     setErr("");
+    setMsg("");
     let id = selfId;
     let e: string | null;
     if (id) {
@@ -543,14 +665,48 @@ function ItemModal({
       id = r.id;
       if (id) setCreatedId(id);
     }
-    if (!e && id && qty > 0) {
-      const er = await receiveItemStock(id, qty, v.gia_nhap ?? 0, ngayNhap, item ? "Nhập thêm từ danh mục SP" : "Nhập kho khi tạo mã SP", v.ncc);
+    // Sửa mã đã có: nút Lưu CHỈ lưu thông tin + tồn đầu kỳ; nhập kho đi nút "Nhập thêm" riêng
+    // (tránh bấm Lưu nhiều lần là lập nhiều phiếu nhập).
+    if (!e && id && !item && qty > 0) {
+      const er = await receiveItemStock(id, qty, v.gia_nhap ?? 0, ngayNhap, "Nhập kho khi tạo mã SP", v.ncc);
       if (er) e = `Đã lưu mã SP nhưng CHƯA nhập kho được: ${er} — bấm Lưu để thử nhập lại.`;
+    }
+    // Chỉnh tồn đầu kỳ làm SAU phiếu nhập thêm: hàm tự tính chênh lệch với sổ kho lúc đó
+    // nên tồn đầu kỳ cuối cùng luôn đúng bằng số đã gõ.
+    if (!e && id && openChanged && openVal != null) {
+      const er = await setOpeningStock(id, monthRange(month).from, openVal);
+      if (er) e = `Đã lưu mã SP nhưng CHƯA chỉnh được tồn đầu kỳ: ${er}`;
+      else setOpenText(String(openVal));
+    }
+    if (!e && id && nhapChanged && nhapVal != null) {
+      const { from, to } = monthRange(month);
+      const er = await setMonthReceipt(id, from, to, nhapVal, receiptDateFor(month));
+      if (er) e = `Đã lưu mã SP nhưng CHƯA chỉnh được Nhập SP: ${er}`;
+      else setNhapText(String(nhapVal));
     }
     savingRef.current = false;
     setSaving(false);
     if (e) return setErr(e);
     onSaved();
+  }
+
+  // Nút "Nhập thêm" (chỉ khi sửa mã đã có): lập đúng 1 phiếu nhập, xong thì xoá ô số lượng.
+  async function receiveMore() {
+    if (savingRef.current || !item) return;
+    if (!(qty > 0)) return setErr("Nhập số lượng nhập thêm lớn hơn 0.");
+    if (v.gia_nhap == null) return setErr("Nhập Giá nhập để ghi sổ nhập kho.");
+    if (!ngayNhap) return setErr("Chọn Ngày nhập.");
+    savingRef.current = true;
+    setSaving(true);
+    setErr("");
+    setMsg("");
+    const er = await receiveItemStock(item.id, qty, v.gia_nhap, ngayNhap, "Nhập thêm từ danh mục SP", v.ncc);
+    savingRef.current = false;
+    setSaving(false);
+    if (er) return setErr(er);
+    setMsg(`Đã nhập kho ${formatQty(qty)} ${v.unit || "đơn vị"} (1 phiếu nhập, ghi sổ ngay).`);
+    setQtyText("");
+    onReload();
   }
 
   const inputCls =
@@ -630,8 +786,39 @@ function ItemModal({
             <span className="text-[10px] font-bold text-slate-500">Giá bán (đ)</span>
             <input inputMode="numeric" value={moneyText(v.gia_ban)} onChange={(e) => set("gia_ban", parseMoney(e.target.value))} placeholder="0" className={`${inputCls} tabular-nums text-right`} />
           </label>
+          {item && (
+            <div className="sm:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block space-y-1">
+                <span className="text-[10px] font-bold text-slate-500">
+                  Tồn đầu kỳ tháng {Number(month.slice(5))}/{month.slice(0, 4)}
+                </span>
+                <input inputMode="decimal" value={openText} onChange={(e) => setOpenText(e.target.value)} className={`${inputCls} tabular-nums text-right`} />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[10px] font-bold text-slate-500">
+                  Nhập SP trong tháng {Number(month.slice(5))}/{month.slice(0, 4)}
+                </span>
+                <input inputMode="decimal" value={nhapText} onChange={(e) => setNhapText(e.target.value)} className={`${inputCls} tabular-nums text-right`} />
+              </label>
+              {openChanged && openVal != null && (
+                <span className="sm:col-span-2 block text-[11px] text-amber-600">
+                  Tồn đầu kỳ {formatQty(tonDau)} → {formatQty(openVal)}: ghi 1 phiếu {openVal > tonDau ? "nhập" : "xuất"} điều chỉnh {formatQty(Math.abs(openVal - tonDau))} ngày cuối tháng trước; tồn cuối kỳ các tháng sau đổi theo.
+                </span>
+              )}
+              {nhapChanged && nhapVal != null && (
+                <span className="sm:col-span-2 block text-[11px] text-amber-600">
+                  Nhập SP {formatQty(nhapKy)} → {formatQty(nhapVal)}:{" "}
+                  {nhapVal > nhapKy
+                    ? `lập thêm 1 phiếu nhập ${formatQty(nhapVal - nhapKy)} ghi sổ ngay.`
+                    : `trừ bớt ${formatQty(nhapKy - nhapVal)} khỏi các phiếu nhập gần nhất trong tháng (không xoá phiếu, có dòng đảo trong sổ).`}
+                </span>
+              )}
+            </div>
+          )}
+          <div className={item ? "sm:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3" : "contents"}>
+            {item && <p className="sm:col-span-3 text-[11px] font-extrabold text-slate-600">Nhập thêm hàng vào kho (mỗi lần bấm = 1 phiếu nhập)</p>}
           <label className="block space-y-1">
-            <span className="text-[10px] font-bold text-slate-500">{item ? "Nhập thêm số lượng" : "Số lượng nhập"}</span>
+            <span className="text-[10px] font-bold text-slate-500">{item ? "Số lượng nhập thêm" : "Số lượng nhập"}</span>
             <input inputMode="decimal" value={qtyText} onChange={(e) => setQtyText(e.target.value)} placeholder="0 = chưa nhập kho" className={`${inputCls} tabular-nums text-right`} />
           </label>
           <label className="block space-y-1">
@@ -644,10 +831,24 @@ function ItemModal({
           </div>
           {qty > 0 && (
             <p className="sm:col-span-3 text-[11px] text-slate-500 -mt-1">
-              Lưu xong sẽ lập <b>phiếu nhập kho</b> {formatQty(qty)} {v.unit || "đơn vị"} và ghi sổ ngay — cộng vào cột Nhập SP của Tổng Danh mục kho ATLĐ, hiện ở tab Danh sách Quản lý Xuất-Nhập kho.
+              {item ? "Bấm Nhập thêm" : "Lưu xong"} sẽ lập <b>phiếu nhập kho</b> {formatQty(qty)} {v.unit || "đơn vị"} và ghi sổ ngay — cộng vào cột Nhập SP của Tổng Danh mục kho ATLĐ.
               {item && " Tồn hiện có không bị ghi đè, chỉ cộng thêm."}
             </p>
           )}
+            {item && (
+              <div className="sm:col-span-3 flex items-center justify-end gap-3">
+                {msg && <span className="mr-auto text-[11px] font-semibold text-emerald-600">{msg}</span>}
+                <button
+                  type="button"
+                  onClick={receiveMore}
+                  disabled={saving || !(qty > 0)}
+                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[11px] font-bold px-4 py-2 rounded-lg cursor-pointer"
+                >
+                  {saving && <Loader2 size={13} className="animate-spin" />} Nhập thêm
+                </button>
+              </div>
+            )}
+          </div>
           <label className="block space-y-1 sm:col-span-3">
             <span className="text-[10px] font-bold text-slate-500">NCC/PVT</span>
             <input value={v.ncc} onChange={(e) => set("ncc", e.target.value)} placeholder="Nhà cung cấp / Phòng Vật tư — gõ tay" className={inputCls} />

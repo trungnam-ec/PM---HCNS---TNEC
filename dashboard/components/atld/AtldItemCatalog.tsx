@@ -614,9 +614,14 @@ function ItemModal({
   const selfId = item?.id ?? createdId;
   const qty = Number(qtyText.replace(/\./g, "").replace(",", ".")) || 0;
   // Tồn đầu kỳ của tháng đang xem (chỉ khi sửa mã đã có). Để trống = không đổi.
-  const [openText, setOpenText] = useState(() => (item ? String(tonDau) : ""));
+  // null = người dùng CHƯA gõ -> ô luôn hiện số mới nhất của sổ kho (sau Nhập thêm bảng
+  // tải lại, prop đổi theo). Không giữ bản sao lúc mở form: sự cố 07/10/2026 Nhập thêm 10
+  // rồi bấm Lưu, ô vẫn ghi 8 cũ -> hệ thống "sửa" 18 về 8, trừ mất 10 vừa nhập.
+  const [openEdit, setOpenEdit] = useState<string | null>(null);
+  const openText = openEdit ?? (item ? String(tonDau) : "");
   const openVal = openText.trim() === "" ? null : Number(openText.replace(/\./g, "").replace(",", "."));
-  const [nhapText, setNhapText] = useState(() => (item ? String(nhapKy) : ""));
+  const [nhapEdit, setNhapEdit] = useState<string | null>(null);
+  const nhapText = nhapEdit ?? (item ? String(nhapKy) : "");
   const nhapVal = nhapText.trim() === "" ? null : Number(nhapText.replace(/\./g, "").replace(",", "."));
   const nhapChanged = !!item && nhapVal != null && Number.isFinite(nhapVal) && nhapVal !== nhapKy;
   const openChanged = !!item && openVal != null && Number.isFinite(openVal) && openVal !== tonDau;
@@ -676,13 +681,13 @@ function ItemModal({
     if (!e && id && openChanged && openVal != null) {
       const er = await setOpeningStock(id, monthRange(month).from, openVal);
       if (er) e = `Đã lưu mã SP nhưng CHƯA chỉnh được tồn đầu kỳ: ${er}`;
-      else setOpenText(String(openVal));
+      else setOpenEdit(null);
     }
     if (!e && id && nhapChanged && nhapVal != null) {
       const { from, to } = monthRange(month);
       const er = await setMonthReceipt(id, from, to, nhapVal, receiptDateFor(month));
       if (er) e = `Đã lưu mã SP nhưng CHƯA chỉnh được Nhập SP: ${er}`;
-      else setNhapText(String(nhapVal));
+      else setNhapEdit(null);
     }
     savingRef.current = false;
     setSaving(false);
@@ -706,6 +711,7 @@ function ItemModal({
     if (er) return setErr(er);
     setMsg(`Đã nhập kho ${formatQty(qty)} ${v.unit || "đơn vị"} (1 phiếu nhập, ghi sổ ngay).`);
     setQtyText("");
+    setNhapEdit(null);
     onReload();
   }
 
@@ -792,13 +798,13 @@ function ItemModal({
                 <span className="text-[10px] font-bold text-slate-500">
                   Tồn đầu kỳ tháng {Number(month.slice(5))}/{month.slice(0, 4)}
                 </span>
-                <input inputMode="decimal" value={openText} onChange={(e) => setOpenText(e.target.value)} className={`${inputCls} tabular-nums text-right`} />
+                <input inputMode="decimal" value={openText} onChange={(e) => setOpenEdit(e.target.value)} className={`${inputCls} tabular-nums text-right`} />
               </label>
               <label className="block space-y-1">
                 <span className="text-[10px] font-bold text-slate-500">
                   Nhập SP trong tháng {Number(month.slice(5))}/{month.slice(0, 4)}
                 </span>
-                <input inputMode="decimal" value={nhapText} onChange={(e) => setNhapText(e.target.value)} className={`${inputCls} tabular-nums text-right`} />
+                <input inputMode="decimal" value={nhapText} onChange={(e) => setNhapEdit(e.target.value)} className={`${inputCls} tabular-nums text-right`} />
               </label>
               {openChanged && openVal != null && (
                 <span className="sm:col-span-2 block text-[11px] text-amber-600">

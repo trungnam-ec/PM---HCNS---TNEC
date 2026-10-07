@@ -1319,6 +1319,9 @@ function PartnerModal({ partner: p, contracts, accounts, accountIdsByContract, p
                         title="Lưu dòng hợp đồng">
                         <Save size={14} />
                       </button>
+                      {/* Xoá dòng hợp đồng chỉ Admin (RLS 135) — người khác bấm sẽ
+                          không xoá được dòng nào, nên không hiện nút. */}
+                      {canDelete && (
                       <button type="button" disabled={saving}
                         onClick={e => removeContract(
                           c,
@@ -1329,6 +1332,7 @@ function PartnerModal({ partner: p, contracts, accounts, accountIdsByContract, p
                         title="Xoá dòng hợp đồng">
                         <Trash2 size={14} />
                       </button>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -65,7 +65,26 @@ const inputCls =
 // bấm một cái mỗi lần, và tổng 6 nút chiếm gần nửa chiều ngang thanh công cụ.
 type Filter =
   | "tat_ca" | "ho_so" | "hop_dong" | "chuyen_tien" | "to_trinh"
-  | "phieu_yeu_cau" | "don_dat_hang" | "cua_toi";
+  | "phieu_yeu_cau" | "don_dat_hang" | "tam_ung" | "cua_toi";
+
+// Bảy nút lập phiếu — dữ liệu hoá để thêm loại thứ tám chỉ thêm một dòng.
+// Lớp màu viết ĐẦY ĐỦ (không ghép chuỗi) để Tailwind quét thấy.
+const NUT_LAP_PHIEU: { loai: SigningLoai; label: string; title: string; cls: string }[] = [
+  { loai: "ho_so", label: "Hồ sơ / Văn bản", cls: "bg-blue-600 hover:bg-blue-700 shadow-blue-500/10",
+    title: "Trình duyệt một đợt thanh toán của hợp đồng đã ký (TL/BM/011)" },
+  { loai: "hop_dong", label: "Hợp đồng", cls: "bg-violet-600 hover:bg-violet-700 shadow-violet-500/10",
+    title: "Trình duyệt nội dung hợp đồng trước khi ký (KHKT/BM/001)" },
+  { loai: "chuyen_tien", label: "Chuyển tiền", cls: "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/10",
+    title: "Đề nghị chuyển tiền cho một khoản chi (HC-BM021/ĐNCT)" },
+  { loai: "tam_ung", label: "Tạm ứng", cls: "bg-rose-600 hover:bg-rose-700 shadow-rose-500/10",
+    title: "Giấy đề nghị tạm ứng (TCKT/BM/001)" },
+  { loai: "to_trinh", label: "Tờ trình", cls: "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/10",
+    title: "Trình Ban Giám đốc một đề xuất / xin chủ trương (TTr/TNE&C)" },
+  { loai: "phieu_yeu_cau", label: "Phiếu yêu cầu", cls: "bg-amber-600 hover:bg-amber-700 shadow-amber-500/10",
+    title: "Yêu cầu cấp vật tư, hàng hoá, máy móc thiết bị (HC-BM 023/PYC)" },
+  { loai: "don_dat_hang", label: "Đơn đặt hàng", cls: "bg-teal-600 hover:bg-teal-700 shadow-teal-500/10",
+    title: "Đơn đặt hàng vật tư cho dự án — xuất Excel (KD/BM/001)" },
+];
 
 // `created_at` là timestamptz — cắt 10 ký tự đầu là lấy ngày theo giờ UTC, nên
 // phiếu lập sau 7 giờ tối giờ VN sẽ bị tính sang ngày hôm sau và rơi ra ngoài
@@ -413,147 +432,109 @@ export default function SigningPanel() {
         <Kpi label="Hoàn tất" value={stats.hoanTat} icon={ClipboardCheck} grad="from-emerald-500 to-teal-600" />
       </div>
 
-      {/* Thanh công cụ */}
-      {/* ─── THANH CÔNG CỤ: TIÊU ĐỀ + MỘT LƯỚI 2 CỘT ───
-        Tiêu đề tách hẳn ra một hàng riêng (user chốt) để ô chọn ngày bắt đầu từ
-        MÉP TRÁI, thẳng cột với cụm tab lọc ngay bên dưới.
-
-        Hai hàng còn lại (ngày·nút và tab·tìm kiếm) nằm trong CÙNG MỘT LƯỚI 2
-        cột, nên cột phải rộng bằng nhau ở cả hai hàng: ô tìm kiếm bắt đầu và
-        kết thúc ĐÚNG chỗ cụm nút. Trước đó hai hàng là hai khối flex độc lập —
-        mép ngoài thì thẳng nhưng "khe" giữa khối trái và khối phải lệch nhau
-        ~37px vì hàng tab rộng hơn ô chọn ngày (user chỉ ra 22/09/2026).
-
-        ⚠ Lưới 3 cột từng bị bỏ ngày 16/09/2026 vì cụm nút bị bẻ xuống 2-3 dòng.
-        Lần này KHÔNG lặp lại lỗi đó: cột phải để `auto` nên nó rộng đúng bằng
-        cụm nút (nút giữ `flex-nowrap` + `shrink-0`, không bao giờ bị ép), còn
-        nhãn nút đã rút gọn để cả cụm chỉ còn ~480px — thừa chỗ cho hàng tab ở
-        cột trái. Dưới 1120px thì lưới xếp dọc, mỗi khối một hàng nguyên vẹn. */}
+      {/* ─── THANH CÔNG CỤ (bố cục 07/10/2026) ───
+          Hai khối, mỗi khối một việc, cùng mép trái/phải với hàng KPI bên trên:
+            1. Tiêu đề + đếm phiếu (trái)  ·  7 nút lập phiếu MỘT HÀNG (phải)
+            2. Khoảng ngày  ·  cụm tab lọc loại phiếu  ·  ô tìm kiếm
+          7 nút nằm trong lưới `grid-cols-7` nên bảy ô RỘNG BẰNG NHAU, chữ căn giữa
+          — thẳng hàng tuyệt đối thay vì mỗi nút một độ rộng theo nhãn. Dưới cỡ xl
+          lưới tự gập 4 + 3 / 2 cột để nhãn không bị ép vỡ.
+          ⚠ Đừng đưa lại lưới 2 cột `[1fr_auto]` của bản cũ: nó chỉ chứa nổi 6 nút
+          xếp 2 hàng, thêm nút thứ 7 là lệch cả hai hàng. */}
       <div className="space-y-3">
-        {/* ─── Hàng 1: tiêu đề ─── */}
-        <div>
-          <h3 className={labelCls}>Phiếu trình ký hồ sơ / văn bản</h3>
-          <p className="text-[11px] text-slate-400 font-medium mt-1">
-            Hiện <strong className="text-slate-600">{visible.length}</strong> phiếu
-            {(from || to) && (
-              <> · lập {from ? `từ ${ddmmyyyy(from)}` : ""}{to ? ` đến ${ddmmyyyy(to)}` : ""}</>
-            )}
-          </p>
-        </div>
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_min(1040px,64%)] gap-x-4 gap-y-3 items-center">
+          <div className="min-w-0 flex flex-wrap items-end gap-x-5 gap-y-3">
+            <div className="min-w-0">
+              <h3 className={labelCls}>Phiếu trình ký hồ sơ / văn bản</h3>
+              <p className="text-[11px] text-slate-400 font-medium mt-1">
+                Hiện <strong className="text-slate-600">{visible.length}</strong> phiếu
+                {(from || to) && (
+                  <> · lập {from ? `từ ${ddmmyyyy(from)}` : ""}{to ? ` đến ${ddmmyyyy(to)}` : ""}</>
+                )}
+              </p>
+            </div>
 
-        {/* ─── Hàng 2 + 3 trong MỘT lưới: [ngày | nút] / [tab | tìm kiếm] ─── */}
-        <div className="grid grid-cols-1 min-[1120px]:grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-3 items-center">
-          {/* Khoảng ngày lập phiếu — cùng khuôn ô lọc bên Kế hoạch TC: hai ô ngày
-              nằm chung một khung để đọc ra là MỘT khoảng, `max`/`min` chéo nhau
-              chặn luôn khoảng ngược đời. */}
-          <div className="flex items-center gap-1.5 bg-slate-100/50 border border-slate-200/60 rounded-xl px-2.5 py-1.5 w-fit">
-            <Calendar size={14} className="text-slate-400 shrink-0" />
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Từ</span>
-            <input type="date" value={from} max={to || undefined}
-              onChange={(e) => setFrom(e.target.value)}
-              className="bg-transparent border-0 text-xs font-bold text-slate-700 outline-none cursor-pointer p-0" />
-            <span className="text-slate-300 font-bold">–</span>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đến</span>
-            <input type="date" value={to} min={from || undefined}
-              onChange={(e) => setTo(e.target.value)}
-              className="bg-transparent border-0 text-xs font-bold text-slate-700 outline-none cursor-pointer p-0" />
-            {(from || to) ? (
-              <button type="button" onClick={() => { setFrom(""); setTo(""); }}
-                title="Bỏ lọc theo ngày, xem tất cả"
-                className="p-1 text-slate-400 hover:text-rose-500 hover:bg-slate-200 rounded-lg transition-all cursor-pointer">
-                <X size={12} />
-              </button>
-            ) : (
-              <button type="button"
-                onClick={() => { const b = tronThang(homNay()); setFrom(b.from); setTo(b.to); }}
-                title="Lọc nhanh trọn tháng này"
-                className="px-2 py-0.5 text-[10px] font-bold text-slate-400 hover:text-blue-600 hover:bg-white rounded-lg transition-all cursor-pointer">
-                Tháng này
-              </button>
-            )}
+
+            {/* Khoảng ngày lập phiếu — hai ô ngày chung một khung để đọc ra là MỘT
+                khoảng, `max`/`min` chéo nhau chặn luôn khoảng ngược đời. */}
+            <div className="flex items-center gap-1.5 bg-slate-100/50 border border-slate-200/60 rounded-xl px-2.5 py-1.5 shrink-0">
+              <Calendar size={14} className="text-slate-400 shrink-0" />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Từ</span>
+              <input type="date" value={from} max={to || undefined}
+                onChange={(e) => setFrom(e.target.value)}
+                className="bg-transparent border-0 text-xs font-bold text-slate-700 outline-none cursor-pointer p-0" />
+              <span className="text-slate-300 font-bold">–</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đến</span>
+              <input type="date" value={to} min={from || undefined}
+                onChange={(e) => setTo(e.target.value)}
+                className="bg-transparent border-0 text-xs font-bold text-slate-700 outline-none cursor-pointer p-0" />
+              {(from || to) ? (
+                <button type="button" onClick={() => { setFrom(""); setTo(""); }}
+                  title="Bỏ lọc theo ngày, xem tất cả"
+                  className="p-1 text-slate-400 hover:text-rose-500 hover:bg-slate-200 rounded-lg transition-all cursor-pointer">
+                  <X size={12} />
+                </button>
+              ) : (
+                <button type="button"
+                  onClick={() => { const b = tronThang(homNay()); setFrom(b.from); setTo(b.to); }}
+                  title="Lọc nhanh trọn tháng này"
+                  className="px-2 py-0.5 text-[10px] font-bold text-slate-400 hover:text-blue-600 hover:bg-white rounded-lg transition-all cursor-pointer">
+                  Tháng này
+                </button>
+              )}
+            </div>
+
           </div>
 
-          {/* Bốn nút riêng thay vì một nút rồi hỏi loại: bốn tờ này khác hẳn
-              nhau về mục đích, chọn ngay từ đây đỡ một bước bấm. Nhãn để NGẮN
-              (cùng chữ với tab lọc bên dưới), câu giải thích đầy đủ nằm ở
-              `title` — nhãn dài làm cụm nút rộng hơn cột phải của lưới.
-              Ô lưới LUÔN được vẽ kể cả khi không có quyền lập phiếu, nếu không
-              hàng tab bên dưới sẽ nhảy sang cột 2. */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {canCreate && (
-              <>
-              <button type="button" onClick={() => setCreating("ho_so")}
-                title="Trình duyệt một đợt thanh toán của hợp đồng đã ký (TL/BM/011)"
-                className="flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-blue-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
-                <Plus size={14} /> Hồ sơ / Văn bản
-              </button>
-              <button type="button" onClick={() => setCreating("hop_dong")}
-                title="Trình duyệt nội dung hợp đồng trước khi ký (KHKT/BM/001)"
-                className="flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-violet-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
-                <Plus size={14} /> Hợp đồng
-              </button>
-              {/* Đề nghị chuyển tiền — cũng chính là tờ mà nút "Trình ký online"
-                  bên Kế hoạch thu chi mở ra. Cùng một loại phiếu, hai lối vào. */}
-              <button type="button" onClick={() => setCreating("chuyen_tien")}
-                title="Đề nghị chuyển tiền cho một khoản chi (HC-BM021/ĐNCT)"
-                className="flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-emerald-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
-                <Plus size={14} /> Chuyển tiền
-              </button>
-              {/* Tờ trình — xin CHỦ TRƯƠNG của Ban Giám đốc (mua sắm, nâng cấp,
-                  đề xuất). Không phải xin tiền: tiền chi sau đó đi bằng phiếu
-                  đề nghị chuyển tiền riêng. */}
-              <button type="button" onClick={() => setCreating("to_trinh")}
-                title="Trình Ban Giám đốc một đề xuất / xin chủ trương (TTr/TNE&C)"
-                className="flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-indigo-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
-                <Plus size={14} /> Tờ trình
-              </button>
-              {/* Phiếu yêu cầu — xin cấp vật tư / hàng hoá / thiết bị. */}
-              <button type="button" onClick={() => setCreating("phieu_yeu_cau")}
-                title="Yêu cầu cấp vật tư, hàng hoá, máy móc thiết bị (HC-BM 023/PYC)"
-                className="flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-amber-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
-                <Plus size={14} /> Phiếu yêu cầu
-              </button>
-              {/* Đơn đặt hàng — in ra EXCEL, không phải Word như năm loại kia. */}
-              <button type="button" onClick={() => setCreating("don_dat_hang")}
-                title="Đơn đặt hàng vật tư cho dự án — xuất Excel (KD/BM/001)"
-                className="flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-md shadow-teal-500/10 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer">
-                <Plus size={14} /> Đơn đặt hàng
-              </button>
-              </>
-            )}
+          {/* Nhãn ngắn, câu giải thích đầy đủ nằm ở `title`. */}
+          {canCreate && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-2">
+              {NUT_LAP_PHIEU.map((n) => (
+                <button key={n.loai} type="button" onClick={() => setCreating(n.loai)}
+                  title={n.title}
+                  className={`flex items-center justify-center gap-1.5 whitespace-nowrap ${n.cls} text-white text-xs font-semibold px-2 py-2.5 rounded-xl shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer`}>
+                  <Plus size={14} className="shrink-0" />
+                  <span>{n.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Không có quyền lập phiếu: giữ ô lưới trống để hàng 2 không nhảy lên. */}
+          {!canCreate && <div className="hidden xl:block" />}
           </div>
 
-          {/* flex-wrap là van an toàn: cột trái có thể hẹp hơn hàng tab ở bề
-              ngang sát 1120px — khi đó tab xuống dòng chứ không tràn ra ngoài. */}
-          <div className="flex flex-wrap bg-slate-100/70 rounded-xl p-1 gap-1 w-fit">
+          {/* Hàng 2: cụm tab lọc (trái) và ô tìm kiếm (phải) CÙNG CHIỀU CAO (h-10),
+              cùng khuôn cột với hàng 1 — ô tìm kiếm thẳng cột với 7 nút phía trên. */}
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_min(1040px,64%)] gap-x-4 gap-y-3 items-center">
+          {/* Tab lọc: quá hẹp thì cuộn ngang. */}
+          <div className="flex items-center h-10 bg-slate-100/70 rounded-xl p-1 gap-1 min-w-0 max-w-full w-fit overflow-x-auto">
             {([
               ["tat_ca", `Tất cả (${rows.length})`],
               ["ho_so", `Hồ sơ (${rows.filter((r) => r.loai === "ho_so").length})`],
               ["hop_dong", `Hợp đồng (${rows.filter((r) => r.loai === "hop_dong").length})`],
               ["chuyen_tien", `Chuyển tiền (${rows.filter((r) => r.loai === "chuyen_tien").length})`],
+              ["tam_ung", `Tạm ứng (${rows.filter((r) => r.loai === "tam_ung").length})`],
               ["to_trinh", `Tờ trình (${rows.filter((r) => r.loai === "to_trinh").length})`],
               ["phieu_yeu_cau", `Phiếu yêu cầu (${rows.filter((r) => r.loai === "phieu_yeu_cau").length})`],
               ["don_dat_hang", `Đơn đặt hàng (${rows.filter((r) => r.loai === "don_dat_hang").length})`],
               ["cua_toi", `Phiếu của tôi (${cuaToi.length})`],
             ] as [Filter, string][]).map(([k, lb]) => (
               <button key={k} type="button" onClick={() => setFilter(k)}
-                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all cursor-pointer ${
                   filter === k ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
                 }`}>
                 {lb}
               </button>
             ))}
           </div>
-          {/* Chiếm trọn cột phải của lưới, tức là THẲNG HÀNG cụm nút bên trên
-              ở cả hai mép. Không có nút tải lại — danh sách vẫn tự nạp lại sau
-              mỗi thao tác. */}
-          <div className="relative w-full min-w-[220px]">
+
+          <div className="relative min-w-0">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder="Tìm theo mã phiếu, số hợp đồng, chủ đầu tư, dự án…"
-              className="w-full pl-9 pr-4 py-2 bg-slate-100/50 hover:bg-slate-100 focus:bg-white text-xs font-semibold text-slate-700 placeholder:text-slate-400 placeholder:font-medium border border-slate-200/60 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" />
+              className="w-full h-10 pl-9 pr-4 bg-slate-100/50 hover:bg-slate-100 focus:bg-white text-xs font-semibold text-slate-700 placeholder:text-slate-400 placeholder:font-medium border border-slate-200/60 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" />
           </div>
-        </div>
+          </div>
       </div>
 
       {/* Danh sách */}
@@ -569,6 +550,7 @@ export default function SigningPanel() {
               : filter === "hop_dong" ? "Chưa có phiếu trình ký hợp đồng nào"
               : filter === "to_trinh" ? "Chưa có tờ trình nào"
               : filter === "phieu_yeu_cau" ? "Chưa có phiếu yêu cầu nào"
+              : filter === "tam_ung" ? "Chưa có giấy đề nghị tạm ứng nào"
               : filter === "don_dat_hang" ? "Chưa có đơn đặt hàng nào"
               : "Chưa có phiếu trình ký nào"}
           </p>
@@ -1095,8 +1077,10 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
     try {
       // Phiếu chuyển tiền in ra tờ HC-BM021/ĐNCT qua route đã có sẵn, KHÔNG đi
       // downloadSigningForm (route đó chỉ biết hai mẫu TL/BM/011 và KHKT/BM/001).
-      if (row.loai === "chuyen_tien") {
+      if (row.loai === "chuyen_tien" || row.loai === "tam_ung") {
         await exportTransferRequestDocx({
+          kind: row.loai === "tam_ung" ? "advance" : "transfer",
+          paymentTime: row.hang_muc || "",
           employeeName: row.created_by_name || row.created_by,
           employeeDept: row.don_vi || "",
           reason: row.noi_dung_trinh || row.ve_viec || "",
@@ -1339,7 +1323,8 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
 
   const meta = STATUS_META[row.status];
   const laHopDong = row.loai === "hop_dong";
-  const laChuyenTien = row.loai === "chuyen_tien";
+  const laTamUng = row.loai === "tam_ung";
+  const laChuyenTien = row.loai === "chuyen_tien" || laTamUng;
   const laToTrinh = row.loai === "to_trinh";
   const laPhieuYeuCau = row.loai === "phieu_yeu_cau";
   const laDonDatHang = row.loai === "don_dat_hang";
@@ -1400,7 +1385,8 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
         ["Số tài khoản", row.so_tai_khoan || "—"],
         ["Ngân hàng", row.ngan_hang || "—"],
         ["Dự án", row.du_an || "—"],
-        ["Nội dung chuyển tiền", row.noi_dung_trinh || row.ve_viec || "—"],
+        [laTamUng ? "Lý do tạm ứng" : "Nội dung chuyển tiền", row.noi_dung_trinh || row.ve_viec || "—"],
+        ...(laTamUng ? [["Thời gian thanh toán", row.hang_muc || "—"] as [string, string]] : []),
       ]
     : laHopDong
     ? [
@@ -1526,7 +1512,7 @@ function DetailModal({ row, user, onClose, onEdit, onDone, onMailWarn }: {
               {laChuyenTien ? (
                 <div className="flex gap-3 px-3.5 py-2.5 bg-emerald-50/70">
                   <span className="text-[11px] font-extrabold text-emerald-900 w-52 shrink-0">
-                    Số tiền đề nghị chuyển
+                    Số tiền đề nghị {laTamUng ? "tạm ứng" : "chuyển"}
                   </span>
                   <span className="text-xs font-extrabold text-emerald-900 flex-1">
                     {fmtMoney(row.de_nghi_thanh_toan)} đồng

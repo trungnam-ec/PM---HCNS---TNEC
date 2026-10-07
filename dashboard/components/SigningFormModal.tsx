@@ -167,7 +167,11 @@ export default function SigningFormModal({
   // Giấy đề nghị chuyển tiền (HC-BM021/ĐNCT, migration 079): tờ này chỉ hỏi
   // CHUYỂN CHO AI, VÀO TÀI KHOẢN NÀO, BAO NHIÊU, VÌ VIỆC GÌ. Không hợp đồng,
   // không đợt, không A−B−C−D — mấy ô đó là của tờ TL/BM/011.
-  const laChuyenTien = loai === "chuyen_tien";
+  // Giấy đề nghị TẠM ỨNG (TCKT/BM/001, migration 134) đi chung nhóm này: cùng
+  // bộ ô thụ hưởng + tài khoản + số tiền + lý do, khác mẫu in và có thêm ô
+  // "Thời gian thanh toán". Cần phân biệt thì dùng `laTamUng`.
+  const laTamUng = loai === "tam_ung";
+  const laChuyenTien = loai === "chuyen_tien" || laTamUng;
   // Tờ trình (TTr/TNE&C, migration 088): xin CHỦ TRƯƠNG, không phải xin tiền.
   // Bộ ô của nó là Căn cứ → Nội dung đề nghị → Chi phí dự kiến → Kiến nghị;
   // không hợp đồng, không đợt, không tài khoản nhận.
@@ -550,9 +554,11 @@ export default function SigningFormModal({
         if (!payload.kien_nghi) throw new Error("Phải ghi Kiến nghị trước khi trình.");
       } else if (submit && laChuyenTien) {
         if (!payload.chu_dau_tu) throw new Error("Phải chọn Đơn vị thụ hưởng trước khi trình.");
-        if (!payload.de_nghi_thanh_toan) throw new Error("Phải có Số tiền đề nghị chuyển trước khi trình.");
+        if (!payload.de_nghi_thanh_toan) {
+          throw new Error(`Phải có Số tiền đề nghị ${laTamUng ? "tạm ứng" : "chuyển"} trước khi trình.`);
+        }
         if (!payload.noi_dung_trinh && !payload.ve_viec) {
-          throw new Error("Phải ghi Nội dung / lý do chuyển tiền trước khi trình.");
+          throw new Error(`Phải ghi Nội dung / lý do ${laTamUng ? "tạm ứng" : "chuyển tiền"} trước khi trình.`);
         }
       } else {
         if (submit && !payload.hop_dong_so) throw new Error("Phải có Số hợp đồng trước khi trình.");
@@ -664,6 +670,8 @@ export default function SigningFormModal({
       // Không dựng mẫu Word thứ ba cho cùng một tờ giấy.
       if (laChuyenTien) {
         await exportTransferRequestDocx({
+          kind: laTamUng ? "advance" : "transfer",
+          paymentTime: d.hang_muc?.trim() || "",
           employeeName: currentName || currentEmail,
           employeeDept: d.don_vi || currentDepartment || "",
           reason: d.noi_dung_trinh?.trim() || d.ve_viec?.trim() || "",
@@ -1269,6 +1277,14 @@ export default function SigningFormModal({
                     <input value={d.ngan_hang || ""} onChange={(e) => set("ngan_hang", e.target.value)}
                       placeholder="Vietcombank — CN Tân Bình" className={inputCls} />
                   </label>
+                  {/* Chỉ giấy tạm ứng: hạn hoàn ứng / thanh toán. Lưu ở cột `hang_muc`. */}
+                  {laTamUng && (
+                    <label className="flex flex-col gap-1.5 md:col-span-2">
+                      <span className={labelCls}>Thời gian thanh toán</span>
+                      <input value={d.hang_muc || ""} onChange={(e) => set("hang_muc", e.target.value)}
+                        placeholder="VD: Trước ngày 30/10/2026 hoặc Khi hoàn thành công tác" className={inputCls} />
+                    </label>
+                  )}
                 </>
               )}
               {(laHoSo || laHopDong) && (
@@ -1629,14 +1645,14 @@ export default function SigningFormModal({
           {/* ─── 4b. Số tiền đề nghị chuyển (chỉ phiếu chuyển tiền) ─── */}
           {laChuyenTien && (
             <section className="space-y-3">
-              <h5 className={labelCls}>4. Số tiền đề nghị chuyển</h5>
+              <h5 className={labelCls}>4. Số tiền đề nghị {laTamUng ? "tạm ứng" : "chuyển"}</h5>
               {/* MỘT con số duy nhất, gõ thẳng. Tờ ĐNCT không có nghiệm thu,
                   giữ bảo hành hay khấu trừ tạm ứng để mà trừ ra — đưa bảng
                   A−B−C−D vào đây chỉ làm người lập phải bỏ qua 8 ô trống. */}
               <div className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-bold text-emerald-100 uppercase tracking-wider">
-                    Số tiền đề nghị chuyển
+                    Số tiền đề nghị {laTamUng ? "tạm ứng" : "chuyển"}
                   </p>
                   <p className="font-heading font-extrabold text-white text-xl leading-tight mt-0.5">
                     {fmtMoney(deNghiCuoi)} <span className="text-xs font-bold text-emerald-100">đồng</span>

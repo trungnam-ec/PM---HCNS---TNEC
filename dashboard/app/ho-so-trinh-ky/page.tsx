@@ -15,15 +15,14 @@
 //       · Admin / Ban lãnh đạo -> thấy tất cả
 //     Ẩn/hiện ở giao diện KHÔNG phải cơ chế bảo vệ — chốt chặn là RLS.
 //
-//  B. KẾ HOẠCH THU CHI + DANH MỤC ĐỐI TÁC (tab Sản lượng / Doanh thu đã gỡ 06/10/2026) — số liệu tài chính toàn công ty, CHỈ Admin hoặc người có cờ
-//     `can_view_reports`. Cùng điều kiện với RLS của finance_plans /
-//     finance_partners / finance_partner_contracts (`can_view_reports_caller()`,
-//     migration 048/058/059), nên không cấp cờ thì dù có gọi thẳng REST API
-//     cũng không đọc được gì — ẩn ở đây chỉ để khỏi hiện ba tab trống.
+//  B. DANH MỤC ĐỐI TÁC — từ 07/10/2026 MỌI tài khoản đều xem và thêm/sửa được
+//     (migration 135), vì ai lập phiếu chuyển tiền / tạm ứng cũng cần chọn đối
+//     tác và số tài khoản. Xoá đối tác vẫn chỉ Admin.
 //
-// CHƯA CÓ BẢNG SỐ LIỆU cho Sản lượng / Doanh thu: hai tab hiện trạng thái rỗng
-// thật, KHÔNG cắm dữ liệu giả — mock từng gây rắc rối ở VPP (3 vật tư giả seed
-// thẳng vào DB) nên không lặp lại.
+//  C. KẾ HOẠCH THU CHI — số liệu tài chính toàn công ty, CHỈ Admin hoặc người
+//     có cờ `can_view_reports`. Ẩn ở giao diện chỉ để khỏi hiện tab trống; chốt
+//     chặn thật là RLS của finance_plans (058/065).
+//     (Tab Sản lượng / Doanh thu đã gỡ 06/10/2026.)
 // ============================================================
 
 import { useState } from "react";
@@ -69,7 +68,7 @@ export default function BaoCaoPage() {
     );
   }
 
-  // Cờ mở BA NHÓM BÁO CÁO + Danh mục đối tác. KHÔNG dùng user.can("reports"):
+  // Cờ mở tab KẾ HOẠCH THU CHI. KHÔNG dùng user.can("reports"):
   // từ 22/09/2026 module đã ở gói Basic nên hàm đó trả true cho mọi người —
   // đúng cho việc vào trang, sai cho việc mở số liệu tài chính.
   const canFinance = user.isAdmin || user.perms.canViewReports;
@@ -89,25 +88,23 @@ export default function BaoCaoPage() {
               Tab này render THẲNG ra nền trang, KHÔNG bọc trong khung `.glass`
               như hai tab kia: nội dung của nó đã là các thẻ KPI + lưới card, bọc
               thêm một lớp card nữa thành card-lồng-card, viền chồng viền. */}
-          {!canFinance ? (
-            // Không có cờ báo cáo: trang thu gọn còn ĐÚNG danh sách phiếu trình
-            // ký. Không hiện tab con — hai tab kia (Kế hoạch thu chi, Danh mục
-            // đối tác) đọc từ bảng mà RLS đã chặn, mở ra chỉ thấy rỗng.
-            <div className="space-y-5 w-full">
-              <SigningPanel />
-            </div>
-          ) : (
+          {(() => {
+            // Tab "Kế hoạch thu chi" đọc từ bảng mà RLS chỉ mở cho Admin / cờ
+            // báo cáo — người khác không thấy tab đó. Hai tab còn lại ai cũng có.
+            const tabs = THU_CHI_TABS.filter((t) => t.id !== "ke-hoach" || canFinance);
+            const tab = tabs.some((t) => t.id === thuChiTab) ? thuChiTab : "trinh-ky";
+            return (
             <div className="space-y-5 w-full">
               {/* Tab con */}
               <div className="flex flex-wrap bg-slate-100/70 rounded-xl p-1 gap-1 w-fit max-w-full">
-                {THU_CHI_TABS.map((t) => (
+                {tabs.map((t) => (
                   <button
                     key={t.id}
                     type="button"
                     onClick={() => setThuChiTab(t.id)}
                     title={t.desc}
                     className={`px-4 py-2 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                      thuChiTab === t.id
+                      tab === t.id
                         ? "bg-white text-blue-700 shadow-sm"
                         : "text-slate-500 hover:text-slate-700"
                     }`}
@@ -117,15 +114,16 @@ export default function BaoCaoPage() {
                 ))}
               </div>
 
-              {thuChiTab === "trinh-ky" ? (
+              {tab === "trinh-ky" ? (
                 <SigningPanel />
-              ) : thuChiTab === "ke-hoach" ? (
+              ) : tab === "ke-hoach" ? (
                 <FinancePlanPanel />
               ) : (
                 <FinancePartnerCatalog />
               )}
             </div>
-          )}
+            );
+          })()}
         </main>
       </div>
     </div>

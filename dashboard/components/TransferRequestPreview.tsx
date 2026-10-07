@@ -32,6 +32,10 @@ export type TransferRequestData = {
   bankAccount: string;
   bankNameBranch: string;
   amount: number;
+  /** "advance" = Giấy đề nghị tạm ứng (TCKT/BM/001). Mặc định là giấy chuyển tiền. */
+  kind?: "transfer" | "advance";
+  /** Chỉ giấy tạm ứng dùng: ô "Thời gian thanh toán". */
+  paymentTime?: string;
 };
 
 /**
@@ -50,7 +54,8 @@ export async function exportTransferRequestDocx(d: TransferRequestData): Promise
       supplierName: d.supplierName,
       bankAccount: d.bankAccount,
       bankNameBranch: d.bankNameBranch,
-      templateType: "transfer",
+      templateType: d.kind === "advance" ? "advance" : "transfer",
+      paymentTime: d.paymentTime || "",
       items: [
         {
           number: "",
@@ -68,7 +73,7 @@ export async function exportTransferRequestDocx(d: TransferRequestData): Promise
     const info = await res.json().catch(() => ({}));
     throw new Error(
       info?.error === "template_not_found"
-        ? "Không tìm thấy mẫu phieu_de_nghi_chuyen_tien_templated.docx trong public/templates."
+        ? `Không tìm thấy mẫu ${info?.fileName || "giấy đề nghị"} trong public/templates.`
         : info?.error || "Máy chủ không xuất được giấy đề nghị."
     );
   }
@@ -77,7 +82,7 @@ export async function exportTransferRequestDocx(d: TransferRequestData): Promise
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `Giay_De_Nghi_Chuyen_Tien_${asciiFileNamePart(d.supplierName, "NCC")}.docx`;
+  a.download = `${d.kind === "advance" ? "Giay_De_Nghi_Tam_Ung" : "Giay_De_Nghi_Chuyen_Tien"}_${asciiFileNamePart(d.supplierName, "NCC")}.docx`;
   document.body.appendChild(a);
   a.click();
   a.remove();

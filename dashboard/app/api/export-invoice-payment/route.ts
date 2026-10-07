@@ -28,7 +28,11 @@ export async function POST(request: NextRequest) {
       return new NextResponse("Missing required fields: employeeName or items", { status: 400 });
     }
 
-    const templateFileName = templateType === "payment" ? "de_nghi_thanh_toan.docx" : "phieu_de_nghi_chuyen_tien_templated.docx";
+    // "advance" = Giấy đề nghị tạm ứng TCKT/BM/001 (phiếu trình ký loại tam_ung)
+    const templateFileName =
+      templateType === "payment" ? "de_nghi_thanh_toan.docx" :
+      templateType === "advance" ? "giay_de_nghi_tam_ung_template.docx" :
+      "phieu_de_nghi_chuyen_tien_templated.docx";
     const templatePath = path.join(process.cwd(), "public", "templates", templateFileName);
 
     if (!fs.existsSync(templatePath)) {
@@ -75,10 +79,14 @@ export async function POST(request: NextRequest) {
     const textAmount = docSoVietNam(totalAmountVal);
 
     // Get current Vietnamese date string for Tp.hcm, ngày ...
-    const d = new Date();
-    const day = String(d.getDate()).padStart(2, "0");
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const year = d.getFullYear();
+    // Route chạy giờ UTC: không ép múi giờ thì sau 17h giờ VN giấy in ra ngày hôm trước.
+    const vn = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric",
+    }).formatToParts(new Date());
+    const vnPart = (t: string) => vn.find((x) => x.type === t)?.value || "";
+    const day = vnPart("day");
+    const month = vnPart("month");
+    const year = vnPart("year");
     const dateDayString = `${day} tháng ${month} năm ${year}`;
 
     // Prepare merging template variables
@@ -94,6 +102,13 @@ export async function POST(request: NextRequest) {
       totalAmount: formatNumber(totalAmountVal),
       textAmount: textAmount,
       dateDayString: dateDayString,
+      // Riêng giấy tạm ứng (TCKT/BM/001)
+      amount: formatNumber(totalAmountVal),
+      reason: mission || "",
+      paymentTime: String(body.paymentTime || ""),
+      dd: day,
+      mm: month,
+      yyyy: String(year),
       items: itemsList // matches {#items} ... {/items}
     };
 
@@ -104,7 +119,9 @@ export async function POST(request: NextRequest) {
     // Generate buffer
     const buf = doc.getZip().generate({ type: "nodebuffer" });
 
-    const docPrefix = templateType === "payment" ? "Phieu_De_Nghi_Thanh_Toan" : "Giay_De_Nghi_Chuyen_Tien";
+    const docPrefix =
+      templateType === "payment" ? "Phieu_De_Nghi_Thanh_Toan" :
+      templateType === "advance" ? "Giay_De_Nghi_Tam_Ung" : "Giay_De_Nghi_Chuyen_Tien";
     const outputFilename = `${docPrefix}_${(employeeName || "User").replace(/\s+/g, "_")}.docx`;
 
     return new NextResponse(new Uint8Array(buf), {

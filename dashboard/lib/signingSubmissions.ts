@@ -56,7 +56,12 @@ export type SigningFile = { path: string; name: string; size?: number };
 //                 đầu phiếu riêng, in ra EXCEL (route riêng, xem exportDocx).
 export type SigningLoai =
   | "ho_so" | "hop_dong" | "chuyen_tien" | "to_trinh"
-  | "phieu_yeu_cau" | "don_dat_hang";
+  | "phieu_yeu_cau" | "don_dat_hang" | "tam_ung";
+
+// tam_ung : TCKT/BM/001 — Giấy đề nghị TẠM ỨNG. Gần như y hệt chuyen_tien (đơn vị
+//           thụ hưởng + số tài khoản + số tiền + lý do, cùng luồng 4 cấp có Kế
+//           toán), khác ở mẫu in và thêm ô "Thời gian thanh toán" — ô này dùng
+//           lại cột `hang_muc`, không dựng cột mới. Số tiền ở `de_nghi_thanh_toan`.
 
 // Hai loại dưới đây dùng CHUNG một luồng 2 cấp — gom lại một chỗ để thêm loại
 // thứ ba không phải đi sửa 5 hàm rải rác. Đơn đặt hàng KHÔNG nằm trong nhóm này:
@@ -135,6 +140,12 @@ export const LOAI_META: Record<SigningLoai, { label: string; short: string; bieu
     short: "Đặt hàng",
     bieuMau: "KD/BM/001",
     chip: "bg-teal-50 text-teal-700",
+  },
+  tam_ung: {
+    label: "Giấy đề nghị tạm ứng",
+    short: "Tạm ứng",
+    bieuMau: "TCKT/BM/001",
+    chip: "bg-rose-50 text-rose-700",
   },
 };
 
@@ -809,6 +820,8 @@ export function soLieuChinh(s: SigningSubmission): SoLieuChinh {
         "Dự toán", "Định mức KL theo dự toán (4)");
     case "chuyen_tien":
       return tien(s.de_nghi_thanh_toan, "Số chuyển");
+    case "tam_ung":
+      return tien(s.de_nghi_thanh_toan, "Tạm ứng");
     case "to_trinh":
       return tien(s.de_nghi_thanh_toan, "Chi phí DK");
     case "phieu_yeu_cau": {
@@ -1465,6 +1478,7 @@ export function docxFileName(s: {
 }): string {
   const ma = String(s.ma_phieu || "phieu").replace(/[^\p{L}\p{N}_-]+/gu, "_").slice(0, 60);
   if (s.loai === "phieu_yeu_cau") return `Phieu_Yeu_Cau_${ma}.docx`;
+  if (s.loai === "tam_ung") return `Giay_De_Nghi_Tam_Ung_${ma}.docx`;
   // Đơn đặt hàng in ra EXCEL — đuôi .xlsx, đặt tên theo Số ĐĐH nếu đã có.
   if (s.loai === "don_dat_hang") {
     const so = String(s.chi_tiet?.soDdh || s.ma_phieu || "ddh")
@@ -1519,7 +1533,8 @@ export async function pushToPaymentDossier(
   // Phiếu đề nghị chuyển tiền (079) đã ghi thẳng tài khoản nhận lên phiếu và
   // Giám đốc đã duyệt ĐÚNG con số tài khoản đó. Ưu tiên nó hơn danh mục đối
   // tác: đơn vị có thể đổi tài khoản mặc định sau khi phiếu được ký.
-  if (row.loai === "chuyen_tien" && (row.so_tai_khoan || row.ngan_hang)) {
+  if ((row.loai === "chuyen_tien" || row.loai === "tam_ung")
+      && (row.so_tai_khoan || row.ngan_hang)) {
     soTaiKhoan = row.so_tai_khoan || "";
     taiNganHang = row.ngan_hang || "";
   } else if (ten) {
@@ -1568,7 +1583,7 @@ export async function pushToPaymentDossier(
     // Phiếu chuyển tiền: ve_viec chỉ là câu trình ("Kính trình BLĐ phê duyệt"),
     // nội dung thật nằm ở noi_dung_trinh — đúng thứ tự ô "Nội dung chuyển tiền"
     // trong SigningPanel. Các loại phiếu khác giữ nguyên thứ tự cũ.
-    noi_dung_tt: (row.loai === "chuyen_tien"
+    noi_dung_tt: (row.loai === "chuyen_tien" || row.loai === "tam_ung"
       ? row.noi_dung_trinh || row.ve_viec
       : row.ve_viec || row.noi_dung_trinh) || null,
     so_tien_de_nghi: hasAmount ? fmtMoney(amount) : null,

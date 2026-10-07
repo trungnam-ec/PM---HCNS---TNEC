@@ -39,6 +39,7 @@ import { normalizeName } from "@/lib/approvers";
 import ColorTag from "@/components/atld/ColorTag";
 import { useConfirmBox } from "@/components/ConfirmDialog";
 import AtldPartnerPicker from "@/components/atld/AtldPartnerPicker";
+import AtldRowDetail, { isRowClick } from "@/components/atld/AtldRowDetail";
 import {
   ISSUE_STATUS_META,
   type IssueStatus,
@@ -119,6 +120,8 @@ export default function AtldPriceTab({
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [editing, setEditing] = useState<Row | null>(null);
+  // Bấm vào dòng -> popup xem đủ thông tin (màn hình nhỏ không phải cuộn ngang).
+  const [viewing, setViewing] = useState<Row | null>(null);
   const [rowErr, setRowErr] = useState<string | null>(null);
   const { ask, confirmNode } = useConfirmBox();
   const showActions = true; // dòng phiếu luôn có nút mở sang tab Xuất kho
@@ -367,7 +370,12 @@ export default function AtldPriceTab({
                 const diff =
                   r.unit_price != null && r.prevPrice != null && r.prevPrice > 0 ? ((r.unit_price - r.prevPrice) / r.prevPrice) * 100 : null;
                 return (
-                  <tr key={`${r.nguon}-${r.id}`} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
+                  <tr
+                    key={`${r.nguon}-${r.id}`}
+                    onClick={(e) => isRowClick(e) && setViewing(r)}
+                    title="Bấm để xem đầy đủ thông tin"
+                    className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 cursor-pointer"
+                  >
                     <td className="px-4 py-2.5 font-semibold text-slate-600 whitespace-nowrap tabular-nums">{fmtDate(r.ngay)}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap"><LoaiBadge loai={r.loai} /></td>
                     <td className="px-4 py-2.5 font-mono font-bold text-[#005BAC] whitespace-nowrap">{r.item?.code || "—"}</td>
@@ -467,6 +475,107 @@ export default function AtldPriceTab({
         </div>
       )}
 
+      {viewing && (
+        <AtldRowDetail
+          title={
+            <>
+              {viewing.loai === "nhap" ? "Nhập kho" : "Xuất kho"} · <span className="font-mono text-[#005BAC]">{viewing.item?.code || "—"}</span>
+            </>
+          }
+          badges={
+            <>
+              <LoaiBadge loai={viewing.loai} />
+              {viewing.nguon === "phieu" ? (
+                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-100 text-[#005BAC]">{viewing.so_phieu}</span>
+              ) : (
+                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Excel cũ</span>
+              )}
+              {viewing.status && (
+                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${ISSUE_STATUS_META[viewing.status as IssueStatus]?.cls || ""}`}>
+                  {ISSUE_STATUS_META[viewing.status as IssueStatus]?.label || viewing.status}
+                </span>
+              )}
+            </>
+          }
+          stats={[
+            { label: "Số lượng", value: `${formatQty(viewing.qty)} ${viewing.item?.unit || ""}`.trim() },
+            { label: "Đơn giá", value: viewing.unit_price == null ? "Chưa có giá" : `${formatMoney(viewing.unit_price)} đ` },
+            { label: "Thành tiền", value: viewing.unit_price == null ? "—" : `${formatMoney(viewing.qty * viewing.unit_price)} đ`, tone: "blue" },
+          ]}
+          sections={[
+            {
+              title: "Sản phẩm",
+              tone: "blue",
+              fields: [
+                { label: "Mã SP", value: viewing.item?.code },
+                { label: "Tên SP", value: viewing.item?.name || "(mã đã xoá)", strong: true },
+                { label: "Size", value: viewing.item?.size },
+                { label: "Màu", value: viewing.item?.color ? <ColorTag color={viewing.item.color} /> : null },
+                { label: "ĐVT", value: viewing.item?.unit },
+                { label: "VAT", value: viewing.vat_percent ? `${viewing.vat_percent}%` : null },
+              ],
+            },
+            {
+              title: "Giao dịch",
+              fields: [
+                { label: "Ngày", value: fmtDate(viewing.ngay) },
+                { label: "Khách hàng", value: viewing.doi_tac, strong: true },
+                { label: "BĐH", value: viewing.bdh_name },
+                { label: "Người nhận", value: viewing.nguoi_nhan },
+                { label: "Báo giá / HĐ", value: viewing.chung_tu },
+                { label: "Giá lần trước", value: viewing.prevPrice == null ? null : `${formatMoney(viewing.prevPrice)} đ` },
+                { label: "Nội dung", value: viewing.ly_do, wide: true },
+                { label: "Lý do trả lại / huỷ", value: viewing.ly_do_tra_huy, wide: true },
+                { label: "Người lập", value: viewing.created_by_name || viewing.created_by },
+              ],
+            },
+          ]}
+          actions={
+            viewing.nguon === "phieu" && viewing.loai === "xuat" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setViewing(null);
+                  onOpenIssues();
+                }}
+                className={BTN_OUTLINE}
+              >
+                <ExternalLink size={13} /> Mở ở tab Xuất kho
+              </button>
+            ) : viewing.nguon === "excel" ? (
+              <>
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const r = viewing;
+                      setViewing(null);
+                      remove(r);
+                    }}
+                    className={`${BTN_OUTLINE} !text-rose-600 mr-auto`}
+                  >
+                    <Trash2 size={13} /> Xoá
+                  </button>
+                )}
+                {canEditRow && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const r = viewing;
+                      setViewing(null);
+                      setEditing(r);
+                    }}
+                    className={BTN_PRIMARY}
+                  >
+                    <Pencil size={13} /> Sửa
+                  </button>
+                )}
+              </>
+            ) : null
+          }
+          onClose={() => setViewing(null)}
+        />
+      )}
       {editing && (
         <EditRowModal
           row={editing}

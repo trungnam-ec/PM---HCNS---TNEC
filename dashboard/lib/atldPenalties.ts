@@ -37,6 +37,10 @@ export type Penalty = {
   so_chung_tu: string | null;
   nguoi_nhap: string | null;
   ghi_chu: string | null;
+  // Tệp / link của Số chứng từ (P.KHĐT, migration 141)
+  ct_file_path?: string | null;
+  ct_file_name?: string | null;
+  ct_link?: string | null;
   gia_tri_con_lai: number;
   created_at: string;
 };
@@ -49,8 +53,17 @@ export type PenaltyInput = Pick<
 >;
 export type PenaltyOutput = Pick<
   Penalty,
-  "ngay_tiep_nhan" | "dot_thanh_toan" | "gia_tri_da_tru" | "ngay_khau_tru" | "so_chung_tu" | "nguoi_nhap" | "ghi_chu"
+  "ngay_tiep_nhan" | "dot_thanh_toan" | "gia_tri_da_tru" | "ngay_khau_tru" | "so_chung_tu" | "nguoi_nhap" | "ghi_chu" | "ct_link"
 >;
+
+// Hai loại tài liệu đính kèm: Số QĐ (P.ATLĐ) và Số chứng từ (P.KHĐT).
+export type PenaltyDoc = "qd" | "ct";
+export const DOC_LABEL: Record<PenaltyDoc, string> = { qd: "Số QĐ", ct: "Số chứng từ" };
+export function docOf(p: Penalty, kind: PenaltyDoc): { no: string | null; path: string | null; name: string | null; link: string | null } {
+  return kind === "qd"
+    ? { no: p.so_quyet_dinh, path: p.qd_file_path, name: p.qd_file_name, link: p.qd_link }
+    : { no: p.so_chung_tu, path: p.ct_file_path ?? null, name: p.ct_file_name ?? null, link: p.ct_link ?? null };
+}
 
 export type PenaltyAccess = { view: boolean; input: boolean; process: boolean; stock: boolean };
 export const NO_PENALTY_ACCESS: PenaltyAccess = { view: false, input: false, process: false, stock: false };
@@ -110,12 +123,14 @@ function cleanOutput(v: PenaltyOutput) {
     so_chung_tu: clean(v.so_chung_tu),
     nguoi_nhap: clean(v.nguoi_nhap),
     ghi_chu: (v.ghi_chu ?? "").trim() || null,
+    ct_link: clean(v.ct_link),
   };
 }
 
 function penaltyError(err: { message?: string; code?: string } | null): string {
   const m = err?.message || "";
   if (/atld_penalties_da_tru_le_phai_tru/i.test(m)) return "Giá trị đã khấu trừ không được lớn hơn giá trị phải khấu trừ.";
+  if (/ct_link|ct_file/i.test(m) && /column|find/i.test(m)) return "Chưa chạy migration 141 (tệp số chứng từ) trong Supabase > SQL Editor.";
   return atldErrorMessage(err);
 }
 
@@ -139,37 +154,40 @@ export async function updatePenalty(id: string, input: PenaltyInput | null, outp
 export async function deletePenalty(id: string): Promise<string | null> {
   const { data, error } = await supabase.from("atld_penalties").delete().eq("id", id).select("id");
   if (error) return penaltyError(error);
-  if (!data || (data as unknown[]).length === 0) return "Không xoá được — chỉ P.ATLĐ xoá được, và chỉ khi KHĐT chưa ghi khấu trừ.";
+  if (!data || (data as unknown[]).length === 0) return "Không xoá được — chỉ P.ATLĐ (cờ nhập hồ sơ xử phạt) và Admin xoá được.";
   return null;
 }
 
-// ─── Tệp quyết định (bucket atld-penalty) ───
+// ─── Tệp đính kèm (bucket atld-penalty): QĐ ở "<id>/…", chứng từ KHĐT ở "<id>/ct/…" ───
 // Thứ tự an toàn: tải tệp mới -> ghi CSDL -> xoá tệp cũ.
 export const PENALTY_BUCKET = "atld-penalty";
 const MAX_BYTES = 2 * 1024 * 1024;
 
-export async function uploadPenaltyFile(penaltyId: string, file: File): Promise<{ path: string; name: string }> {
+export async function uploadPenaltyFile(penaltyId: string, file: File, kind: PenaltyDoc = "qd"): Promise<{ path: string; name: string }> {
   if (!(file.type === "application/pdf" || file.type.startsWith("image/"))) {
     throw new Error(`"${file.name}" không phải ảnh hoặc PDF — chỉ nhận hai loại này.`);
   }
   if (file.size > MAX_BYTES) throw new Error(`"${file.name}" vượt 2MB — hãy tải lên Drive rồi dán link.`);
-  const path = `${penaltyId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+  const path = `${penaltyId}/${kind === "ct" ? "ct/" : ""}${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
   const { error } = await supabase.storage.from(PENALTY_BUCKET).upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type });
   if (error) {
     const hint = /bucket not found/i.test(error.message)
       ? " — chưa có kho tệp. Chạy migrations/139_atld_penalties.sql trong Supabase > SQL Editor."
       : /row-level security|policy/i.test(error.message)
-      ? " — tài khoản chưa có quyền nhập hồ sơ xử phạt (P.ATLĐ)."
+      ? kind === "ct"
+        ? " — tài khoản chưa có quyền xử lý khấu trừ (P.KHĐT), hoặc chưa chạy migration 141."
+        : " — tài khoản chưa có quyền nhập hồ sơ xử phạt (P.ATLĐ)."
       : "";
     throw new Error(`Không tải lên được "${file.name}": ${error.message}${hint}`);
   }
   return { path, name: file.name };
 }
 
-export async function setPenaltyFile(id: string, path: string | null, name: string | null): Promise<string | null> {
-  const { data, error } = await supabase.from("atld_penalties").update({ qd_file_path: path, qd_file_name: name }).eq("id", id).select("id");
+export async function setPenaltyFile(id: string, path: string | null, name: string | null, kind: PenaltyDoc = "qd"): Promise<string | null> {
+  const patch = kind === "ct" ? { ct_file_path: path, ct_file_name: name } : { qd_file_path: path, qd_file_name: name };
+  const { data, error } = await supabase.from("atld_penalties").update(patch).eq("id", id).select("id");
   if (error) return penaltyError(error);
-  if (!data || (data as unknown[]).length === 0) return "Không lưu được tệp — tài khoản chưa có quyền nhập hồ sơ xử phạt (P.ATLĐ).";
+  if (!data || (data as unknown[]).length === 0) return "Không lưu được tệp — tài khoản chưa có quyền với hồ sơ này.";
   return null;
 }
 
@@ -181,9 +199,20 @@ export async function removePenaltyFile(path: string): Promise<void> {
   }
 }
 
-export async function penaltyFileUrl(path: string): Promise<string | null> {
-  const { data, error } = await supabase.storage.from(PENALTY_BUCKET).createSignedUrl(path, 60 * 60);
+// downloadName: link tải thẳng về máy (đặt đúng tên tệp gốc) thay vì mở xem.
+export async function penaltyFileUrl(path: string, downloadName?: string): Promise<string | null> {
+  const { data, error } = await supabase.storage
+    .from(PENALTY_BUCKET)
+    .createSignedUrl(path, 60 * 60, downloadName ? { download: downloadName } : undefined);
   return error || !data ? null : data.signedUrl;
+}
+
+export async function setPenaltyLink(id: string, link: string | null, kind: PenaltyDoc = "qd"): Promise<string | null> {
+  const patch = kind === "ct" ? { ct_link: link } : { qd_link: link };
+  const { data, error } = await supabase.from("atld_penalties").update(patch).eq("id", id).select("id");
+  if (error) return penaltyError(error);
+  if (!data || (data as unknown[]).length === 0) return "Không lưu được — tài khoản chưa có quyền với hồ sơ này.";
+  return null;
 }
 
 // ─── Tự tính: trạng thái, số ngày theo dõi, cảnh báo ───

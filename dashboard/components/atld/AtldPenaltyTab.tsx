@@ -13,12 +13,13 @@ import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import {
   Search, Plus, Pencil, Trash2, Loader2, AlertCircle, X, FileDown, FileText, Upload, Link2, ExternalLink,
-  ClipboardList, Wallet, CircleCheck, Siren,
+  ClipboardList, Wallet, CircleCheck, Siren, Eye, Download,
 } from "lucide-react";
 import {
-  type Penalty, type PenaltyInput, type PenaltyOutput, type PenaltyStatus, type PenaltyAlert,
+  type Penalty, type PenaltyInput, type PenaltyOutput, type PenaltyStatus, type PenaltyAlert, type PenaltyDoc,
+  DOC_LABEL, docOf,
   PENALTY_TYPES, PENALTY_STATUS_META, fetchPenalties, createPenalty, updatePenalty, deletePenalty,
-  uploadPenaltyFile, setPenaltyFile, removePenaltyFile, penaltyFileUrl,
+  uploadPenaltyFile, setPenaltyFile, setPenaltyLink, removePenaltyFile, penaltyFileUrl,
   penaltyStatus, trackingDays, penaltyAlert, todayVN,
 } from "@/lib/atldPenalties";
 import { fetchSharedPartners, type SharedPartner } from "@/lib/atldVouchers";
@@ -37,9 +38,11 @@ type Filter = "all" | "open" | "qua_han" | "sap_qua_han" | "da";
 const fmtDate = (d: string | null) => (d ? d.split("-").reverse().join("/") : "");
 const money = (n: number) => `${formatMoney(n)} đ`;
 
+// Chỉ dùng lớp màu ĐÃ có bản dark mode trong globals.css (html.dark …) — lớp lạ như
+// bg-rose-50/80 không được map nên dark mode hiện nền hồng nhạt + chữ trắng (lỗi 07/10/2026).
 const ROW_BG: Record<Exclude<PenaltyAlert, null>, string> = {
-  qua_han: "bg-rose-50/80 hover:bg-rose-100/70",
-  sap_qua_han: "bg-orange-50/80 hover:bg-orange-100/70",
+  qua_han: "bg-rose-50/50 hover:bg-rose-50",
+  sap_qua_han: "bg-orange-50/80 hover:bg-orange-100/60",
   da: "bg-emerald-50/50 hover:bg-emerald-50",
 };
 
@@ -52,6 +55,10 @@ export default function AtldPenaltyTab({ canInput, canProcess }: { canInput: boo
   const [filter, setFilter] = useState<Filter>("all");
   const [project, setProject] = useState("");
   const [editing, setEditing] = useState<Penalty | "new" | null>(null);
+  // Bấm vào dòng -> popup xem toàn bộ thông tin (bảng nhiều cột, màn nhỏ khó đọc).
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  // Icon mắt ở cột Số QĐ / Số chứng từ -> popup xem tệp.
+  const [fileOf, setFileOf] = useState<{ id: string; kind: PenaltyDoc } | null>(null);
   const { ask, confirmNode } = useConfirmBox();
 
   const load = useCallback(async () => {
@@ -121,13 +128,18 @@ export default function AtldPenaltyTab({ canInput, canProcess }: { canInput: boo
   function remove(r: Row) {
     ask({
       title: `Xoá hồ sơ ${r.ma_ho_so}?`,
-      message: "Xoá hẳn hồ sơ và tệp quyết định đính kèm, không hoàn tác được.",
+      message:
+        r.gia_tri_da_tru > 0
+          ? `Hồ sơ đã có ${money(r.gia_tri_da_tru)} KHĐT ghi khấu trừ. Xoá hẳn cả phần của KHĐT và mọi tệp đính kèm, không hoàn tác được.`
+          : "Xoá hẳn hồ sơ và mọi tệp đính kèm (quyết định, chứng từ), không hoàn tác được.",
       confirmLabel: "Xoá hồ sơ",
       onConfirm: async () => {
         setRowErr(null);
+        setViewingId(null);
         const e = await deletePenalty(r.id);
         if (e) return setRowErr(`${r.ma_ho_so}: ${e}`);
-        if (r.qd_file_path) await removePenaltyFile(r.qd_file_path);
+        // Xoá CSDL xong mới dọn tệp (ghi hỏng thì tệp còn nguyên).
+        for (const p of [r.qd_file_path, r.ct_file_path]) if (p) await removePenaltyFile(p);
         load();
       },
     });
@@ -234,10 +246,11 @@ export default function AtldPenaltyTab({ canInput, canProcess }: { canInput: boo
                 <th colSpan={10} className="px-3 py-1.5 bg-[#005BAC] text-left">P.ATLĐ nhập — thông tin đầu vào</th>
                 <th colSpan={6} className="px-3 py-1.5 bg-orange-500 text-left">P.KHĐT nhập — thông tin đầu ra</th>
                 <th colSpan={4} className="px-3 py-1.5 bg-emerald-600 text-left">Tự tính — không sửa tay</th>
-                <th rowSpan={2} className="px-3 py-1.5 bg-slate-500" />
+                {/* Ô tiêu đề cột thao tác: cùng nền thẻ bảng (khối xám đặc trước đây trông như lỗi). */}
+                <th rowSpan={2} className="px-3 py-1.5 bg-white" />
               </tr>
               <tr className="text-left">
-                {["Mã hồ sơ", "Loại hồ sơ", "Số QĐ / Phiếu cấp phát", "Ngày ban hành", "Dự án", "Nhà thầu phụ", "Nội dung"].map((h) => (
+                {["Mã hồ sơ", "Loại hồ sơ", "Số QĐ", "Ngày ban hành", "Dự án", "Nhà thầu phụ", "Nội dung"].map((h) => (
                   <th key={h} className={`${th} bg-blue-50 text-[#005BAC]`}>{h}</th>
                 ))}
                 <th className={`${th} bg-blue-50 text-[#005BAC] text-right`}>Giá trị phải khấu trừ</th>
@@ -257,12 +270,17 @@ export default function AtldPenaltyTab({ canInput, canProcess }: { canInput: boo
             </thead>
             <tbody>
               {filtered.map((r) => (
-                <tr key={r.id} className={`border-b border-slate-100 last:border-0 ${r.alert ? ROW_BG[r.alert] : "hover:bg-slate-50/60"}`}>
+                <tr
+                  key={r.id}
+                  onClick={() => setViewingId(r.id)}
+                  title="Bấm để xem toàn bộ thông tin hồ sơ"
+                  className={`border-b border-slate-100 last:border-0 cursor-pointer ${r.alert ? ROW_BG[r.alert] : "hover:bg-slate-50/60"}`}
+                >
                   <td className={`${td} font-mono font-bold text-[#005BAC] whitespace-nowrap`}>{r.ma_ho_so}</td>
                   <td className={`${td} text-slate-600 whitespace-nowrap`}>{r.loai_ho_so}</td>
-                  <td className={`${td} whitespace-nowrap`}><QdCell row={r} /></td>
+                  <td className={`${td} whitespace-nowrap`}><DocCell row={r} kind="qd" onView={() => setFileOf({ id: r.id, kind: "qd" })} /></td>
                   <td className={`${td} tabular-nums text-slate-600 whitespace-nowrap`}>{fmtDate(r.ngay_ban_hanh)}</td>
-                  <td className={`${td} text-slate-700`}>
+                  <td className={`${td} text-slate-700 min-w-[160px]`}>
                     {r.project_name || "—"}
                     {r.project_code && <span className="block text-[10px] font-mono text-slate-400">{r.project_code}</span>}
                   </td>
@@ -275,7 +293,7 @@ export default function AtldPenaltyTab({ canInput, canProcess }: { canInput: boo
                   <td className={`${td} text-slate-600 whitespace-nowrap`}>{r.dot_thanh_toan}</td>
                   <td className={`${td} text-right tabular-nums font-semibold text-slate-700 whitespace-nowrap`}>{r.gia_tri_da_tru ? money(r.gia_tri_da_tru) : ""}</td>
                   <td className={`${td} tabular-nums text-slate-600 whitespace-nowrap`}>{fmtDate(r.ngay_khau_tru)}</td>
-                  <td className={`${td} text-slate-600 whitespace-nowrap`}>{r.so_chung_tu}</td>
+                  <td className={`${td} whitespace-nowrap`}><DocCell row={r} kind="ct" onView={() => setFileOf({ id: r.id, kind: "ct" })} /></td>
                   <td className={`${td} text-slate-600 whitespace-nowrap`}>{r.nguoi_nhap}</td>
                   <td className={`${td} text-right tabular-nums font-extrabold whitespace-nowrap ${r.gia_tri_con_lai > 0 ? "text-rose-600" : "text-emerald-600"}`}>{money(r.gia_tri_con_lai)}</td>
                   <td className={`${td} whitespace-nowrap`}>
@@ -288,7 +306,7 @@ export default function AtldPenaltyTab({ canInput, canProcess }: { canInput: boo
                       {(canInput || canProcess) && (
                         <IconBtn title="Sửa hồ sơ" onClick={() => setEditing(r)}><Pencil size={13} /></IconBtn>
                       )}
-                      {canInput && r.gia_tri_da_tru === 0 && (
+                      {canInput && (
                         <IconBtn title="Xoá hồ sơ" danger onClick={() => remove(r)}><Trash2 size={13} /></IconBtn>
                       )}
                     </div>
@@ -300,6 +318,28 @@ export default function AtldPenaltyTab({ canInput, canProcess }: { canInput: boo
         )}
       </div>
 
+      {viewingId && rows.find((r) => r.id === viewingId) && (
+        <PenaltyDetail
+          row={rows.find((r) => r.id === viewingId)!}
+          canEdit={canInput || canProcess}
+          onDelete={canInput ? remove : undefined}
+          onClose={() => setViewingId(null)}
+          onEdit={(r) => {
+            setViewingId(null);
+            setEditing(r);
+          }}
+          onViewFile={(r, kind) => setFileOf({ id: r.id, kind })}
+        />
+      )}
+      {fileOf && rows.find((r) => r.id === fileOf.id) && (
+        <PenaltyFileViewer
+          row={rows.find((r) => r.id === fileOf.id)!}
+          kind={fileOf.kind}
+          canDelete={fileOf.kind === "qd" ? canInput : canProcess}
+          onClose={() => setFileOf(null)}
+          onChanged={load}
+        />
+      )}
       {editing && (
         <PenaltyModal
           item={editing === "new" ? null : editing}
@@ -351,32 +391,297 @@ function AlertBadge({ alert }: { alert: PenaltyAlert }) {
   return null;
 }
 
-function QdCell({ row }: { row: Penalty }) {
-  const [busy, setBusy] = useState(false);
-  const label = row.so_quyet_dinh || (row.qd_file_path || row.qd_link ? "Xem tệp" : "—");
-  if (!row.qd_file_path && !row.qd_link) return <span className="text-slate-600">{label}</span>;
-  const open = async () => {
-    if (row.qd_link && !row.qd_file_path) {
-      window.open(row.qd_link, "_blank", "noopener,noreferrer");
-      return;
-    }
-    // Mở tab TRƯỚC khi chờ ký link — trình duyệt chặn window.open sau await.
-    const w = window.open("", "_blank");
-    setBusy(true);
-    const url = await penaltyFileUrl(row.qd_file_path!);
-    setBusy(false);
-    if (!url) {
-      w?.close();
-      alert("Không mở được tệp — tệp đã bị xoá hoặc tài khoản không có quyền xem.");
-      return;
-    }
-    if (w) w.location.href = url;
-    else window.location.href = url;
-  };
+function DocCell({ row, kind, onView }: { row: Penalty; kind: PenaltyDoc; onView: () => void }) {
+  const d = docOf(row, kind);
+  const hasDoc = !!(d.path || d.link);
   return (
-    <button type="button" onClick={open} className="inline-flex items-center gap-1 font-semibold text-[#005BAC] hover:underline cursor-pointer" title="Mở quyết định">
-      {busy ? <Loader2 size={11} className="animate-spin" /> : <FileText size={11} />} {label}
-    </button>
+    <span className="inline-flex items-center gap-1.5">
+      <span className="text-slate-700 font-semibold">{d.no || (hasDoc ? "" : kind === "qd" ? "—" : "")}</span>
+      {hasDoc && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onView();
+          }}
+          title={`Xem ${DOC_LABEL[kind].toLowerCase()}`}
+          aria-label={`Xem ${DOC_LABEL[kind].toLowerCase()}`}
+          className={`p-1 rounded-lg cursor-pointer ${kind === "qd" ? "text-[#005BAC] hover:bg-blue-50" : "text-orange-600 hover:bg-orange-50"}`}
+        >
+          <Eye size={14} />
+        </button>
+      )}
+    </span>
+  );
+}
+
+const isPdf = (name: string) => /\.pdf$/i.test(name);
+const isImage = (name: string) => /\.(png|jpe?g|webp|gif|heic)$/i.test(name);
+
+// ─── Popup xem tệp quyết định giữa màn hình: xem ngay, Tải về, Xoá ───
+function PenaltyFileViewer({
+  row, kind, canDelete, onClose, onChanged,
+}: {
+  row: Penalty;
+  kind: PenaltyDoc;
+  canDelete: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const doc = docOf(row, kind);
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(!!docOf(row, kind).path);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const name = doc.name || doc.path?.split("/").pop() || "";
+
+  useEffect(() => {
+    if (!doc.path) return;
+    let alive = true;
+    penaltyFileUrl(doc.path).then((u) => {
+      if (!alive) return;
+      setUrl(u);
+      setLoading(false);
+      if (!u) setErr("Không mở được tệp — tệp đã bị xoá hoặc tài khoản không có quyền xem.");
+    });
+    return () => {
+      alive = false;
+    };
+  }, [doc.path]);
+
+  async function download() {
+    if (!doc.path) {
+      if (doc.link) window.open(doc.link, "_blank", "noopener,noreferrer");
+      return;
+    }
+    setBusy(true);
+    const u = await penaltyFileUrl(doc.path, name || (kind === "qd" ? "quyet-dinh" : "chung-tu"));
+    setBusy(false);
+    if (!u) return setErr("Không tải được tệp.");
+    window.location.assign(u);
+  }
+
+  // Ghi CSDL trước rồi mới xoá tệp trong kho (ghi hỏng thì tệp còn nguyên).
+  async function remove() {
+    setBusy(true);
+    setErr(null);
+    let e: string | null = null;
+    if (doc.path) {
+      e = await setPenaltyFile(row.id, null, null, kind);
+      if (!e) await removePenaltyFile(doc.path);
+    } else if (doc.link) {
+      e = await setPenaltyLink(row.id, null, kind);
+    }
+    setBusy(false);
+    setConfirmDel(false);
+    if (e) return setErr(e);
+    onChanged();
+    onClose();
+  }
+
+  const hasDoc = !!(doc.path || doc.link);
+  const what = kind === "qd" ? "quyết định" : "chứng từ";
+
+  return createPortal(
+    <div className="fixed inset-0 z-[90] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-150">
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100">
+          <FileText size={16} className="text-[#005BAC] shrink-0" />
+          <h2 className="font-heading font-extrabold text-sm text-slate-800 flex-1 min-w-0 truncate">
+            {DOC_LABEL[kind]} {doc.no || "—"} <span className="font-mono text-slate-400 font-semibold">· {row.ma_ho_so}</span>
+          </h2>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-rose-500 cursor-pointer" aria-label="Đóng">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-auto bg-slate-50 flex items-center justify-center p-3">
+          {doc.path ? (
+            loading ? (
+              <span className="flex items-center gap-2 text-xs font-semibold text-slate-400 py-20">
+                <Loader2 size={16} className="animate-spin" /> Đang mở tệp…
+              </span>
+            ) : url && isPdf(name) ? (
+              <iframe src={url} title={name} className="w-full h-[70vh] rounded-lg bg-white border border-slate-200" />
+            ) : url && isImage(name) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={url} alt={name} className="max-w-full max-h-[70vh] object-contain rounded-lg" />
+            ) : url ? (
+              <p className="text-xs font-semibold text-slate-500 py-20">Không xem trước được loại tệp này — bấm Tải về.</p>
+            ) : null
+          ) : doc.link ? (
+            <div className="text-center space-y-3 py-16">
+              <p className="text-xs font-semibold text-slate-500">{kind === "qd" ? "Quyết định" : "Chứng từ"} lưu dạng link ngoài (Drive / OneDrive…)</p>
+              <a href={doc.link} target="_blank" rel="noopener noreferrer" className={BTN_PRIMARY}>
+                <ExternalLink size={14} /> Mở link
+              </a>
+              <p className="text-[11px] text-slate-400 break-all max-w-xl">{doc.link}</p>
+            </div>
+          ) : (
+            <p className="text-xs font-semibold text-slate-400 py-20">Hồ sơ chưa có tệp {what}.</p>
+          )}
+        </div>
+
+        {err && (
+          <p className="flex items-start gap-1.5 text-[11px] font-semibold text-rose-500 px-5 pt-3">
+            <AlertCircle size={13} className="mt-0.5 shrink-0" /> {err}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-t border-slate-100">
+          {name && <span className="text-[11px] text-slate-400 truncate max-w-[50%]">{name}</span>}
+          <div className="ml-auto flex items-center gap-2">
+            {canDelete && hasDoc &&
+              (confirmDel ? (
+                <>
+                  <span className="text-[11px] font-semibold text-rose-600">Xoá {doc.path ? "tệp" : "link"} {what}?</span>
+                  <button type="button" onClick={() => setConfirmDel(false)} disabled={busy} className={BTN_OUTLINE}>
+                    Không
+                  </button>
+                  <button type="button" onClick={remove} disabled={busy} className={`${BTN_OUTLINE} !border-rose-200 !text-rose-600`}>
+                    {busy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Xoá
+                  </button>
+                </>
+              ) : (
+                <button type="button" onClick={() => setConfirmDel(true)} className={`${BTN_OUTLINE} !text-rose-600`}>
+                  <Trash2 size={13} /> Xoá
+                </button>
+              ))}
+            {hasDoc && (
+              <button type="button" onClick={download} disabled={busy} className={BTN_PRIMARY}>
+                {doc.path ? <Download size={13} /> : <ExternalLink size={13} />} {doc.path ? "Tải về" : "Mở link"}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── Popup xem toàn bộ thông tin một hồ sơ (bấm vào dòng) ───
+function Field({ label, value, wide, strong }: { label: string; value: React.ReactNode; wide?: boolean; strong?: boolean }) {
+  return (
+    <div className={wide ? "sm:col-span-2" : ""}>
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>
+      <div className={`text-xs mt-0.5 whitespace-pre-line break-words ${strong ? "font-extrabold text-slate-800" : "font-semibold text-slate-700"}`}>
+        {value === null || value === undefined || value === "" ? <span className="text-slate-300">—</span> : value}
+      </div>
+    </div>
+  );
+}
+
+function PenaltyDetail({
+  row, canEdit, onClose, onEdit, onViewFile, onDelete,
+}: {
+  row: Row;
+  canEdit: boolean;
+  onClose: () => void;
+  onEdit: (r: Row) => void;
+  onDelete?: (r: Row) => void;
+  onViewFile: (r: Row, kind: PenaltyDoc) => void;
+}) {
+  const docValue = (kind: PenaltyDoc) => {
+    const d = docOf(row, kind);
+    const has = !!(d.path || d.link);
+    if (!d.no && !has) return null;
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        {d.no}
+        {has && (
+          <button type="button" onClick={() => onViewFile(row, kind)} className="inline-flex items-center gap-1 text-[#005BAC] hover:underline cursor-pointer">
+            <Eye size={13} /> Xem
+          </button>
+        )}
+      </span>
+    );
+  };
+  return createPortal(
+    <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+        }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 space-y-4 animate-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto"
+      >
+        <div className="flex items-start gap-2">
+          <div className="flex-1 min-w-0">
+            <h2 className="font-heading font-extrabold text-sm text-slate-800">
+              Hồ sơ <span className="font-mono text-[#005BAC]">{row.ma_ho_so}</span>
+            </h2>
+            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${PENALTY_STATUS_META[row.status].cls}`}>{PENALTY_STATUS_META[row.status].label}</span>
+              <AlertBadge alert={row.alert} />
+              {row.days != null && <span className="text-[11px] font-semibold text-slate-500">Theo dõi {row.days} ngày</span>}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-rose-500 cursor-pointer" aria-label="Đóng">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
+            <p className="text-[10px] font-bold text-slate-400 uppercase">Phải khấu trừ</p>
+            <p className="text-sm font-extrabold text-slate-800 tabular-nums">{money(row.gia_tri_phai_tru)}</p>
+          </div>
+          <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
+            <p className="text-[10px] font-bold text-slate-400 uppercase">Đã khấu trừ</p>
+            <p className="text-sm font-extrabold text-slate-800 tabular-nums">{money(row.gia_tri_da_tru)}</p>
+          </div>
+          <div className={`rounded-xl border px-3 py-2 ${row.gia_tri_con_lai > 0 ? "bg-rose-50 border-rose-100" : "bg-emerald-50 border-emerald-100"}`}>
+            <p className="text-[10px] font-bold text-slate-400 uppercase">Còn lại</p>
+            <p className={`text-sm font-extrabold tabular-nums ${row.gia_tri_con_lai > 0 ? "text-rose-600" : "text-emerald-600"}`}>{money(row.gia_tri_con_lai)}</p>
+          </div>
+        </div>
+
+        <section className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 space-y-3">
+          <p className="text-[11px] font-extrabold text-[#005BAC] uppercase tracking-wider">P.ATLĐ — thông tin đầu vào</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Loại hồ sơ" value={row.loai_ho_so} />
+            <Field label="Số QĐ" value={docValue("qd")} />
+            <Field label="Ngày ban hành" value={fmtDate(row.ngay_ban_hanh)} />
+            <Field label="Dự án" value={[row.project_code, row.project_name].filter(Boolean).join(" — ")} />
+            <Field label="Nhà thầu phụ" value={row.contractor_name} wide strong />
+            <Field label="Nội dung" value={row.noi_dung} wide />
+            <Field label="Người lập" value={row.nguoi_lap} />
+            <Field label="Ngày gửi thông tin cho KHĐT" value={fmtDate(row.ngay_gui_khdt)} />
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-orange-100 bg-orange-50/40 p-4 space-y-3">
+          <p className="text-[11px] font-extrabold text-orange-700 uppercase tracking-wider">P.KHĐT — thông tin đầu ra</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Ngày tiếp nhận" value={fmtDate(row.ngay_tiep_nhan)} />
+            <Field label="Đợt thanh toán" value={row.dot_thanh_toan} />
+            <Field label="Ngày khấu trừ" value={fmtDate(row.ngay_khau_tru)} />
+            <Field label="Số chứng từ" value={docValue("ct")} />
+            <Field label="Người nhập" value={row.nguoi_nhap} />
+            <Field label="Ghi chú (KHĐT)" value={row.ghi_chu} />
+          </div>
+        </section>
+
+        <div className="flex justify-end gap-2">
+          {onDelete && (
+            <button type="button" onClick={() => onDelete(row)} className={`${BTN_OUTLINE} !text-rose-600 mr-auto`}>
+              <Trash2 size={13} /> Xoá hồ sơ
+            </button>
+          )}
+          <button type="button" onClick={onClose} className="text-[11px] font-bold text-slate-500 px-3 py-2 rounded-lg hover:bg-slate-100 cursor-pointer">
+            Đóng
+          </button>
+          {canEdit && (
+            <button type="button" onClick={() => onEdit(row)} className={BTN_PRIMARY}>
+              <Pencil size={13} /> Sửa hồ sơ
+            </button>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -417,7 +722,10 @@ function IconBtn({ title, danger, onClick, children }: { title: string; danger?:
       type="button"
       title={title}
       aria-label={title}
-      onClick={onClick}
+      onClick={(e) => {
+        e.stopPropagation(); // nút trong dòng: không bật popup xem chi tiết
+        onClick();
+      }}
       className={`p-1.5 rounded-lg text-slate-400 transition-all cursor-pointer ${danger ? "hover:text-rose-600 hover:bg-rose-50" : "hover:text-[#005BAC] hover:bg-blue-50"}`}
     >
       {children}
@@ -461,15 +769,19 @@ function PenaltyModal({
     so_chung_tu: item?.so_chung_tu ?? "",
     nguoi_nhap: item?.nguoi_nhap ?? "",
     ghi_chu: item?.ghi_chu ?? "",
+    ct_link: item?.ct_link ?? "",
   });
-  const [file, setFile] = useState<{ path: string | null; name: string | null }>({ path: item?.qd_file_path ?? null, name: item?.qd_file_name ?? null });
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  // Tệp đã lưu + tệp vừa chọn (tải lên khi bấm Lưu) — riêng cho Số QĐ và Số chứng từ.
+  const [files, setFiles] = useState<Record<PenaltyDoc, { path: string | null; name: string | null }>>({
+    qd: { path: item?.qd_file_path ?? null, name: item?.qd_file_name ?? null },
+    ct: { path: item?.ct_file_path ?? null, name: item?.ct_file_name ?? null },
+  });
+  const [pending, setPending] = useState<Record<PenaltyDoc, File | null>>({ qd: null, ct: null });
   const [partners, setPartners] = useState<SharedPartner[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const savingRef = useRef(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -497,6 +809,7 @@ function PenaltyModal({
       if (!(inp.gia_tri_phai_tru > 0)) return setErr("Nhập Giá trị phải khấu trừ.");
       if (inp.qd_link?.trim() && !/^https?:\/\//i.test(inp.qd_link.trim())) return setErr("Link quyết định phải bắt đầu bằng http:// hoặc https://");
     }
+    if (canProcess && out.ct_link?.trim() && !/^https?:\/\//i.test(out.ct_link.trim())) return setErr("Link chứng từ phải bắt đầu bằng http:// hoặc https://");
     if (canProcess && out.gia_tri_da_tru > inp.gia_tri_phai_tru) return setErr("Giá trị đã khấu trừ không được lớn hơn giá trị phải khấu trừ.");
     savingRef.current = true;
     setSaving(true);
@@ -511,20 +824,23 @@ function PenaltyModal({
       id = r.id;
     }
     // Tệp chọn sẵn: tải lên SAU khi có id hồ sơ -> ghi CSDL -> xoá tệp cũ.
-    if (!e && id && pendingFile) {
+    for (const kind of ["qd", "ct"] as PenaltyDoc[]) {
+      const f = pending[kind];
+      if (e || !id || !f) continue;
       try {
-        const up = await uploadPenaltyFile(id, pendingFile);
-        const er = await setPenaltyFile(id, up.path, up.name);
+        const up = await uploadPenaltyFile(id, f, kind);
+        const er = await setPenaltyFile(id, up.path, up.name, kind);
         if (er) {
           await removePenaltyFile(up.path);
-          e = `Đã lưu hồ sơ nhưng chưa gắn được tệp: ${er}`;
+          e = `Đã lưu hồ sơ nhưng chưa gắn được tệp ${DOC_LABEL[kind]}: ${er}`;
         } else {
-          if (file.path) await removePenaltyFile(file.path);
-          setFile({ path: up.path, name: up.name });
-          setPendingFile(null);
+          const old = files[kind].path;
+          if (old) await removePenaltyFile(old);
+          setFiles((s) => ({ ...s, [kind]: { path: up.path, name: up.name } }));
+          setPending((s) => ({ ...s, [kind]: null }));
         }
       } catch (x) {
-        e = `Đã lưu hồ sơ nhưng chưa tải được tệp: ${x instanceof Error ? x.message : String(x)}`;
+        e = `Đã lưu hồ sơ nhưng chưa tải được tệp ${DOC_LABEL[kind]}: ${x instanceof Error ? x.message : String(x)}`;
       }
     }
     savingRef.current = false;
@@ -536,14 +852,15 @@ function PenaltyModal({
     onSaved();
   }
 
-  async function removeFile() {
-    if (!item || !file.path || savingRef.current) return;
+  async function removeFile(kind: PenaltyDoc) {
+    const path = files[kind].path;
+    if (!item || !path || savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
-    const e = await setPenaltyFile(item.id, null, null);
+    const e = await setPenaltyFile(item.id, null, null, kind);
     if (!e) {
-      await removePenaltyFile(file.path);
-      setFile({ path: null, name: null });
+      await removePenaltyFile(path);
+      setFiles((s) => ({ ...s, [kind]: { path: null, name: null } }));
       onChanged();
     } else setErr(e);
     savingRef.current = false;
@@ -575,7 +892,7 @@ function PenaltyModal({
         </div>
 
         {/* ── P.ATLĐ ── */}
-        <section className="rounded-xl border border-blue-100 bg-blue-50/40 p-4 space-y-3">
+        <section className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 space-y-3">
           <p className="text-[11px] font-extrabold text-[#005BAC] uppercase tracking-wider">
             P.ATLĐ nhập — thông tin đầu vào {!canInput && <span className="normal-case font-semibold text-slate-400">(chỉ xem)</span>}
           </p>
@@ -596,65 +913,22 @@ function PenaltyModal({
               <input type="date" value={inp.ngay_ban_hanh ?? ""} disabled={!canInput} onChange={(e) => setI("ngay_ban_hanh", e.target.value)} className={`${inputCls} tabular-nums`} />
             </label>
 
-            <div className="sm:col-span-3 space-y-1">
-              <span className={lbl}>Tệp quyết định (ảnh / PDF ≤ 2MB) hoặc link</span>
-              <div className="flex flex-wrap items-center gap-2">
-                {file.path && (
-                  <span className="inline-flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[#005BAC] max-w-[260px]">
-                    <FileText size={12} className="shrink-0" /> <span className="truncate">{file.name || "Tệp quyết định"}</span>
-                    {canInput && (
-                      <button type="button" onClick={removeFile} disabled={saving} className="text-slate-300 hover:text-rose-500 cursor-pointer" aria-label="Gỡ tệp">
-                        <X size={12} />
-                      </button>
-                    )}
-                  </span>
-                )}
-                {pendingFile && (
-                  <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-amber-700 max-w-[260px]">
-                    <Upload size={12} className="shrink-0" /> <span className="truncate">{pendingFile.name}</span> (lưu mới tải lên)
-                    <button type="button" onClick={() => setPendingFile(null)} className="text-amber-400 hover:text-rose-500 cursor-pointer" aria-label="Bỏ tệp">
-                      <X size={12} />
-                    </button>
-                  </span>
-                )}
-                {canInput && (
-                  <>
-                    <input
-                      ref={fileRef}
-                      type="file"
-                      accept="application/pdf,image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        e.target.value = "";
-                        if (!f) return;
-                        if (f.size > 2 * 1024 * 1024) return setErr(`"${f.name}" vượt 2MB — tải lên Drive rồi dán link.`);
-                        setErr("");
-                        setPendingFile(f);
-                      }}
-                    />
-                    <button type="button" onClick={() => fileRef.current?.click()} className={BTN_OUTLINE}>
-                      <Upload size={13} /> {file.path ? "Thay tệp" : "Chọn tệp"}
-                    </button>
-                  </>
-                )}
-                <div className="flex-1 min-w-[220px] flex items-center gap-2 px-3 h-9 rounded-xl bg-white border border-slate-200 focus-within:border-[#00AEEF]">
-                  <Link2 size={13} className="text-slate-400 shrink-0" />
-                  <input
-                    value={inp.qd_link ?? ""}
-                    disabled={!canInput}
-                    onChange={(e) => setI("qd_link", e.target.value)}
-                    placeholder="https://drive.google.com/…"
-                    className="flex-1 min-w-0 bg-transparent text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none disabled:text-slate-500"
-                  />
-                  {inp.qd_link && /^https?:\/\//i.test(inp.qd_link) && (
-                    <a href={inp.qd_link} target="_blank" rel="noopener noreferrer" className="text-[#005BAC]" title="Mở link">
-                      <ExternalLink size={13} />
-                    </a>
-                  )}
-                </div>
-              </div>
-            </div>
+            <DocAttach
+              label="Tệp quyết định (ảnh / PDF ≤ 2MB) hoặc link"
+              canEdit={canInput}
+              saved={files.qd}
+              pending={pending.qd}
+              link={inp.qd_link ?? ""}
+              busy={saving}
+              onPick={(f) => {
+                setErr("");
+                setPending((s) => ({ ...s, qd: f }));
+              }}
+              onUnpick={() => setPending((s) => ({ ...s, qd: null }))}
+              onRemoveSaved={() => removeFile("qd")}
+              onLink={(v) => setI("qd_link", v)}
+              onError={setErr}
+            />
 
             <label className="block space-y-1 sm:col-span-3">
               <span className={lbl}>Dự án (danh mục dự án — Cài đặt hệ thống)</span>
@@ -751,6 +1025,22 @@ function PenaltyModal({
                 <div className={inputCls + " bg-slate-100"}>{out.nguoi_nhap || "—"}</div>
               )}
             </div>
+            <DocAttach
+              label="Tệp chứng từ (ảnh / PDF ≤ 2MB) hoặc link"
+              canEdit={canProcess}
+              saved={files.ct}
+              pending={pending.ct}
+              link={out.ct_link ?? ""}
+              busy={saving}
+              onPick={(f) => {
+                setErr("");
+                setPending((s) => ({ ...s, ct: f }));
+              }}
+              onUnpick={() => setPending((s) => ({ ...s, ct: null }))}
+              onRemoveSaved={() => removeFile("ct")}
+              onLink={(v) => setO("ct_link", v)}
+              onError={setErr}
+            />
             <label className="block space-y-1 sm:col-span-3">
               <span className={lbl}>Ghi chú (KHĐT)</span>
               <input value={out.ghi_chu ?? ""} disabled={!canProcess} onChange={(e) => setO("ghi_chu", e.target.value)} className={inputCls} />
@@ -786,5 +1076,85 @@ function PenaltyModal({
       </div>
     </div>,
     document.body
+  );
+}
+
+// Khối đính kèm dùng chung cho Số QĐ (P.ATLĐ) và Số chứng từ (P.KHĐT): tệp đã lưu
+// (gỡ được), tệp vừa chọn (tải lên khi bấm Lưu), ô dán link.
+function DocAttach({
+  label, canEdit, saved, pending, link, busy, onPick, onUnpick, onRemoveSaved, onLink, onError,
+}: {
+  label: string;
+  canEdit: boolean;
+  saved: { path: string | null; name: string | null };
+  pending: File | null;
+  link: string;
+  busy: boolean;
+  onPick: (f: File) => void;
+  onUnpick: () => void;
+  onRemoveSaved: () => void;
+  onLink: (v: string) => void;
+  onError: (m: string) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <div className="sm:col-span-3 space-y-1">
+      <span className="text-[10px] font-bold text-slate-500">{label}</span>
+      <div className="flex flex-wrap items-center gap-2">
+        {saved.path && (
+          <span className="inline-flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[#005BAC] max-w-[260px]">
+            <FileText size={12} className="shrink-0" /> <span className="truncate">{saved.name || "Tệp đính kèm"}</span>
+            {canEdit && (
+              <button type="button" onClick={onRemoveSaved} disabled={busy} className="text-slate-300 hover:text-rose-500 cursor-pointer" aria-label="Gỡ tệp">
+                <X size={12} />
+              </button>
+            )}
+          </span>
+        )}
+        {pending && (
+          <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-amber-700 max-w-[260px]">
+            <Upload size={12} className="shrink-0" /> <span className="truncate">{pending.name}</span> (lưu mới tải lên)
+            <button type="button" onClick={onUnpick} className="text-amber-400 hover:text-rose-500 cursor-pointer" aria-label="Bỏ tệp">
+              <X size={12} />
+            </button>
+          </span>
+        )}
+        {canEdit && (
+          <>
+            <input
+              ref={ref}
+              type="file"
+              accept="application/pdf,image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (!f) return;
+                if (f.size > 2 * 1024 * 1024) return onError(`"${f.name}" vượt 2MB — tải lên Drive rồi dán link.`);
+                onPick(f);
+              }}
+            />
+            <button type="button" onClick={() => ref.current?.click()} className={BTN_OUTLINE}>
+              <Upload size={13} /> {saved.path ? "Thay tệp" : "Chọn tệp"}
+            </button>
+          </>
+        )}
+        <div className="flex-1 min-w-[220px] flex items-center gap-2 px-3 h-9 rounded-xl bg-white border border-slate-200 focus-within:border-[#00AEEF]">
+          <Link2 size={13} className="text-slate-400 shrink-0" />
+          <input
+            value={link}
+            disabled={!canEdit}
+            onChange={(e) => onLink(e.target.value)}
+            placeholder="https://drive.google.com/…"
+            className="flex-1 min-w-0 bg-transparent text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none disabled:text-slate-500"
+          />
+          {link && /^https?:\/\//i.test(link) && (
+            <a href={link} target="_blank" rel="noopener noreferrer" className="text-[#005BAC]" title="Mở link">
+              <ExternalLink size={13} />
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

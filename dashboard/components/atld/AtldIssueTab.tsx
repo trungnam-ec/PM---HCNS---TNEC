@@ -39,7 +39,8 @@ import AtldIssuePreview from "@/components/atld/AtldIssuePreview";
 import AtldIssueOriginal from "@/components/atld/AtldIssueOriginal";
 import ColorTag from "@/components/atld/ColorTag";
 import { IconAct, ReasonModal } from "@/components/atld/AtldIssueActions";
-import { BTN_PRIMARY, CONTROL_BOX } from "@/components/atld/ui";
+import { BTN_OUTLINE, BTN_PRIMARY, CONTROL_BOX } from "@/components/atld/ui";
+import AtldRowDetail, { isRowClick } from "@/components/atld/AtldRowDetail";
 import { Search, X, Loader2, AlertCircle, Truck, FilePlus2, Pencil, Send, Trash2, Check, Undo2, XCircle, Lock, ChevronDown, ChevronRight, Eye, Upload } from "lucide-react";
 
 type StatusFilter = "all" | IssueStatus;
@@ -63,6 +64,7 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
   const [reasonBox, setReasonBox] = useState<{ mode: "return" | "cancel"; row: IssueRow } | null>(null);
   const [previewRow, setPreviewRow] = useState<IssueRow | null>(null);
   const [originalRow, setOriginalRow] = useState<IssueRow | null>(null);
+  const [viewing, setViewing] = useState<IssueRow | null>(null);
   const actingRef = useRef(false);
   const { ask, confirmNode } = useConfirmBox();
 
@@ -295,8 +297,23 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
                 const reason = r.status === "returned" ? r.return_reason : r.status === "cancelled" ? r.cancel_reason : null;
                 return (
                   <Fragment key={r.id}>
-                    <tr className="border-b border-slate-50 hover:bg-slate-50/50 cursor-pointer" onClick={() => toggle(r.id)}>
-                      <td className="px-3 py-2.5 text-slate-400">{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
+                    {/* Bấm vào dòng -> popup đủ thông tin (màn hình nhỏ); mũi tên đầu dòng vẫn bung dòng hàng tại chỗ. */}
+                    <tr
+                      className="border-b border-slate-50 hover:bg-slate-50/50 cursor-pointer"
+                      title="Bấm để xem đầy đủ thông tin phiếu"
+                      onClick={(e) => isRowClick(e) && setViewing(r)}
+                    >
+                      <td className="px-1.5 py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => toggle(r.id)}
+                          title={open ? "Thu gọn dòng hàng" : "Bung dòng hàng"}
+                          aria-label={open ? "Thu gọn dòng hàng" : "Bung dòng hàng"}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-[#005BAC] hover:bg-blue-50 cursor-pointer"
+                        >
+                          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                      </td>
                       <td className="px-3 py-2.5 font-mono font-bold text-[#005BAC] whitespace-nowrap">{r.so_phieu}</td>
                       <td className="px-3 py-2.5 font-semibold text-slate-600 whitespace-nowrap tabular-nums">{fmtDate(r.ngay)}</td>
                       <td className="px-3 py-2.5 font-semibold text-slate-700 min-w-[180px]">{r.contractor_name || "—"}</td>
@@ -409,6 +426,114 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
         </div>
       )}
 
+      {viewing && (
+        <AtldRowDetail
+          title={
+            <>
+              Phiếu xuất <span className="font-mono text-[#005BAC]">{viewing.so_phieu}</span>
+            </>
+          }
+          badges={<span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${ISSUE_STATUS_META[viewing.status].cls}`}>{ISSUE_STATUS_META[viewing.status].label}</span>}
+          stats={[
+            { label: "Số SP", value: formatQty(viewing.tongSL) },
+            { label: "Tiền hàng", value: `${formatMoney(viewing.tienHang)} đ` },
+            { label: "Tổng tiền", value: `${formatMoney(viewing.tongCong)} đ`, tone: "blue" },
+          ]}
+          sections={[
+            {
+              title: "Thông tin phiếu",
+              tone: "blue",
+              fields: [
+                { label: "Ngày xuất", value: fmtDate(viewing.ngay) },
+                { label: "Khách hàng", value: viewing.contractor_name, strong: true },
+                { label: "BĐH", value: viewing.bdh_name },
+                { label: "Người nhận", value: viewing.nguoi_nhan },
+                { label: "Địa chỉ", value: viewing.dia_chi },
+                { label: "Báo giá / HĐ", value: viewing.chung_tu },
+                { label: "Nội dung", value: viewing.ly_do, wide: true },
+                { label: "VAT", value: viewing.vat_percent ? `${viewing.vat_percent}%` : null },
+                { label: "Phí vận chuyển", value: viewing.phi_van_chuyen ? `${formatMoney(viewing.phi_van_chuyen)} đ` : null },
+                { label: "Người lập", value: viewing.created_by_name || viewing.created_by },
+                { label: "Người duyệt", value: viewing.approved_by },
+                { label: "Lý do trả lại", value: viewing.return_reason, wide: true },
+                { label: "Lý do huỷ", value: viewing.cancel_reason, wide: true },
+              ].filter((f) => !(f.label.startsWith("Lý do") && !f.value)),
+            },
+          ]}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  const r = viewing;
+                  setViewing(null);
+                  setPreviewRow(r);
+                }}
+                className={BTN_OUTLINE}
+              >
+                <Eye size={13} /> Xem trước phiếu
+              </button>
+              {(canEdit || canApprove || viewing.goc_file_path || viewing.goc_link) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const r = viewing;
+                    setViewing(null);
+                    setOriginalRow(r);
+                  }}
+                  className={BTN_OUTLINE}
+                >
+                  <Upload size={13} /> Chứng từ gốc
+                </button>
+              )}
+              {canEdit && (viewing.status === "draft" || viewing.status === "returned") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = viewing.id;
+                    setViewing(null);
+                    setIssueModal({ id });
+                  }}
+                  className={BTN_PRIMARY}
+                >
+                  <Pencil size={13} /> Sửa phiếu
+                </button>
+              )}
+            </>
+          }
+          onClose={() => setViewing(null)}
+        >
+          <section className="rounded-xl border border-slate-100 p-4 space-y-2">
+            <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Dòng hàng ({viewing.lines.length})</p>
+            <div className="divide-y divide-slate-100">
+              {viewing.lines.map((l) => {
+                const it = byId.get(l.item_id);
+                const price = l.sale_price ?? l.cost;
+                return (
+                  <div key={l.id} className="py-2 flex items-start gap-3 text-xs">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-slate-700">
+                        <span className="font-mono font-bold text-[#005BAC] mr-1.5">{it?.code || "—"}</span>
+                        {it?.name || "(mã đã xoá)"}
+                      </p>
+                      <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1.5">
+                        {[it?.size, it?.unit].filter(Boolean).join(" · ") || "—"}
+                        {it?.color && <ColorTag color={it.color} />}
+                      </p>
+                    </div>
+                    <div className="text-right tabular-nums shrink-0">
+                      <p className="font-semibold text-slate-700">
+                        {formatQty(l.qty)} × {price == null ? "—" : formatMoney(price)}
+                      </p>
+                      <p className="font-extrabold text-slate-800">{price == null ? "—" : `${formatMoney(l.qty * price)} đ`}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </AtldRowDetail>
+      )}
       {issueModal && (
         <AtldIssueModal
           items={items}

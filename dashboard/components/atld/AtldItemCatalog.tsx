@@ -17,6 +17,7 @@ import { useConfirmBox } from "@/components/ConfirmDialog";
 import AtldItemImport from "@/components/atld/AtldItemImport";
 import ColorTag from "@/components/atld/ColorTag";
 import { BTN_OUTLINE, BTN_PRIMARY, CONTROL_BOX } from "@/components/atld/ui";
+import AtldRowDetail, { isRowClick } from "@/components/atld/AtldRowDetail";
 import * as XLSX from "xlsx";
 import {
   type AtldItem,
@@ -102,6 +103,8 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
   const [rowErr, setRowErr] = useState<string | null>(null);
   // Sửa nhanh Tồn đầu kỳ ngay tại ô của bảng.
   const [quick, setQuick] = useState<{ id: string; field: "open" | "nhap"; text: string; busy: boolean } | null>(null);
+  // Bấm vào dòng -> popup xem đủ thông tin mã (màn hình nhỏ không phải cuộn ngang).
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const { ask, confirmNode } = useConfirmBox();
 
   const load = useCallback(async () => {
@@ -357,7 +360,12 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
               {filtered.map((r) => {
                 const meta = STOCK_LEVEL_META[r.level];
                 return (
-                  <tr key={r.id} className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/50 ${r.active ? "" : "opacity-55"}`}>
+                  <tr
+                    key={r.id}
+                    onClick={(e) => isRowClick(e) && setViewingId(r.id)}
+                    title="Bấm để xem đầy đủ thông tin"
+                    className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/50 cursor-pointer ${r.active ? "" : "opacity-55"}`}
+                  >
                     <td className="px-4 py-2.5 font-mono font-bold text-[#005BAC] whitespace-nowrap">{r.code}</td>
                     <td className="px-4 py-2.5 font-semibold text-slate-700">
                       {r.name}
@@ -475,6 +483,66 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
         </div>
       )}
 
+      {viewingId && rows.find((r) => r.id === viewingId) && (() => {
+        const r = rows.find((x) => x.id === viewingId)!;
+        const [vY, vM] = month.split("-");
+        return (
+          <AtldRowDetail
+            title={
+              <>
+                <span className="font-mono text-[#005BAC]">{r.code}</span> · {r.name}
+              </>
+            }
+            badges={
+              r.active ? (
+                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${STOCK_LEVEL_META[r.level].cls}`}>{STOCK_LEVEL_META[r.level].label}</span>
+              ) : (
+                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Ngừng dùng</span>
+              )
+            }
+            stats={[
+              { label: `Tồn đầu T${Number(vM)}/${vY}`, value: formatQty(r.tonDau) },
+              { label: "Nhập SP", value: formatQty(r.nhap), tone: "emerald" },
+              { label: "Xuất SP", value: formatQty(r.xuat), tone: "rose" },
+              { label: "Tồn cuối kỳ", value: formatQty(r.tonCuoi), tone: "blue" },
+            ]}
+            sections={[
+              {
+                title: "Thông tin sản phẩm",
+                tone: "blue",
+                fields: [
+                  { label: "Mã SP", value: r.code },
+                  { label: "Tên SP", value: r.name, strong: true },
+                  { label: "Size", value: r.size },
+                  { label: "Màu", value: r.color ? <ColorTag color={r.color} /> : null },
+                  { label: "ĐVT", value: r.unit },
+                  { label: "Tồn tối thiểu", value: r.min_stock > 0 ? formatQty(r.min_stock) : null },
+                  { label: "Giá nhập", value: r.gia_nhap == null ? null : `${formatMoney(r.gia_nhap)} đ` },
+                  { label: "Giá bán", value: r.gia_ban == null ? null : `${formatMoney(r.gia_ban)} đ` },
+                  { label: "Giá trị tồn cuối kỳ", value: `${formatMoney(r.giaTriCuoi)} đ` },
+                  { label: "NCC/PVT", value: r.ncc },
+                  { label: "Ghi chú", value: r.note, wide: true },
+                ],
+              },
+            ]}
+            actions={
+              canEdit && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewingId(null);
+                    setEditing(r);
+                  }}
+                  className={BTN_PRIMARY}
+                >
+                  <Pencil size={13} /> Sửa
+                </button>
+              )
+            }
+            onClose={() => setViewingId(null)}
+          />
+        );
+      })()}
       {editing && (
         <ItemModal
           item={editing === "new" ? null : editing}

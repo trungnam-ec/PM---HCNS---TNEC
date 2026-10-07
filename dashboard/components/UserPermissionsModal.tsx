@@ -104,6 +104,8 @@ const FLAG_GROUPS: { title: string; note?: string; flags: { key: string; label: 
       { key: "can_view_atld", label: "Xem module P. An toàn lao động", desc: "Vào được module: xem tồn kho, đơn giá, danh sách xuất – nhập, phiếu xuất. Không lập/duyệt được gì (Thủ kho / Duyệt xuất đã tự có quyền xem)" },
       { key: "can_manage_atld_stock", label: "Thủ kho ATLĐ", desc: "Tạo danh mục sản phẩm / đối tác, lập phiếu, ghi sổ phiếu nhập, gửi duyệt phiếu xuất" },
       { key: "can_approve_atld_issue", label: "Duyệt xuất kho ATLĐ", desc: "TP / PP ATLĐ: duyệt hoặc trả lại phiếu xuất, huỷ phiếu đã ghi sổ" },
+      { key: "can_input_atld_penalty", label: "Khấu trừ xử phạt — P.ATLĐ nhập", desc: "Tạo hồ sơ xử phạt, sửa thông tin đầu vào (số QĐ, dự án, nhà thầu, giá trị phải trừ…), xoá hồ sơ chưa trừ đồng nào. Không cần cờ Xem module — chỉ thấy tab Khấu trừ xử phạt" },
+      { key: "can_process_atld_penalty", label: "Khấu trừ xử phạt — P.KHĐT xử lý", desc: "Nhập thông tin đầu ra: ngày tiếp nhận, đợt thanh toán, giá trị đã khấu trừ, số chứng từ. Không cần cờ Xem module — chỉ thấy tab Khấu trừ xử phạt" },
     ],
   },
 ];

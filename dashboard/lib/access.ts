@@ -149,7 +149,8 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleDef> = {
     minPlan: "enterprise",
     route: "/an-toan-lao-dong",
     grantFlag: "canViewAtld",
-    altFlags: ["canManageAtldStock", "canApproveAtldIssue"],
+    // 2 cờ Khấu trừ xử phạt (139) cũng vào được module nhưng CHỈ thấy tab đó.
+    altFlags: ["canManageAtldStock", "canApproveAtldIssue", "canInputAtldPenalty", "canProcessAtldPenalty"],
     requireFlag: true,
   },
 };

@@ -17,25 +17,34 @@ import Header from "@/components/Header";
 import AtldItemCatalog from "@/components/atld/AtldItemCatalog";
 import AtldPriceTab from "@/components/atld/AtldPriceTab";
 import AtldIssueTab from "@/components/atld/AtldIssueTab";
+import AtldPenaltyTab from "@/components/atld/AtldPenaltyTab";
 import { fetchAtldAccess } from "@/lib/atldStock";
-import { Boxes, ReceiptText, Truck } from "lucide-react";
+import { fetchPenaltyAccess, NO_PENALTY_ACCESS } from "@/lib/atldPenalties";
+import { Boxes, ReceiptText, Truck, Gavel, Loader2 } from "lucide-react";
 
 // Tab "Đối tác" bỏ theo yêu cầu user 02/10/2026 (component AtldPartnerCatalog giữ
 // trong code, dữ liệu NCC còn nguyên). Lập + duyệt phiếu xuất ở tab "issues".
-type Tab = "items" | "prices" | "issues";
+type Tab = "items" | "prices" | "issues" | "penalties";
 
 const TABS: { key: Tab; label: string; icon: typeof Boxes }[] = [
   { key: "items", label: "Tổng Danh mục kho ATLĐ", icon: Boxes },
   { key: "prices", label: "Danh sách Quản lý Xuất-Nhập kho", icon: ReceiptText },
   { key: "issues", label: "Xuất kho cho BĐH/Đối tác", icon: Truck },
+  { key: "penalties", label: "Khấu trừ xử phạt", icon: Gavel },
 ];
 
 export default function SafetyWarehousePage() {
   const [tab, setTab] = useState<Tab>("items");
   const [access, setAccess] = useState({ keeper: false, approver: false });
+  // Tab Khấu trừ xử phạt (139): nhân sự KHĐT chỉ có cờ xử phạt -> không thấy 3 tab kho.
+  const [pen, setPen] = useState(NO_PENALTY_ACCESS);
+  const [ready, setReady] = useState(false);
 
   const loadAccess = useCallback(async () => {
-    setAccess(await fetchAtldAccess());
+    const [a, p] = await Promise.all([fetchAtldAccess(), fetchPenaltyAccess()]);
+    setAccess(a);
+    setPen(p);
+    setReady(true);
   }, []);
 
   useEffect(() => {
@@ -47,8 +56,14 @@ export default function SafetyWarehousePage() {
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (t === "prices" || t === "issues" || t === "items") setTab(t);
+    if (t === "prices" || t === "issues" || t === "items" || t === "penalties") setTab(t);
   }, []);
+
+  // Chỉ thấy tab mình có quyền. Trước khi chạy migration 139 thì hàm quyền xử phạt
+  // chưa có -> pen.stock = false; khi đó vẫn hiện 3 tab kho như cũ.
+  const showStock = pen.stock || !pen.view;
+  const tabs = TABS.filter((t) => (t.key === "penalties" ? pen.view : showStock));
+  const current: Tab = tabs.some((t) => t.key === tab) ? tab : tabs[0]?.key ?? "items";
 
   return (
     <div className="flex min-h-screen bg-[#F7F9FC]">
@@ -59,9 +74,9 @@ export default function SafetyWarehousePage() {
             max-w-7xl làm cột cuối bị cắt. */}
         <main className="flex-1 p-4 sm:p-6 space-y-4 w-full">
           <div className="inline-flex flex-wrap gap-1 p-1 bg-white border border-slate-200 rounded-xl">
-            {TABS.map((t) => {
+            {tabs.map((t) => {
               const Icon = t.icon;
-              const active = tab === t.key;
+              const active = current === t.key;
               return (
                 <button
                   key={t.key}
@@ -77,8 +92,13 @@ export default function SafetyWarehousePage() {
             })}
           </div>
 
-          {tab === "items" && <AtldItemCatalog canEdit={access.keeper} canApprove={access.approver} />}
-          {tab === "prices" && (
+          {!ready && (
+            <div className="flex items-center gap-2 py-10 justify-center text-slate-400 text-xs font-semibold">
+              <Loader2 size={16} className="animate-spin" /> Đang tải quyền…
+            </div>
+          )}
+          {ready && current === "items" && <AtldItemCatalog canEdit={access.keeper} canApprove={access.approver} />}
+          {ready && current === "prices" && (
             <AtldPriceTab
               canEdit={access.keeper}
               canEditRow={access.keeper || access.approver}
@@ -86,7 +106,8 @@ export default function SafetyWarehousePage() {
               onOpenIssues={() => setTab("issues")}
             />
           )}
-          {tab === "issues" && <AtldIssueTab canEdit={access.keeper} canApprove={access.approver} />}
+          {ready && current === "issues" && <AtldIssueTab canEdit={access.keeper} canApprove={access.approver} />}
+          {ready && current === "penalties" && <AtldPenaltyTab canInput={pen.input} canProcess={pen.process} />}
         </main>
       </div>
     </div>

@@ -142,7 +142,7 @@ export const cancelIssue = (id: string, reason: string) => rpc("atld_cancel_vouc
 export async function deleteIssueDraft(id: string): Promise<string | null> {
   const { data, error } = await supabase.from("atld_vouchers").delete().eq("id", id).select("id");
   if (error) return atldErrorMessage(error);
-  if (!data || data.length === 0) return "Không xoá được — chỉ xoá phiếu Nháp / Bị trả lại, và cần quyền Thủ kho ATLĐ.";
+  if (!data || data.length === 0) return "Không xoá được — chỉ xoá phiếu Nháp / Bị trả lại, và cần cờ Duyệt xuất kho ATLĐ (Thủ kho gửi yêu cầu xoá).";
   return null;
 }
 

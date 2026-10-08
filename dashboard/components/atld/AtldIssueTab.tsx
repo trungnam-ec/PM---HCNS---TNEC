@@ -14,7 +14,8 @@
 // ============================================================
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useConfirmBox } from "@/components/ConfirmDialog";
+import { useConfirmBox, useNoticeBox } from "@/components/ConfirmDialog";
+import { requestDelete, DELETE_REQUEST_SENT } from "@/lib/atldDeleteRequests";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { type AtldItem, fetchItems, fetchTradePrices, matchesQuery, formatMoney, formatQty } from "@/lib/atldStock";
 import { normalizeName } from "@/lib/approvers";
@@ -67,6 +68,7 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
   const [viewing, setViewing] = useState<IssueRow | null>(null);
   const actingRef = useRef(false);
   const { ask, confirmNode } = useConfirmBox();
+  const { notify, noticeNode } = useNoticeBox();
 
   const load = useCallback(async () => {
     const [it, iss, tp] = await Promise.all([fetchItems(), fetchIssueRows(), fetchTradePrices()]);
@@ -155,7 +157,20 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
   // Thủ kho xoá Nháp / Bị trả lại qua RLS; Admin + cờ Duyệt xuất xoá mọi trạng
   // thái trừ Đã duyệt qua hàm atld_delete_issue (128). Tệp chứng từ gốc xoá SAU
   // khi CSDL đã xoá xong phiếu.
-  const askDelete = (r: IssueRow, asApprover: boolean) =>
+  // Thủ kho KHÔNG có cờ Duyệt xuất: chỉ gửi yêu cầu xoá, TP/PP xác nhận mới xoá (142).
+  const askDelete = (r: IssueRow, asApprover: boolean) => {
+    if (!canApprove) {
+      return ask({
+        title: `Gửi yêu cầu xoá phiếu ${r.so_phieu}?`,
+        message: "TP/PP có cờ \"Duyệt xuất kho ATLĐ\" nhận thông báo trên chuông, xác nhận xong hệ thống mới xoá phiếu.",
+        confirmLabel: "Gửi yêu cầu xoá",
+        onConfirm: async () => {
+          setRowErr(null);
+          const e = await requestDelete("issue", r.id);
+          return e ? setRowErr(e) : notify(DELETE_REQUEST_SENT, "success");
+        },
+      });
+    }
     ask({
       title: `Xoá phiếu ${r.so_phieu}?`,
       message:
@@ -169,6 +184,7 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
           return e;
         }),
     });
+  };
 
   const toggle = (id: string) =>
     setExpanded((s) => {
@@ -566,6 +582,7 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
         />
       )}
       {confirmNode}
+      {noticeNode}
     </div>
   );
 }

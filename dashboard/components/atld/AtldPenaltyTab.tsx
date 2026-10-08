@@ -29,7 +29,8 @@ import { foldVi } from "@/lib/financePartners";
 import AtldPartnerPicker from "@/components/atld/AtldPartnerPicker";
 import AtldPersonPicker from "@/components/atld/AtldPersonPicker";
 import { BTN_OUTLINE, BTN_PRIMARY, CONTROL_BOX } from "@/components/atld/ui";
-import { useConfirmBox } from "@/components/ConfirmDialog";
+import { useConfirmBox, useNoticeBox } from "@/components/ConfirmDialog";
+import { requestDelete, DELETE_REQUEST_SENT } from "@/lib/atldDeleteRequests";
 import { normalizeName } from "@/lib/approvers";
 
 type Row = Penalty & { status: PenaltyStatus; days: number | null; alert: PenaltyAlert; haystack: string };
@@ -46,7 +47,8 @@ const ROW_BG: Record<Exclude<PenaltyAlert, null>, string> = {
   da: "bg-emerald-50/50 hover:bg-emerald-50",
 };
 
-export default function AtldPenaltyTab({ canInput, canProcess }: { canInput: boolean; canProcess: boolean }) {
+// canApprove = cờ "Duyệt xuất kho ATLĐ" / Admin: xoá thẳng; không có thì Xoá chỉ gửi yêu cầu (142).
+export default function AtldPenaltyTab({ canInput, canProcess, canApprove }: { canInput: boolean; canProcess: boolean; canApprove: boolean }) {
   const [items, setItems] = useState<Penalty[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +62,7 @@ export default function AtldPenaltyTab({ canInput, canProcess }: { canInput: boo
   // Icon mắt ở cột Số QĐ / Số chứng từ -> popup xem tệp.
   const [fileOf, setFileOf] = useState<{ id: string; kind: PenaltyDoc } | null>(null);
   const { ask, confirmNode } = useConfirmBox();
+  const { notify, noticeNode } = useNoticeBox();
 
   const load = useCallback(async () => {
     const r = await fetchPenalties();
@@ -126,6 +129,19 @@ export default function AtldPenaltyTab({ canInput, canProcess }: { canInput: boo
   }, [rows]);
 
   function remove(r: Row) {
+    if (!canApprove) {
+      return ask({
+        title: `Gửi yêu cầu xoá hồ sơ ${r.ma_ho_so}?`,
+        message: "TP/PP có cờ \"Duyệt xuất kho ATLĐ\" nhận thông báo trên chuông, xác nhận xong hệ thống mới xoá hồ sơ.",
+        confirmLabel: "Gửi yêu cầu xoá",
+        onConfirm: async () => {
+          setRowErr(null);
+          setViewingId(null);
+          const e = await requestDelete("penalty", r.id);
+          return e ? setRowErr(`${r.ma_ho_so}: ${e}`) : notify(DELETE_REQUEST_SENT, "success");
+        },
+      });
+    }
     ask({
       title: `Xoá hồ sơ ${r.ma_ho_so}?`,
       message:
@@ -354,6 +370,7 @@ export default function AtldPenaltyTab({ canInput, canProcess }: { canInput: boo
         />
       )}
       {confirmNode}
+      {noticeNode}
     </div>
   );
 }

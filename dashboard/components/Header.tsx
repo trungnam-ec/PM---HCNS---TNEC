@@ -999,8 +999,39 @@ export default function Header({ title, subtitle }: Props) {
         console.warn("Could not fetch ATLĐ vouchers for header:", err);
       }
 
+      // Yêu cầu xoá ở P. An toàn lao động (migration 142, user yêu cầu 08/10/2026):
+      // Thủ kho / NV nhập xử phạt bấm Xoá -> chờ người có cờ "Duyệt xuất kho ATLĐ"
+      // (và Admin) xác nhận. Bấm chuông mở popup đúng yêu cầu.
+      let mappedAtldDel: any[] = [];
+      if (isUserAdmin || perms.canApproveAtldIssue) {
+        try {
+          const { data, error } = await supabase
+            .from("atld_delete_requests")
+            .select("id, title, requested_by, requested_by_name, requested_at")
+            .eq("status", "pending");
+          if (error) {
+            // Chưa chạy migration 142 thì bảng chưa có — chuông các mục khác vẫn chạy.
+            console.warn("[Header] Không đọc được yêu cầu xoá ATLĐ cho chuông:", error.message);
+          } else {
+            mappedAtldDel = (data || []).map((d: any) => ({
+              id: d.id,
+              type: "atld_del",
+              typeText: "Yêu cầu xoá ATLĐ",
+              message: `${d.title} — ${d.requested_by_name || d.requested_by} đề nghị xoá, chờ xác nhận`,
+              time: d.requested_at
+                ? new Date(d.requested_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) +
+                  " " + new Date(d.requested_at).toLocaleDateString("vi-VN")
+                : "",
+              timestamp: d.requested_at ? new Date(d.requested_at).getTime() : 0,
+            }));
+          }
+        } catch (err) {
+          console.warn("Could not fetch ATLĐ delete requests for header:", err);
+        }
+      }
+
       // Combine and sort by timestamp descending
-      const allNotifications = [...mappedTasks, ...mappedJustifications, ...mappedBookings, ...mappedBenefitClaims, ...mappedVppRequests, ...mappedSigning, ...mappedAtld, ...mappedNotes, ...mappedComments, ...mappedAttendeeBookings].sort((a, b) => b.timestamp - a.timestamp);
+      const allNotifications = [...mappedTasks, ...mappedJustifications, ...mappedBookings, ...mappedBenefitClaims, ...mappedVppRequests, ...mappedSigning, ...mappedAtld, ...mappedAtldDel, ...mappedNotes, ...mappedComments, ...mappedAttendeeBookings].sort((a, b) => b.timestamp - a.timestamp);
       setNotifications(allNotifications);
     } catch (err) {
       console.error("Error fetching notifications for header:", err);
@@ -1111,6 +1142,13 @@ export default function Header({ title, subtitle }: Props) {
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "atld_vouchers" },
+          () => {
+            fetchNotifications(currentUser);
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "atld_delete_requests" },
           () => {
             fetchNotifications(currentUser);
           }
@@ -1228,6 +1266,9 @@ export default function Header({ title, subtitle }: Props) {
                           : notif.type === "atld"
                           // Mở thẳng P. An toàn lao động > tab Xuất kho cho BĐH/Đối tác
                           ? "/an-toan-lao-dong?tab=issues"
+                          : notif.type === "atld_del"
+                          // Mở popup xác nhận / không xoá của đúng yêu cầu
+                          ? `/an-toan-lao-dong?delReq=${notif.id}`
                           : notif.type === "leave"
                           ? "/settings?tab=approvals&subtab=leave"
                           : notif.type === "trip"
@@ -1256,6 +1297,8 @@ export default function Header({ title, subtitle }: Props) {
                             ? "bg-amber-50 text-amber-700"
                             : notif.type === "atld"
                             ? "bg-orange-50 text-orange-700"
+                            : notif.type === "atld_del"
+                            ? "bg-rose-50 text-rose-700"
                             : notif.type === "comment"
                             // Xanh dương nhạt — cùng tông với nút "Gửi ý kiến"
                             ? "bg-blue-50 text-blue-700"

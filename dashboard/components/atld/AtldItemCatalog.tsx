@@ -13,7 +13,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useConfirmBox } from "@/components/ConfirmDialog";
+import { useConfirmBox, useNoticeBox } from "@/components/ConfirmDialog";
+import { requestDelete, DELETE_REQUEST_SENT } from "@/lib/atldDeleteRequests";
 import AtldItemImport from "@/components/atld/AtldItemImport";
 import ColorTag from "@/components/atld/ColorTag";
 import { BTN_OUTLINE, BTN_PRIMARY, CONTROL_BOX } from "@/components/atld/ui";
@@ -106,6 +107,7 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
   // Bấm vào dòng -> popup xem đủ thông tin mã (màn hình nhỏ không phải cuộn ngang).
   const [viewingId, setViewingId] = useState<string | null>(null);
   const { ask, confirmNode } = useConfirmBox();
+  const { notify, noticeNode } = useNoticeBox();
 
   const load = useCallback(async () => {
     const { from, to } = monthRange(month);
@@ -188,12 +190,20 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
       },
     });
 
+  // Không có cờ Duyệt xuất: bấm Xoá chỉ gửi yêu cầu, TP/PP xác nhận mới xoá (142).
   const remove = (r: Row) =>
     ask({
-      title: `Xoá mã ${r.code}?`,
-      message: "Chỉ xoá được mã CHƯA từng có trong phiếu kho. Mã đã dùng thì chuyển sang \"Ngừng dùng\".",
+      title: canApprove ? `Xoá mã ${r.code}?` : `Gửi yêu cầu xoá mã ${r.code}?`,
+      message: canApprove
+        ? "Chỉ xoá được mã CHƯA từng có trong phiếu kho. Mã đã dùng thì chuyển sang \"Ngừng dùng\"."
+        : "TP/PP có cờ \"Duyệt xuất kho ATLĐ\" nhận thông báo trên chuông, xác nhận xong hệ thống mới xoá. Chỉ xoá được mã CHƯA từng có trong phiếu kho.",
+      confirmLabel: canApprove ? "Xoá" : "Gửi yêu cầu xoá",
       onConfirm: async () => {
         setRowErr(null);
+        if (!canApprove) {
+          const err = await requestDelete("item", r.id);
+          return err ? setRowErr(err) : notify(DELETE_REQUEST_SENT, "success");
+        }
         const err = await deleteItem(r.id);
         if (err) return setRowErr(err);
         load();
@@ -559,6 +569,7 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
         />
       )}
       {confirmNode}
+      {noticeNode}
     </div>
   );
 }

@@ -18,6 +18,7 @@ import AtldItemCatalog from "@/components/atld/AtldItemCatalog";
 import AtldPriceTab from "@/components/atld/AtldPriceTab";
 import AtldIssueTab from "@/components/atld/AtldIssueTab";
 import AtldPenaltyTab from "@/components/atld/AtldPenaltyTab";
+import AtldDeleteRequestModal from "@/components/atld/AtldDeleteRequestModal";
 import { fetchAtldAccess } from "@/lib/atldStock";
 import { fetchPenaltyAccess, NO_PENALTY_ACCESS } from "@/lib/atldPenalties";
 import { Boxes, ReceiptText, Truck, Gavel, Loader2 } from "lucide-react";
@@ -39,6 +40,10 @@ export default function SafetyWarehousePage() {
   // Tab Khấu trừ xử phạt (139): nhân sự KHĐT chỉ có cờ xử phạt -> không thấy 3 tab kho.
   const [pen, setPen] = useState(NO_PENALTY_ACCESS);
   const [ready, setReady] = useState(false);
+  // Yêu cầu xoá chờ TP/PP duyệt (142): chuông mở ?delReq=<id>. reloadKey dựng lại
+  // tab đang xem sau khi xoá để bảng không còn dòng đã xoá.
+  const [delReq, setDelReq] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const loadAccess = useCallback(async () => {
     const [a, p] = await Promise.all([fetchAtldAccess(), fetchPenaltyAccess()]);
@@ -57,7 +62,15 @@ export default function SafetyWarehousePage() {
     const t = new URLSearchParams(window.location.search).get("tab");
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (t === "prices" || t === "issues" || t === "items" || t === "penalties") setTab(t);
+    setDelReq(new URLSearchParams(window.location.search).get("delReq"));
   }, []);
+
+  const closeDelReq = () => {
+    setDelReq(null);
+    const u = new URL(window.location.href);
+    u.searchParams.delete("delReq");
+    window.history.replaceState(null, "", u.toString());
+  };
 
   // Chỉ thấy tab mình có quyền. Trước khi chạy migration 139 thì hàm quyền xử phạt
   // chưa có -> pen.stock = false; khi đó vẫn hiện 3 tab kho như cũ.
@@ -97,17 +110,29 @@ export default function SafetyWarehousePage() {
               <Loader2 size={16} className="animate-spin" /> Đang tải quyền…
             </div>
           )}
-          {ready && current === "items" && <AtldItemCatalog canEdit={access.keeper} canApprove={access.approver} />}
+          {ready && current === "items" && <AtldItemCatalog key={reloadKey} canEdit={access.keeper} canApprove={access.approver} />}
           {ready && current === "prices" && (
             <AtldPriceTab
+              key={reloadKey}
               canEdit={access.keeper}
               canEditRow={access.keeper || access.approver}
               canDelete={access.approver}
               onOpenIssues={() => setTab("issues")}
             />
           )}
-          {ready && current === "issues" && <AtldIssueTab canEdit={access.keeper} canApprove={access.approver} />}
-          {ready && current === "penalties" && <AtldPenaltyTab canInput={pen.input} canProcess={pen.process} />}
+          {ready && current === "issues" && <AtldIssueTab key={reloadKey} canEdit={access.keeper} canApprove={access.approver} />}
+          {ready && current === "penalties" && <AtldPenaltyTab key={reloadKey} canInput={pen.input} canProcess={pen.process} canApprove={access.approver} />}
+          {ready && delReq && (
+            <AtldDeleteRequestModal
+              id={delReq}
+              canApprove={access.approver}
+              onClose={closeDelReq}
+              onDone={() => {
+                closeDelReq();
+                setReloadKey((k) => k + 1);
+              }}
+            />
+          )}
         </main>
       </div>
     </div>

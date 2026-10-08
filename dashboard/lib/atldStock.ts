@@ -325,7 +325,7 @@ export async function setItemActive(id: string, active: boolean): Promise<string
 export async function deleteItem(id: string): Promise<string | null> {
   return writeChecked(
     () => supabase.from("atld_items").delete().eq("id", id).select("id"),
-    "Không xoá được — tài khoản chưa có quyền Thủ kho ATLĐ."
+    "Không xoá được — xoá thẳng cần cờ Duyệt xuất kho ATLĐ (Thủ kho gửi yêu cầu xoá)."
   );
 }
 

@@ -154,7 +154,7 @@ export async function updatePenalty(id: string, input: PenaltyInput | null, outp
 export async function deletePenalty(id: string): Promise<string | null> {
   const { data, error } = await supabase.from("atld_penalties").delete().eq("id", id).select("id");
   if (error) return penaltyError(error);
-  if (!data || (data as unknown[]).length === 0) return "Không xoá được — chỉ P.ATLĐ (cờ nhập hồ sơ xử phạt) và Admin xoá được.";
+  if (!data || (data as unknown[]).length === 0) return "Không xoá được — xoá thẳng cần cờ nhập hồ sơ xử phạt (P.ATLĐ) kèm cờ Duyệt xuất kho ATLĐ, hoặc Admin.";
   return null;
 }
 

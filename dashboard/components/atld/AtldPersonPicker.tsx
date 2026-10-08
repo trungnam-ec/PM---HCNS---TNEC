@@ -41,10 +41,12 @@ export default function AtldPersonPicker({
   bdh,
   value,
   onChange,
+  allowFree = true,
 }: {
   bdh: string;                       // Ban điều hành đang chọn trên phiếu ("" = chưa chọn)
   value: string;
   onChange: (name: string) => void;
+  allowFree?: boolean;               // false = CHỈ chọn trong danh bạ nhân viên (ô Người lập)
 }) {
   const [people, setPeople] = useState<Person[]>([]);
   const [search, setSearch] = useState("");
@@ -112,7 +114,11 @@ export default function AtldPersonPicker({
           <span className="flex-1 min-w-0">
             <span className="block text-xs font-bold text-slate-800 truncate">{value}</span>
             <span className="block text-[10px] font-semibold text-slate-400 truncate">
-              {selected ? [selected.role, selected.department].filter(Boolean).join(" • ") : "Tên gõ tay — không có trong danh bạ nhân viên"}
+              {selected
+                ? [selected.role, selected.department].filter(Boolean).join(" • ")
+                : allowFree
+                  ? "Tên gõ tay — không có trong danh bạ nhân viên"
+                  : "Không có trong danh bạ nhân viên — bấm × để chọn lại"}
             </span>
           </span>
           <button
@@ -122,8 +128,8 @@ export default function AtldPersonPicker({
               setSearch("");
               setOpen(true);
             }}
-            title="Chọn người nhận khác"
-            aria-label="Chọn người nhận khác"
+            title="Chọn người khác"
+            aria-label="Chọn người khác"
             className="p-1 text-slate-300 hover:text-rose-500 rounded-lg transition-colors cursor-pointer shrink-0"
           >
             <X size={13} />
@@ -140,7 +146,7 @@ export default function AtldPersonPicker({
               setOpen(true);
             }}
             onFocus={() => setOpen(true)}
-            placeholder={bdh ? `Tìm nhân viên ${bdh} hoặc gõ tên…` : "Tìm nhân viên hoặc gõ tên…"}
+            placeholder={!allowFree ? "Tìm nhân viên…" : bdh ? `Tìm nhân viên ${bdh} hoặc gõ tên…` : "Tìm nhân viên hoặc gõ tên…"}
             className="flex-1 min-w-0 py-0.5 outline-none text-xs font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-400 bg-transparent"
           />
         </div>
@@ -165,7 +171,7 @@ export default function AtldPersonPicker({
             </>
           )}
 
-          {search.trim() && ![...inBdh, ...others].some((p) => foldVi(p.name) === foldVi(search)) && (
+          {allowFree && search.trim() && ![...inBdh, ...others].some((p) => foldVi(p.name) === foldVi(search)) && (
             <button
               type="button"
               onClick={() => pick(search.trim())}

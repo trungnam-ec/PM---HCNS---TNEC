@@ -61,7 +61,8 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [issueModal, setIssueModal] = useState<{ id: string | null } | null>(null);
+  // approver = TP/PP / Admin sửa nội dung ghi nhầm (145) — kể cả phiếu đã duyệt.
+  const [issueModal, setIssueModal] = useState<{ id: string | null; approver?: boolean } | null>(null);
   const [reasonBox, setReasonBox] = useState<{ mode: "return" | "cancel"; row: IssueRow } | null>(null);
   const [previewRow, setPreviewRow] = useState<IssueRow | null>(null);
   const [originalRow, setOriginalRow] = useState<IssueRow | null>(null);
@@ -381,6 +382,9 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
                           {canApprove && r.status === "posted" && (
                             <IconAct title="Huỷ phiếu (cộng lại kho)" danger onClick={() => setReasonBox({ mode: "cancel", row: r })}><XCircle size={13} /></IconAct>
                           )}
+                          {canApprove && r.status !== "cancelled" && !canKeeper && (
+                            <IconAct title="Sửa nội dung (TP/PP)" onClick={() => setIssueModal({ id: r.id, approver: true })}><Pencil size={13} /></IconAct>
+                          )}
                           {canApprove && r.status !== "posted" && !canKeeper && (
                             <IconAct title="Xoá phiếu" danger onClick={() => askDelete(r, true)}><Trash2 size={13} /></IconAct>
                           )}
@@ -471,9 +475,15 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
                 { label: "Phí vận chuyển", value: viewing.phi_van_chuyen ? `${formatMoney(viewing.phi_van_chuyen)} đ` : null },
                 { label: "Người lập", value: viewing.created_by_name || viewing.created_by },
                 { label: "Người duyệt", value: viewing.approved_by },
+                {
+                  label: "Sửa nội dung sau",
+                  value: viewing.edited_by
+                    ? `${viewing.edited_by} · ${new Date(viewing.edited_at || "").toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" })}`
+                    : null,
+                },
                 { label: "Lý do trả lại", value: viewing.return_reason, wide: true },
                 { label: "Lý do huỷ", value: viewing.cancel_reason, wide: true },
-              ].filter((f) => !(f.label.startsWith("Lý do") && !f.value)),
+              ].filter((f) => !((f.label.startsWith("Lý do") || f.label === "Sửa nội dung sau") && !f.value)),
             },
           ]}
           actions={
@@ -513,6 +523,19 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
                   className={BTN_PRIMARY}
                 >
                   <Pencil size={13} /> Sửa phiếu
+                </button>
+              )}
+              {canApprove && viewing.status !== "cancelled" && !(canEdit && (viewing.status === "draft" || viewing.status === "returned")) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = viewing.id;
+                    setViewing(null);
+                    setIssueModal({ id, approver: true });
+                  }}
+                  className={BTN_PRIMARY}
+                >
+                  <Pencil size={13} /> Sửa nội dung
                 </button>
               )}
             </>
@@ -555,6 +578,7 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
           items={items}
           lastSalePrice={lastSalePrice}
           voucherId={issueModal.id}
+          approverEdit={!!issueModal.approver}
           actorName={me.name || me.email}
           onClose={() => setIssueModal(null)}
           onSaved={() => {

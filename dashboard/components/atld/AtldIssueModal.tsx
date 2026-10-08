@@ -9,6 +9,10 @@
 // tồn từng mã), hiện TỒN HIỆN TẠI, cảnh báo đỏ khi xuất vượt tồn.
 // Đơn giá = GIÁ BÁN (gợi ý sẵn giá xuất gần nhất của mã). Kho CHỈ bị trừ khi TP/PP
 // duyệt — "Lưu nháp" và "Gửi duyệt" đều chưa đụng tồn.
+//
+// approverEdit (migration 145): TP/PP có cờ Duyệt xuất + Admin sửa nội dung ghi nhầm
+// ở mọi trạng thái trừ Đã huỷ — thông tin phiếu + đơn giá bán. Ngày, mã SP, số
+// lượng khoá (gắn với sổ kho): muốn đổi thì Huỷ phiếu rồi lập lại.
 // ============================================================
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -23,6 +27,7 @@ import {
   fetchIssueVoucher,
   fetchSharedPartners,
   saveIssueVoucher,
+  editIssueAsApprover,
   submitIssue,
   notifyIssue,
 } from "@/lib/atldVouchers";
@@ -32,7 +37,7 @@ import AtldItemPicker from "@/components/atld/AtldItemPicker";
 import AtldPersonPicker from "@/components/atld/AtldPersonPicker";
 import { X, Plus, Trash2, Loader2, AlertCircle, AlertTriangle, Send, Save } from "lucide-react";
 
-type LineDraft = { key: number; code: string; qty: string; price: string };
+type LineDraft = { key: number; code: string; qty: string; price: string; lineNo?: number };
 
 const todayVN = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date());
 const toNum = (v: string) => Number(String(v).replace(/[.\s]/g, "").replace(",", "."));
@@ -42,6 +47,7 @@ export default function AtldIssueModal({
   lastSalePrice,
   voucherId,
   actorName,
+  approverEdit = false,
   onClose,
   onSaved,
 }: {
@@ -49,6 +55,7 @@ export default function AtldIssueModal({
   lastSalePrice: Map<string, number>; // item_id -> giá xuất gần nhất (gợi ý)
   voucherId: string | null;           // null = tạo mới
   actorName: string;
+  approverEdit?: boolean;             // người duyệt sửa nội dung (145)
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -67,6 +74,7 @@ export default function AtldIssueModal({
   const [vat, setVat] = useState("0");
   const [ship, setShip] = useState("0");
   const [ghiChu, setGhiChu] = useState("");
+  const [nguoiLap, setNguoiLap] = useState(""); // chỉ sửa ở chế độ approverEdit (146)
   const [lines, setLines] = useState<LineDraft[]>([{ key: 1, code: "", qty: "", price: "" }]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -101,12 +109,14 @@ export default function AtldIssueModal({
           setVat(String(voucher.vat_percent || 0));
           setShip(String(voucher.phi_van_chuyen || 0));
           setGhiChu(voucher.ghi_chu);
+          setNguoiLap(voucher.created_by_name);
           setLines(
             voucher.lines.map((l, i) => ({
               key: i + 1,
               code: byId.get(l.item_id)?.code || "",
               qty: String(l.qty),
               price: l.sale_price == null ? "" : String(l.sale_price),
+              lineNo: l.line_no,
             }))
           );
           nextKey.current = voucher.lines.length + 1;
@@ -174,7 +184,7 @@ export default function AtldIssueModal({
       vat_percent: vatNum,
       phi_van_chuyen: shipNum,
       ghi_chu: ghiChu,
-      lines: used.map((r) => ({ item_id: (r.item as AtldItem).id, qty: r.qty, sale_price: r.price })),
+      lines: used.map((r) => ({ item_id: (r.item as AtldItem).id, qty: r.qty, sale_price: r.price, line_no: r.lineNo })),
     };
   }
 
@@ -186,6 +196,13 @@ export default function AtldIssueModal({
     busyRef.current = true;
     setBusy(true);
     setErr("");
+    if (approverEdit && voucherId) {
+      const e = await editIssueAsApprover(voucherId, input, nguoiLap);
+      busyRef.current = false;
+      setBusy(false);
+      if (e) return setErr(e);
+      return onSaved();
+    }
     const { id, error } = await saveIssueVoucher(input, voucherId || undefined);
     if (error || !id) {
       busyRef.current = false;
@@ -233,7 +250,9 @@ export default function AtldIssueModal({
       >
         <div className="flex items-center gap-2">
           <h2 className="font-heading font-extrabold text-sm text-slate-800 flex-1">
-            {voucherId ? `Sửa phiếu xuất kho ${orig?.so_phieu || ""}` : "Tạo phiếu xuất kho"}
+            {approverEdit
+              ? `Sửa nội dung phiếu ${orig?.so_phieu || ""}`
+              : voucherId ? `Sửa phiếu xuất kho ${orig?.so_phieu || ""}` : "Tạo phiếu xuất kho"}
           </h2>
           <button type="button" onClick={onClose} disabled={busy} className="text-slate-400 hover:text-rose-500 cursor-pointer" aria-label="Đóng">
             <X size={18} />
@@ -256,7 +275,14 @@ export default function AtldIssueModal({
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <label className="block space-y-1">
                 <span className={label}>Ngày xuất *</span>
-                <input type="date" value={ngay} onChange={(e) => setNgay(e.target.value)} className={inputCls} />
+                <input
+                  type="date"
+                  value={ngay}
+                  onChange={(e) => setNgay(e.target.value)}
+                  disabled={approverEdit}
+                  title={approverEdit ? "Ngày nằm trong số phiếu và sổ kho — muốn đổi thì Huỷ phiếu rồi lập lại" : undefined}
+                  className={`${inputCls} disabled:opacity-60`}
+                />
               </label>
               <div className="space-y-1 col-span-2 lg:col-span-3">
                 <span className={label}>Khách hàng</span>
@@ -288,6 +314,12 @@ export default function AtldIssueModal({
                 <span className={label}>Báo giá / HĐ</span>
                 <input value={chungTu} onChange={(e) => setChungTu(e.target.value)} className={inputCls} />
               </label>
+              {approverEdit && (
+                <div className="space-y-1 col-span-2">
+                  <span className={label}>Người lập</span>
+                  <AtldPersonPicker bdh="" value={nguoiLap} onChange={setNguoiLap} allowFree={false} />
+                </div>
+              )}
             </div>
 
             {/* ── Dòng hàng ── */}
@@ -312,7 +344,11 @@ export default function AtldIssueModal({
                       <tr key={r.key} className="border-t border-slate-100 align-middle">
                         <td className="py-1.5 px-2 text-slate-400">{i + 1}</td>
                         <td className="py-1.5 px-2">
-                          <AtldItemPicker items={activeItems} stock={stock} value={r.code} onChange={(code) => setLine(r.key, { code })} />
+                          {approverEdit ? (
+                            <span className="font-bold text-[#005BAC]">{r.code}</span>
+                          ) : (
+                            <AtldItemPicker items={activeItems} stock={stock} value={r.code} onChange={(code) => setLine(r.key, { code })} />
+                          )}
                         </td>
                         <td className="py-1.5 px-2 font-semibold text-slate-700">
                           {r.item ? (
@@ -336,7 +372,8 @@ export default function AtldIssueModal({
                             inputMode="decimal"
                             value={lines[i].qty}
                             onChange={(e) => setLine(r.key, { qty: e.target.value })}
-                            className={`${inputCls} text-right tabular-nums ${over ? "border-rose-300" : ""}`}
+                            disabled={approverEdit}
+                            className={`${inputCls} text-right tabular-nums disabled:opacity-60 ${over && !approverEdit ? "border-rose-300" : ""}`}
                           />
                         </td>
                         <td className="py-1.5 px-2">
@@ -352,21 +389,21 @@ export default function AtldIssueModal({
                           {Number.isFinite(r.qty) && r.price != null && Number.isFinite(r.price) && r.qty > 0 ? formatMoney(r.qty * r.price) : "—"}
                         </td>
                         <td className="py-1.5 px-2">
-                          <button
+                          {!approverEdit && <button
                             type="button"
                             onClick={() => setLines((ls) => (ls.length > 1 ? ls.filter((l) => l.key !== r.key) : ls))}
                             className="p-1.5 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
                             aria-label="Xoá dòng"
                           >
                             <Trash2 size={13} />
-                          </button>
+                          </button>}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-              <div className="px-2 py-2 border-t border-slate-100">
+              {!approverEdit && <div className="px-2 py-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setLines((ls) => [...ls, { key: nextKey.current++, code: "", qty: "", price: "" }])}
@@ -374,10 +411,10 @@ export default function AtldIssueModal({
                 >
                   <Plus size={13} /> Thêm dòng hàng
                 </button>
-              </div>
+              </div>}
             </div>
 
-            {[...needByItem.entries()].some(([id, q]) => q > (stock.get(id) ?? 0)) && (
+            {!approverEdit && [...needByItem.entries()].some(([id, q]) => q > (stock.get(id) ?? 0)) && (
               <p className="flex items-start gap-1.5 text-[11px] font-semibold text-rose-600">
                 <AlertTriangle size={13} className="mt-0.5 shrink-0" /> Có mã xuất vượt tồn hiện tại (số đỏ) — lưu nháp được nhưng sẽ không gửi duyệt được.
               </p>
@@ -417,16 +454,28 @@ export default function AtldIssueModal({
           </p>
         )}
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <span className="mr-auto text-[11px] text-slate-400">Kho chỉ bị trừ khi TP/PP ATLĐ duyệt phiếu.</span>
+          <span className="mr-auto text-[11px] text-slate-400">
+            {approverEdit
+              ? "Ngày, mã SP, số lượng không đổi được — muốn đổi thì Huỷ phiếu rồi lập lại."
+              : "Kho chỉ bị trừ khi TP/PP ATLĐ duyệt phiếu."}
+          </span>
           <button type="button" onClick={onClose} disabled={busy} className="text-[11px] font-bold text-slate-500 px-3 py-2 rounded-lg hover:bg-slate-100 cursor-pointer">
             Huỷ
           </button>
-          <button type="button" onClick={() => save(false)} disabled={busy || loading} className={BTN_OUTLINE}>
-            <Save size={14} /> Lưu nháp
-          </button>
-          <button type="button" onClick={() => save(true)} disabled={busy || loading} className={BTN_PRIMARY}>
-            {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Lưu &amp; gửi duyệt
-          </button>
+          {approverEdit ? (
+            <button type="button" onClick={() => save(false)} disabled={busy || loading} className={BTN_PRIMARY}>
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Lưu thay đổi
+            </button>
+          ) : (
+            <>
+              <button type="button" onClick={() => save(false)} disabled={busy || loading} className={BTN_OUTLINE}>
+                <Save size={14} /> Lưu nháp
+              </button>
+              <button type="button" onClick={() => save(true)} disabled={busy || loading} className={BTN_PRIMARY}>
+                {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Lưu &amp; gửi duyệt
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>,

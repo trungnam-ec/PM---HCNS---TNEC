@@ -14,7 +14,7 @@
 import { supabase } from "./supabase";
 import { apiFetch } from "./apiClient";
 import { type AtldItem, atldErrorMessage } from "./atldStock";
-import { emailFieldMatches } from "./emailMatch";
+import { emailFieldMatches, pickRowByEmail } from "./emailMatch";
 
 export type IssueStatus = "draft" | "pending" | "returned" | "posted" | "cancelled";
 
@@ -26,7 +26,7 @@ export const ISSUE_STATUS_META: Record<IssueStatus, { label: string; cls: string
   cancelled: { label: "Đã huỷ", cls: "bg-slate-200 text-slate-500 line-through" },
 };
 
-export type IssueLineInput = { item_id: string; qty: number; sale_price: number | null };
+export type IssueLineInput = { item_id: string; qty: number; sale_price: number | null; line_no?: number };
 
 export type IssueInput = {
   ngay: string;
@@ -43,7 +43,7 @@ export type IssueInput = {
   lines: IssueLineInput[];
 };
 
-export type IssueVoucher = IssueInput & { id: string; so_phieu: string; status: IssueStatus; created_by: string | null; return_reason: string | null };
+export type IssueVoucher = IssueInput & { id: string; so_phieu: string; status: IssueStatus; created_by: string | null; created_by_name: string; return_reason: string | null };
 
 export type SharedPartner = { id: string; name: string; short_name: string | null; party_type: string };
 
@@ -67,6 +67,7 @@ export async function fetchIssueVoucher(id: string): Promise<{ voucher: IssueVou
       so_phieu: String(r.so_phieu || ""),
       status: r.status as IssueStatus,
       created_by: (r.created_by as string) || null,
+      created_by_name: (r.created_by_name as string) || "",
       return_reason: (r.return_reason as string) || null,
       ngay: String(r.ngay),
       contractor_id: (r.contractor_id as string) || null,
@@ -79,10 +80,11 @@ export async function fetchIssueVoucher(id: string): Promise<{ voucher: IssueVou
       vat_percent: Number(r.vat_percent) || 0,
       phi_van_chuyen: Number(r.phi_van_chuyen) || 0,
       ghi_chu: (r.ghi_chu as string) || "",
-      lines: ((ls as { item_id: string; qty: number; sale_price: number | null }[]) || []).map((l) => ({
+      lines: ((ls as { item_id: string; qty: number; sale_price: number | null; line_no: number }[]) || []).map((l) => ({
         item_id: l.item_id,
         qty: Number(l.qty),
         sale_price: l.sale_price == null ? null : Number(l.sale_price),
+        line_no: l.line_no,
       })),
     },
     error: null,
@@ -91,6 +93,20 @@ export async function fetchIssueVoucher(id: string): Promise<{ voucher: IssueVou
 
 // Lưu phiếu (tạo mới hoặc sửa phiếu Nháp / Bị trả lại). Dòng hàng thay toàn bộ:
 // xoá dòng cũ rồi chèn lại — RLS chỉ cho làm khi phiếu còn sửa được.
+// Họ tên Người lập: lấy từ danh bạ nhân viên theo email đăng nhập (khớp TUYỆT ĐỐI),
+// không lấy tên tài khoản Google — tên Google là biệt danh người dùng tự đặt
+// (VD "Niềm vui mỗi ngày Hữu Dư"). Không có trong danh bạ mới lùi về tên Google.
+async function myEmployeeName(): Promise<string | null> {
+  const { data: me } = await supabase.auth.getUser();
+  const email = me.user?.email || "";
+  if (email) {
+    const { data } = await supabase.from("employees_directory").select("name, email").ilike("email", `%${email}%`);
+    const name = pickRowByEmail(data as { name: string; email: string | null }[] | null, email).row?.name?.trim();
+    if (name) return name;
+  }
+  return (me.user?.user_metadata?.full_name as string) || null;
+}
+
 export async function saveIssueVoucher(input: IssueInput, id?: string): Promise<{ id: string | null; error: string | null }> {
   const header = {
     ngay: input.ngay,
@@ -113,10 +129,9 @@ export async function saveIssueVoucher(input: IssueInput, id?: string): Promise<
     const { error: ed } = await supabase.from("atld_voucher_lines").delete().eq("voucher_id", vid);
     if (ed) return { id: null, error: atldErrorMessage(ed) };
   } else {
-    const { data: me } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from("atld_vouchers")
-      .insert({ ...header, loai: "xuat", created_by_name: (me.user?.user_metadata?.full_name as string) || null })
+      .insert({ ...header, loai: "xuat", created_by_name: await myEmployeeName() })
       .select("id")
       .single();
     if (error || !data) return { id: null, error: atldErrorMessage(error) };
@@ -144,6 +159,33 @@ export async function deleteIssueDraft(id: string): Promise<string | null> {
   if (error) return atldErrorMessage(error);
   if (!data || data.length === 0) return "Không xoá được — chỉ xoá phiếu Nháp / Bị trả lại, và cần cờ Duyệt xuất kho ATLĐ (Thủ kho gửi yêu cầu xoá).";
   return null;
+}
+
+// TP/PP có cờ Duyệt xuất + Admin sửa nội dung ghi nhầm ở MỌI trạng thái trừ Đã huỷ
+// (migration 145): thông tin phiếu + đơn giá bán từng dòng. Ngày / mã / số lượng
+// gắn với sổ kho nên không đổi ở đây.
+// creatorName: tên Người lập hiển thị / in phiếu (146) — email người lập giữ nguyên.
+export async function editIssueAsApprover(id: string, input: IssueInput, creatorName: string): Promise<string | null> {
+  const header = {
+    created_by_name: creatorName,
+    contractor_id: input.contractor_id,
+    contractor_name: input.contractor_id ? null : input.contractor_name,
+    bdh_name: input.bdh_name,
+    nguoi_nhan: input.nguoi_nhan,
+    dia_chi: input.dia_chi,
+    ly_do: input.ly_do,
+    chung_tu: input.chung_tu,
+    vat_percent: input.vat_percent,
+    phi_van_chuyen: input.phi_van_chuyen,
+    ghi_chu: input.ghi_chu,
+  };
+  const prices = input.lines.filter((l) => l.line_no != null).map((l) => ({ line_no: l.line_no, sale_price: l.sale_price }));
+  const { error } = await supabase.rpc("atld_edit_issue", { p_voucher: id, p_header: header, p_prices: prices });
+  if (!error) return null;
+  if (/Could not find the function .*atld_edit_issue/i.test(error.message || "")) {
+    return "Chưa chạy migration 145 (sửa phiếu xuất) trong Supabase > SQL Editor.";
+  }
+  return atldErrorMessage(error);
 }
 
 // Xoá phiếu bởi Admin / người có cờ Duyệt xuất (migration 128): mọi trạng thái
@@ -215,6 +257,8 @@ export type IssueRow = {
   cancel_reason: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  edited_by: string | null;       // người duyệt / Admin sửa nội dung sau (145)
+  edited_at: string | null;
   goc_file_path: string | null;   // chứng từ gốc — tệp trong kho atld-files (migration 124)
   goc_file_name: string | null;
   goc_link: string | null;        // chứng từ gốc — link ngoài khi tệp > 2MB
@@ -281,6 +325,8 @@ export async function fetchIssueRows(): Promise<{ rows: IssueRow[]; error: strin
         cancel_reason: (v.cancel_reason as string) || null,
         approved_by: (v.approved_by as string) || null,
         approved_at: (v.approved_at as string) || null,
+        edited_by: (v.edited_by_name as string) || (v.edited_by as string) || null,
+        edited_at: (v.edited_at as string) || null,
         goc_file_path: (v.goc_file_path as string) || null,
         goc_file_name: (v.goc_file_name as string) || null,
         goc_link: (v.goc_link as string) || null,

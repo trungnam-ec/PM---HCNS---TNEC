@@ -18,20 +18,23 @@ import AtldItemCatalog from "@/components/atld/AtldItemCatalog";
 import AtldPriceTab from "@/components/atld/AtldPriceTab";
 import AtldIssueTab from "@/components/atld/AtldIssueTab";
 import AtldPenaltyTab from "@/components/atld/AtldPenaltyTab";
+import AtldPenaltyRateTab from "@/components/atld/AtldPenaltyRateTab";
 import AtldDeleteRequestModal from "@/components/atld/AtldDeleteRequestModal";
 import { fetchAtldAccess } from "@/lib/atldStock";
 import { fetchPenaltyAccess, NO_PENALTY_ACCESS } from "@/lib/atldPenalties";
-import { Boxes, ReceiptText, Truck, Gavel, Loader2 } from "lucide-react";
+import { Boxes, ReceiptText, Truck, Gavel, Scale, Loader2 } from "lucide-react";
 
 // Tab "Đối tác" bỏ theo yêu cầu user 02/10/2026 (component AtldPartnerCatalog giữ
 // trong code, dữ liệu NCC còn nguyên). Lập + duyệt phiếu xuất ở tab "issues".
-type Tab = "items" | "prices" | "issues" | "penalties";
+type Tab = "items" | "prices" | "issues" | "penalties" | "rates";
 
 const TABS: { key: Tab; label: string; icon: typeof Boxes }[] = [
   { key: "items", label: "Tổng Danh mục kho ATLĐ", icon: Boxes },
   { key: "prices", label: "Danh sách Quản lý Xuất-Nhập kho", icon: ReceiptText },
   { key: "issues", label: "Xuất kho cho BĐH/Đối tác", icon: Truck },
   { key: "penalties", label: "Khấu trừ xử phạt", icon: Gavel },
+  // Phụ lục 01 "Mức xử phạt" (143) — cùng nhóm quyền với Khấu trừ xử phạt.
+  { key: "rates", label: "Định mức xử phạt", icon: Scale },
 ];
 
 export default function SafetyWarehousePage() {
@@ -61,7 +64,7 @@ export default function SafetyWarehousePage() {
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (t === "prices" || t === "issues" || t === "items" || t === "penalties") setTab(t);
+    if (t === "prices" || t === "issues" || t === "items" || t === "penalties" || t === "rates") setTab(t);
     setDelReq(new URLSearchParams(window.location.search).get("delReq"));
   }, []);
 
@@ -75,7 +78,7 @@ export default function SafetyWarehousePage() {
   // Chỉ thấy tab mình có quyền. Trước khi chạy migration 139 thì hàm quyền xử phạt
   // chưa có -> pen.stock = false; khi đó vẫn hiện 3 tab kho như cũ.
   const showStock = pen.stock || !pen.view;
-  const tabs = TABS.filter((t) => (t.key === "penalties" ? pen.view : showStock));
+  const tabs = TABS.filter((t) => (t.key === "penalties" || t.key === "rates" ? pen.view : showStock));
   const current: Tab = tabs.some((t) => t.key === tab) ? tab : tabs[0]?.key ?? "items";
 
   return (
@@ -122,6 +125,7 @@ export default function SafetyWarehousePage() {
           )}
           {ready && current === "issues" && <AtldIssueTab key={reloadKey} canEdit={access.keeper} canApprove={access.approver} />}
           {ready && current === "penalties" && <AtldPenaltyTab key={reloadKey} canInput={pen.input} canProcess={pen.process} canApprove={access.approver} />}
+          {ready && current === "rates" && <AtldPenaltyRateTab key={reloadKey} canInput={pen.input} canApprove={access.approver} />}
           {ready && delReq && (
             <AtldDeleteRequestModal
               id={delReq}

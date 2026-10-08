@@ -10,7 +10,7 @@
 import { supabase } from "./supabase";
 import { atldErrorMessage } from "./atldStock";
 
-export type DeleteKind = "item" | "issue" | "penalty";
+export type DeleteKind = "item" | "issue" | "penalty" | "rate";
 
 export type DeleteRequest = {
   id: string;
@@ -29,6 +29,7 @@ export const DELETE_KIND_LABEL: Record<DeleteKind, string> = {
   item: "Mã SP — Tổng Danh mục kho",
   issue: "Phiếu xuất kho",
   penalty: "Hồ sơ khấu trừ xử phạt",
+  rate: "Định mức xử phạt",
 };
 
 // Câu báo sau khi gửi — dùng chung cho 3 tab.

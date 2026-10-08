@@ -132,7 +132,7 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove }: { c
     if (!canApprove) {
       return ask({
         title: `Gửi yêu cầu xoá hồ sơ ${r.ma_ho_so}?`,
-        message: "TP/PP có cờ \"Duyệt xuất kho ATLĐ\" nhận thông báo trên chuông, xác nhận xong hệ thống mới xoá hồ sơ.",
+        message: "Chờ Trưởng/Phó phòng xác nhận xoá.",
         confirmLabel: "Gửi yêu cầu xoá",
         onConfirm: async () => {
           setRowErr(null);

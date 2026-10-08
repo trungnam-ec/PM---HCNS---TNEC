@@ -162,7 +162,7 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
     if (!canApprove) {
       return ask({
         title: `Gửi yêu cầu xoá phiếu ${r.so_phieu}?`,
-        message: "TP/PP có cờ \"Duyệt xuất kho ATLĐ\" nhận thông báo trên chuông, xác nhận xong hệ thống mới xoá phiếu.",
+        message: "Chờ Trưởng/Phó phòng xác nhận xoá.",
         confirmLabel: "Gửi yêu cầu xoá",
         onConfirm: async () => {
           setRowErr(null);

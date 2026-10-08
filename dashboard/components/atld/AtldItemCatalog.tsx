@@ -196,7 +196,7 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
       title: canApprove ? `Xoá mã ${r.code}?` : `Gửi yêu cầu xoá mã ${r.code}?`,
       message: canApprove
         ? "Chỉ xoá được mã CHƯA từng có trong phiếu kho. Mã đã dùng thì chuyển sang \"Ngừng dùng\"."
-        : "TP/PP có cờ \"Duyệt xuất kho ATLĐ\" nhận thông báo trên chuông, xác nhận xong hệ thống mới xoá. Chỉ xoá được mã CHƯA từng có trong phiếu kho.",
+        : "Chờ Trưởng/Phó phòng xác nhận xoá.",
       confirmLabel: canApprove ? "Xoá" : "Gửi yêu cầu xoá",
       onConfirm: async () => {
         setRowErr(null);

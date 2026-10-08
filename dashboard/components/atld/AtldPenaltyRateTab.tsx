@@ -19,6 +19,7 @@ import {
   EXTRA_MEASURE_OPTIONS, UNIT_OPTIONS, compareCode, deleteRate, exportRates, fetchRates, insertRates, normalizeCode, parseRateDocx, parseRateWorkbook, rateLevel, saveRate, unitLabel, upsertRates,
   type ImportRate, type PenaltyRate, type PenaltyRateInput, type RateUnit,
 } from "@/lib/atldPenaltyRates";
+import AtldRowDetail, { isRowClick } from "@/components/atld/AtldRowDetail";
 
 const fmtMoney = (n: number | null) => (n == null ? "" : n.toLocaleString("vi-VN"));
 const parseMoneyText = (s: string) => {
@@ -35,6 +36,16 @@ function nextChildCode(rows: PenaltyRate[], parent: string): string {
     .filter((r) => rateLevel(r.code) === lvl && parentOf(r.code) === parent)
     .reduce((m, r) => Math.max(m, Number(r.code.split(".").pop())), 0);
   return parent ? `${parent}.${last + 1}` : String(last + 1);
+}
+
+// "2.1.12" -> "Vi phạm hiện trường › Vi phạm nội quy" (tên các nhóm cha).
+function ancestorNames(rows: PenaltyRate[], code: string): string {
+  const parts = code.split(".");
+  return parts
+    .slice(0, -1)
+    .map((_, i) => parts.slice(0, i + 1).join("."))
+    .map((c) => rows.find((x) => x.code === c)?.noi_dung || c)
+    .join(" › ");
 }
 
 function MoneyCell({ v, unit }: { v: number | null; unit: RateUnit | null }) {
@@ -88,6 +99,9 @@ export default function AtldPenaltyRateTab({ canInput, canApprove }: { canInput:
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<PenaltyRate | { code: string } | null>(null);
+  // Bấm vào dòng hạng mục -> popup giữa màn hình xem đủ thông tin (user ưu tiên màn hình nhỏ / di động).
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const viewing = viewingId ? rows.find((r) => r.id === viewingId) || null : null;
   const { ask, confirmNode } = useConfirmBox();
   const { notify, noticeNode } = useNoticeBox();
 
@@ -246,9 +260,13 @@ export default function AtldPenaltyRateTab({ canInput, canApprove }: { canInput:
                 return (
                   <tr
                     key={r.id}
-                    onClick={isGroup && !query.trim() ? () => toggle(r.code) : undefined}
+                    onClick={
+                      isGroup
+                        ? query.trim() ? undefined : () => toggle(r.code)
+                        : (e) => isRowClick(e) && setViewingId(r.id)
+                    }
                     className={`border-t border-slate-100 ${
-                      !isGroup ? "hover:bg-slate-50/60" : lvl === 1 ? "bg-blue-50/70 cursor-pointer" : "bg-slate-50 cursor-pointer"
+                      !isGroup ? "hover:bg-slate-50/60 cursor-pointer" : lvl === 1 ? "bg-blue-50/70 cursor-pointer" : "bg-slate-50 cursor-pointer"
                     }`}
                   >
                     <td className={`px-3 py-2.5 align-top whitespace-nowrap font-bold ${isGroup && lvl === 1 ? "text-[#005BAC]" : "text-slate-600"}`}>
@@ -289,6 +307,53 @@ export default function AtldPenaltyRateTab({ canInput, canApprove }: { canInput:
         )}
       </div>
 
+      {viewing && (
+        <AtldRowDetail
+          title={`${viewing.code} — ${viewing.noi_dung}`}
+          badges={<span className="text-[10px] font-semibold text-slate-500">{ancestorNames(rows, viewing.code)}</span>}
+          stats={[1, 2, 3].map((i) => ({
+            label: `Lần ${i}${viewing.don_vi ? ` (${unitLabel(viewing.don_vi)})` : ""}`,
+            value: fmtMoney([viewing.muc_1, viewing.muc_2, viewing.muc_3][i - 1]) || "—",
+            tone: "rose" as const,
+          }))}
+          sections={[
+            {
+              fields: [
+                { label: "Nội dung xử phạt", value: viewing.noi_dung, wide: true, strong: true },
+                { label: "Hình thức xử lý bổ sung", value: viewing.hinh_thuc_bo_sung ? <span className="text-rose-600">{viewing.hinh_thuc_bo_sung}</span> : null, wide: true },
+                { label: "Ghi chú", value: viewing.ghi_chu, wide: true },
+              ],
+            },
+          ]}
+          onClose={() => setViewingId(null)}
+          actions={
+            canInput && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewingId(null);
+                    remove(viewing);
+                  }}
+                  className={`${BTN_OUTLINE} !text-rose-600`}
+                >
+                  <Trash2 size={13} /> Xoá
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewingId(null);
+                    setEditing(viewing);
+                  }}
+                  className={BTN_PRIMARY}
+                >
+                  <Pencil size={13} /> Sửa
+                </button>
+              </>
+            )
+          }
+        />
+      )}
       {editing && (
         <RateForm
           row={"id" in editing ? editing : null}

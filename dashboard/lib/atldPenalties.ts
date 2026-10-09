@@ -41,6 +41,7 @@ export type Penalty = {
   ct_file_path?: string | null;
   ct_file_name?: string | null;
   ct_link?: string | null;
+  vi_pham?: ViolationLine[] | null; // danh sách vi phạm chọn từ Định mức (147)
   gia_tri_con_lai: number;
   created_at: string;
 };
@@ -50,7 +51,48 @@ export type PenaltyInput = Pick<
   Penalty,
   | "loai_ho_so" | "so_quyet_dinh" | "qd_link" | "ngay_ban_hanh" | "project_code" | "project_name"
   | "contractor_id" | "contractor_name" | "noi_dung" | "gia_tri_phai_tru" | "nguoi_lap" | "ngay_gui_khdt"
->;
+> & { vi_pham?: ViolationLine[] | null };
+
+// ─── Vi phạm chọn từ tab Định mức xử phạt (migration 147) ───
+// Một hồ sơ gồm nhiều dòng. Dòng từ định mức CHỤP lại nội dung + 3 mức tiền tại lúc
+// lập (sửa định mức sau này không đổi hồ sơ cũ, vẫn đổi Lần được). Dòng gõ tay:
+// rate_id = null, tự nhập thành tiền.
+export type ViolationLine = {
+  rate_id: string | null;
+  code: string | null;          // STT định mức, VD "2.11.6"
+  noi_dung: string;
+  muc: (number | null)[];       // [Lần 1, Lần 2, Lần 3] lúc chọn
+  don_vi: string | null;        // "lần", "người", "thiết bị"…
+  hinh_thuc: string | null;     // hình thức xử lý bổ sung
+  lan: 1 | 2 | 3;
+  so_luong: number;
+  thanh_tien: number;
+};
+
+// Đơn vị khác "lần" mới nhân số lượng (VD 1.000.000 đồng/người × 3 người).
+export const perUnit = (l: Pick<ViolationLine, "rate_id" | "don_vi">) => !!l.rate_id && !!l.don_vi && l.don_vi !== "lần";
+
+export function lineAmount(l: ViolationLine): number {
+  const gia = l.muc[l.lan - 1] ?? l.muc.find((x) => x != null) ?? 0;
+  return gia * (perUnit(l) ? Math.max(1, l.so_luong || 1) : 1);
+}
+
+// "2.11.6 — Không kiểm tra huyết áp… (Lần 2, 3 người). Hình thức bổ sung: …"
+export function lineText(l: ViolationLine): string {
+  if (!l.rate_id) return l.noi_dung.trim();
+  const meta = [`Lần ${l.lan}`, perUnit(l) ? `${l.so_luong} ${l.don_vi}` : ""].filter(Boolean).join(", ");
+  return `${l.code ? `${l.code} — ` : ""}${l.noi_dung.trim()} (${meta})${l.hinh_thuc ? `. Hình thức bổ sung: ${l.hinh_thuc}` : ""}`;
+}
+
+// Ghép cột noi_dung + tổng tiền từ các dòng (bỏ dòng trống).
+export function composeViolations(lines: ViolationLine[]): { noi_dung: string; total: number; lines: ViolationLine[] } {
+  const used = lines.filter((l) => l.noi_dung.trim());
+  return {
+    noi_dung: used.map(lineText).join("\n"),
+    total: used.reduce((s, l) => s + (Number(l.thanh_tien) || 0), 0),
+    lines: used,
+  };
+}
 export type PenaltyOutput = Pick<
   Penalty,
   "ngay_tiep_nhan" | "dot_thanh_toan" | "gia_tri_da_tru" | "ngay_khau_tru" | "so_chung_tu" | "nguoi_nhap" | "ghi_chu" | "ct_link"
@@ -111,6 +153,7 @@ function cleanInput(v: PenaltyInput) {
     gia_tri_phai_tru: Math.max(0, Math.round(Number(v.gia_tri_phai_tru) || 0)),
     nguoi_lap: clean(v.nguoi_lap),
     ngay_gui_khdt: v.ngay_gui_khdt || null,
+    vi_pham: v.vi_pham && v.vi_pham.length ? v.vi_pham : null,
   };
 }
 

@@ -20,7 +20,7 @@ import {
   DOC_LABEL, docOf,
   PENALTY_TYPES, PENALTY_STATUS_META, fetchPenalties, createPenalty, updatePenalty, deletePenalty,
   uploadPenaltyFile, setPenaltyFile, setPenaltyLink, removePenaltyFile, penaltyFileUrl,
-  penaltyStatus, trackingDays, penaltyAlert, todayVN,
+  penaltyStatus, trackingDays, penaltyAlert, todayVN, composeViolations, type ViolationLine,
 } from "@/lib/atldPenalties";
 import { fetchSharedPartners, type SharedPartner } from "@/lib/atldVouchers";
 import { fetchProjectCatalog, type Project } from "@/lib/projectCatalog";
@@ -28,6 +28,7 @@ import { formatMoney, matchesQuery } from "@/lib/atldStock";
 import { foldVi } from "@/lib/financePartners";
 import AtldPartnerPicker from "@/components/atld/AtldPartnerPicker";
 import AtldPersonPicker from "@/components/atld/AtldPersonPicker";
+import AtldViolationLines, { EMPTY_LINE } from "@/components/atld/AtldViolationLines";
 import { BTN_OUTLINE, BTN_PRIMARY, CONTROL_BOX } from "@/components/atld/ui";
 import { useConfirmBox, useNoticeBox } from "@/components/ConfirmDialog";
 import { requestDelete, DELETE_REQUEST_SENT } from "@/lib/atldDeleteRequests";
@@ -777,7 +778,23 @@ function PenaltyModal({
     gia_tri_phai_tru: item?.gia_tri_phai_tru ?? 0,
     nguoi_lap: item?.nguoi_lap ?? "",
     ngay_gui_khdt: item?.ngay_gui_khdt ?? "",
+    vi_pham: item?.vi_pham ?? null,
   });
+  // Vi phạm chọn từ Định mức (147). Hồ sơ cũ chưa có danh sách -> 1 dòng gõ tay
+  // mang nội dung + số tiền đã lưu, để thêm dòng mới không làm mất nội dung cũ.
+  const [lines, setLines] = useState<ViolationLine[]>(() =>
+    item?.vi_pham?.length
+      ? item.vi_pham
+      : item?.noi_dung
+        ? [{ ...EMPTY_LINE, noi_dung: item.noi_dung, thanh_tien: item.gia_tri_phai_tru }]
+        : [{ ...EMPTY_LINE }]
+  );
+  // Đổi vi phạm -> ghép lại Nội dung + cộng lại Giá trị phải khấu trừ (vẫn sửa tay ô tổng được).
+  const changeLines = (next: ViolationLine[]) => {
+    setLines(next);
+    const c = composeViolations(next);
+    setInp((s) => ({ ...s, noi_dung: c.noi_dung, gia_tri_phai_tru: c.total, vi_pham: c.lines }));
+  };
   const [out, setOut] = useState<PenaltyOutput>({
     ngay_tiep_nhan: item?.ngay_tiep_nhan ?? "",
     dot_thanh_toan: item?.dot_thanh_toan ?? "",
@@ -984,13 +1001,13 @@ function PenaltyModal({
               )}
             </div>
 
-            <label className="block space-y-1 sm:col-span-3">
-              <span className={lbl}>Nội dung vi phạm</span>
-              <textarea rows={2} value={inp.noi_dung ?? ""} disabled={!canInput} onChange={(e) => setI("noi_dung", e.target.value)} placeholder="VD: Không chấp hành PPE và bố trí biển báo" className={inputCls} />
-            </label>
+            <div className="space-y-1 sm:col-span-3">
+              <span className={lbl}>Nội dung vi phạm (chọn từ Định mức xử phạt hoặc gõ tay)</span>
+              <AtldViolationLines lines={lines} onChange={changeLines} disabled={!canInput} inputCls={inputCls} />
+            </div>
 
             <label className="block space-y-1">
-              <span className={lbl}>Giá trị phải khấu trừ (đ) *</span>
+              <span className={lbl}>Giá trị phải khấu trừ (đ) * — tự cộng, sửa được</span>
               <input inputMode="numeric" value={moneyText(inp.gia_tri_phai_tru)} disabled={!canInput} onChange={(e) => setI("gia_tri_phai_tru", parseMoney(e.target.value))} placeholder="0" className={`${inputCls} tabular-nums text-right`} />
             </label>
             <div className="space-y-1">

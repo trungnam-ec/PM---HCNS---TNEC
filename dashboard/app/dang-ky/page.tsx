@@ -26,6 +26,7 @@ import {
   XCircle,
   ShieldCheck,
   AlertTriangle,
+  Save,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
@@ -440,6 +441,10 @@ function BookingContent() {
       new Date(modalRangeISO.end).getTime() !== new Date(selectedBooking.end_time).getTime()
     );
   }, [selectedBooking, modalRangeISO]);
+
+  // Xe/phòng trong ô chọn đã khác xe/phòng đang lưu -> hiện nút Lưu (đơn đã điều phối)
+  const modalResourceChanged =
+    !!selectedBooking && !!modalResourceName && modalResourceName !== selectedBooking.resource_name;
 
   // Lịch trùng của đơn đang mở trong popup, theo xe/phòng VÀ khung giờ đang chọn
   // trong popup. Dùng để hiện cảnh báo đỏ + khoá nút Lưu/Phê duyệt/Điều phối.
@@ -1045,6 +1050,69 @@ function BookingContent() {
     }
   };
 
+  // Đổi xe/phòng của đơn ĐÃ điều phối. CHỈ Admin / người có cờ điều phối.
+  // Kiểm tra trùng lại với database ngay trước khi ghi, rồi gửi lại email "Đã duyệt"
+  // kèm xe/phòng mới cho người đăng ký.
+  const handleSaveResource = async () => {
+    if (!currentUser || !selectedBooking || processingAction) return;
+    if (!isHcnsApproverUser || !modalResourceChanged) return;
+    const b = selectedBooking;
+    const resource = modalResourceName;
+
+    try {
+      setProcessingAction(true);
+      const conflicts = await fetchServerConflicts({
+        resource,
+        type: b.booking_type,
+        startISO: b.start_time,
+        endISO: b.end_time,
+        excludeId: b.id,
+      });
+      if (conflicts.length > 0) {
+        showToast("error", `Không đổi được ${isVehicle ? "xe" : "phòng"} — ${describeConflict(conflicts[0], resource)}`);
+        fetchBookings();
+        return;
+      }
+
+      // .select() để bắt trường hợp RLS chặn UPDATE: sửa 0 dòng mà không báo lỗi
+      const { data, error } = await supabase
+        .from("resource_bookings")
+        .update({ resource_name: resource })
+        .eq("id", b.id)
+        .select("id");
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        showToast("error", `Không lưu được — tài khoản chưa có quyền đổi ${isVehicle ? "xe" : "phòng"} của đơn này.`);
+        return;
+      }
+
+      showToast("success", `Đã đổi sang ${resource}. Đang gửi email báo người đăng ký...`);
+      setSelectedBooking({ ...b, resource_name: resource });
+      fetchBookings();
+
+      sendBookingEmailInBackground(
+        {
+          smtpConfig: readSmtpConfig(),
+          booking: { ...b, resource_name: resource },
+          decision: "approved",
+          rejectReason: "",
+          approverName: currentUser.name,
+        },
+        `Chưa gửi được email báo đổi ${isVehicle ? "xe" : "phòng"}`
+      );
+    } catch (err: any) {
+      console.error("Error updating booking resource:", err);
+      showToast(
+        "error",
+        isOverlapDbError(err)
+          ? `Không đổi được — ${isVehicle ? "xe" : "phòng"} này đã có lịch khác trùng khung giờ.`
+          : `Lỗi khi đổi ${isVehicle ? "xe" : "phòng"}!`
+      );
+    } finally {
+      setProcessingAction(false);
+    }
+  };
+
   // Xác nhận bỏ ngày: bỏ HẾT ngày = xoá cả đơn (như cũ); bỏ bớt = rút ngắn khoảng
   // thời gian, các ngày còn lại vẫn giữ nguyên lịch bận, ngày đã bỏ trống ngay lập tức.
   const handleConfirmTrim = async () => {
@@ -1270,16 +1338,45 @@ function BookingContent() {
                     <label className="text-slate-500 font-bold flex items-center gap-1.5">
                       <TabIcon size={12} /> {isVehicle ? "Xe" : "Phòng họp"}
                     </label>
-                    {canActOn(selectedBooking) && selectedBooking.status !== "rejected" ? (
-                      <select
-                        value={modalResourceName}
-                        onChange={(e) => setModalResourceName(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 cursor-pointer bg-white font-bold text-slate-700"
-                      >
-                        {resources.map((r) => (
-                          <option key={r} value={r}>{r}</option>
-                        ))}
-                      </select>
+                    {/* Đã điều phối: chỉ Admin / cờ điều phối được đổi xe/phòng, kèm nút Lưu.
+                        Chưa điều phối: đổi trong ô này rồi ghi luôn khi bấm Phê duyệt/Điều phối. */}
+                    {selectedBooking.status !== "rejected" &&
+                    (selectedBooking.status === "approved" ? isHcnsApproverUser : canActOn(selectedBooking)) ? (
+                      <>
+                        <select
+                          value={modalResourceName}
+                          onChange={(e) => setModalResourceName(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 cursor-pointer bg-white font-bold text-slate-700"
+                        >
+                          {resources.map((r) => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                        {selectedBooking.status === "approved" && modalResourceChanged && (
+                          <div className="flex items-center gap-2 flex-wrap pt-1">
+                            <button
+                              type="button"
+                              disabled={processingAction || modalConflicts.length > 0}
+                              onClick={handleSaveResource}
+                              title={modalConflicts.length > 0 ? `${isVehicle ? "Xe" : "Phòng"} vừa chọn đang trùng lịch khác` : undefined}
+                              className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                            >
+                              <Save size={12} /> Lưu {isVehicle ? "xe" : "phòng"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={processingAction}
+                              onClick={() => setModalResourceName(selectedBooking.resource_name)}
+                              className="text-[11px] font-bold text-slate-500 hover:text-slate-700 px-2 py-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                              Hoàn tác
+                            </button>
+                            <span className="text-[10px] text-slate-400 font-semibold">
+                              Người đăng ký sẽ nhận email báo {isVehicle ? "xe" : "phòng"} mới.
+                            </span>
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <p className="font-bold text-slate-700">{selectedBooking.resource_name}</p>
                     )}

@@ -20,7 +20,7 @@ import {
   DOC_LABEL, docOf,
   PENALTY_TYPES, PENALTY_STATUS_META, fetchPenalties, createPenalty, updatePenalty, deletePenalty,
   uploadPenaltyFile, setPenaltyFile, setPenaltyLink, removePenaltyFile, penaltyFileUrl,
-  penaltyStatus, trackingDays, penaltyAlert, todayVN, composeViolations, type ViolationLine,
+  penaltyStatus, trackingDays, penaltyAlert, todayVN, composeViolations, type ViolationLine, downloadPenaltyDecision,
 } from "@/lib/atldPenalties";
 import { fetchSharedPartners, type SharedPartner } from "@/lib/atldVouchers";
 import { fetchProjectCatalog, type Project } from "@/lib/projectCatalog";
@@ -89,7 +89,7 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove }: { c
           days,
           alert: penaltyAlert(status, days),
           haystack: normalizeName(
-            [p.ma_ho_so, p.loai_ho_so, p.so_quyet_dinh, p.project_code, p.project_name, p.contractor_name, p.noi_dung, p.nguoi_lap, p.dot_thanh_toan, p.so_chung_tu, p.nguoi_nhap]
+            [p.ma_ho_so, p.loai_ho_so, p.so_quyet_dinh, p.project_code, p.project_name, p.contractor_name, p.nguoi_vi_pham, p.noi_dung, p.nguoi_lap, p.dot_thanh_toan, p.so_chung_tu, p.nguoi_nhap]
               .filter(Boolean)
               .join(" ")
           ),
@@ -260,13 +260,13 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove }: { c
           <table className="w-full text-xs min-w-[1900px]">
             <thead>
               <tr className="text-white text-[10px] font-extrabold uppercase tracking-wider">
-                <th colSpan={10} className="px-3 py-1.5 bg-[#005BAC] text-left">P.ATLĐ nhập — thông tin đầu vào</th>
+                <th colSpan={11} className="px-3 py-1.5 bg-[#005BAC] text-left">P.ATLĐ nhập — thông tin đầu vào</th>
                 <th colSpan={6} className="px-3 py-1.5 bg-orange-500 text-left">P.KHĐT nhập — thông tin đầu ra</th>
                 {/* Dải xanh lá phủ luôn cột Thao tác cho liền mạch tới mép bảng. */}
                 <th colSpan={5} className="px-3 py-1.5 bg-emerald-600 text-left">Tự tính — không sửa tay</th>
               </tr>
               <tr className="text-left">
-                {["Mã hồ sơ", "Loại hồ sơ", "Số QĐ", "Ngày ban hành", "Dự án", "Nhà thầu phụ", "Nội dung"].map((h) => (
+                {["Mã hồ sơ", "Loại hồ sơ", "Số QĐ", "Ngày ban hành", "Dự án", "Nhà thầu phụ", "Người vi phạm", "Nội dung"].map((h) => (
                   <th key={h} className={`${th} bg-blue-50 text-[#005BAC]`}>{h}</th>
                 ))}
                 <th className={`${th} bg-blue-50 text-[#005BAC] text-right`}>Giá trị phải khấu trừ</th>
@@ -302,6 +302,7 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove }: { c
                     {r.project_code && <span className="block text-[10px] font-mono text-slate-400">{r.project_code}</span>}
                   </td>
                   <td className={`${td} font-semibold text-slate-700 min-w-[200px]`}>{r.contractor_name}</td>
+                  <td className={`${td} text-slate-700 min-w-[140px]`}>{r.nguoi_vi_pham || "—"}</td>
                   <td className={`${td} text-slate-600 min-w-[220px] whitespace-pre-line`}>{r.noi_dung || "—"}</td>
                   <td className={`${td} text-right tabular-nums font-bold text-slate-800 whitespace-nowrap`}>{money(r.gia_tri_phai_tru)}</td>
                   <td className={`${td} text-slate-600 whitespace-nowrap`}>{r.nguoi_lap || "—"}</td>
@@ -601,6 +602,21 @@ function PenaltyDetail({
   onDelete?: (r: Row) => void;
   onViewFile: (r: Row, kind: PenaltyDoc) => void;
 }) {
+  // "Xuất phiếu" Quyết định xử phạt — hạn khắc phục không lưu trong hồ sơ, chọn lúc xuất.
+  const [han, setHan] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exportErr, setExportErr] = useState<string | null>(null);
+  async function exportDecision() {
+    setExporting(true);
+    setExportErr(null);
+    try {
+      await downloadPenaltyDecision(row, han);
+    } catch (e) {
+      setExportErr(e instanceof Error ? e.message : "Lỗi xuất phiếu.");
+    } finally {
+      setExporting(false);
+    }
+  }
   const docValue = (kind: PenaltyDoc) => {
     const d = docOf(row, kind);
     const has = !!(d.path || d.link);
@@ -664,6 +680,7 @@ function PenaltyDetail({
             <Field label="Ngày ban hành" value={fmtDate(row.ngay_ban_hanh)} />
             <Field label="Dự án" value={[row.project_code, row.project_name].filter(Boolean).join(" — ")} />
             <Field label="Nhà thầu phụ" value={row.contractor_name} wide strong />
+            <Field label="Người vi phạm" value={row.nguoi_vi_pham} wide />
             <Field label="Nội dung" value={row.noi_dung} wide />
             <Field label="Người lập" value={row.nguoi_lap} />
             <Field label="Ngày gửi thông tin cho KHĐT" value={fmtDate(row.ngay_gui_khdt)} />
@@ -682,12 +699,24 @@ function PenaltyDetail({
           </div>
         </section>
 
-        <div className="flex justify-end gap-2">
+        {exportErr && (
+          <div className="flex items-start gap-2 text-[11px] font-semibold text-rose-600">
+            <AlertCircle size={14} className="mt-0.5 shrink-0" /> {exportErr}
+          </div>
+        )}
+        <div className="flex flex-wrap justify-end items-center gap-2">
           {onDelete && (
             <button type="button" onClick={() => onDelete(row)} className={`${BTN_OUTLINE} !text-rose-600 mr-auto`}>
               <Trash2 size={13} /> Xoá hồ sơ
             </button>
           )}
+          <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
+            Hạn khắc phục
+            <input type="date" value={han} onChange={(e) => setHan(e.target.value)} className="text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 tabular-nums focus:bg-white focus:outline-none focus:border-[#00AEEF]" />
+          </label>
+          <button type="button" onClick={exportDecision} disabled={exporting} className={BTN_OUTLINE}>
+            {exporting ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />} Xuất phiếu
+          </button>
           <button type="button" onClick={onClose} className="text-[11px] font-bold text-slate-500 px-3 py-2 rounded-lg hover:bg-slate-100 cursor-pointer">
             Đóng
           </button>
@@ -774,6 +803,7 @@ function PenaltyModal({
     project_name: item?.project_name ?? "",
     contractor_id: item?.contractor_id ?? null,
     contractor_name: item?.contractor_name ?? "",
+    nguoi_vi_pham: item?.nguoi_vi_pham ?? "",
     noi_dung: item?.noi_dung ?? "",
     gia_tri_phai_tru: item?.gia_tri_phai_tru ?? 0,
     nguoi_lap: item?.nguoi_lap ?? "",
@@ -1001,16 +1031,28 @@ function PenaltyModal({
               )}
             </div>
 
+            <label className="sm:col-span-3 block space-y-1">
+              <span className={lbl}>Người vi phạm</span>
+              <input
+                value={inp.nguoi_vi_pham ?? ""}
+                disabled={!canInput}
+                onChange={(e) => setI("nguoi_vi_pham", e.target.value)}
+                placeholder="Họ tên người vi phạm (nếu có)"
+                className={inputCls}
+              />
+            </label>
+
             <div className="space-y-1 sm:col-span-3">
               <span className={lbl}>Nội dung vi phạm (chọn từ Định mức xử phạt hoặc gõ tay)</span>
               <AtldViolationLines lines={lines} onChange={changeLines} disabled={!canInput} inputCls={inputCls} />
             </div>
 
-            <label className="block space-y-1">
-              <span className={lbl}>Giá trị phải khấu trừ (đ) * — tự cộng, sửa được</span>
-              <input inputMode="numeric" value={moneyText(inp.gia_tri_phai_tru)} disabled={!canInput} onChange={(e) => setI("gia_tri_phai_tru", parseMoney(e.target.value))} placeholder="0" className={`${inputCls} tabular-nums text-right`} />
+            {/* 3 ô cùng hàng cao bằng nhau: ô Người lập đã chọn người cao 2 dòng -> 2 ô kia giãn theo. */}
+            <label className="flex flex-col gap-1">
+              <span className={lbl}>Giá trị khấu trừ (đ) *</span>
+              <input inputMode="numeric" value={moneyText(inp.gia_tri_phai_tru)} disabled={!canInput} onChange={(e) => setI("gia_tri_phai_tru", parseMoney(e.target.value))} placeholder="0" className={`${inputCls} flex-1 tabular-nums text-right`} />
             </label>
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               <span className={lbl}>Người lập</span>
               {canInput ? (
                 <AtldPersonPicker bdh="" value={inp.nguoi_lap ?? ""} onChange={(n) => setI("nguoi_lap", n)} />
@@ -1018,9 +1060,9 @@ function PenaltyModal({
                 <div className={inputCls + " bg-slate-100"}>{inp.nguoi_lap || "—"}</div>
               )}
             </div>
-            <label className="block space-y-1">
+            <label className="flex flex-col gap-1">
               <span className={lbl}>Ngày gửi thông tin cho KHĐT</span>
-              <input type="date" value={inp.ngay_gui_khdt ?? ""} disabled={!canInput} onChange={(e) => setI("ngay_gui_khdt", e.target.value)} className={`${inputCls} tabular-nums`} />
+              <input type="date" value={inp.ngay_gui_khdt ?? ""} disabled={!canInput} onChange={(e) => setI("ngay_gui_khdt", e.target.value)} className={`${inputCls} flex-1 tabular-nums`} />
             </label>
           </div>
         </section>

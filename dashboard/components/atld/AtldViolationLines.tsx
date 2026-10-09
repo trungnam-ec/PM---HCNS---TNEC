@@ -85,9 +85,10 @@ export default function AtldViolationLines({
   return (
     <div className="space-y-2">
       {lines.map((l, i) => (
-        <div key={i} className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+        // Dòng chưa chọn vi phạm: chỉ ô tìm, không khung / số thứ tự (giống ô Nhà thầu phụ).
+        <div key={i} className={l.noi_dung ? "rounded-xl border border-slate-200 bg-white p-3 space-y-2" : ""}>
           <div className="flex items-start gap-2">
-            <span className="text-[11px] font-extrabold text-slate-400 pt-2 w-4 shrink-0">{i + 1}</span>
+            {l.noi_dung && <span className="text-[11px] font-extrabold text-slate-400 pt-2 w-4 shrink-0">{i + 1}</span>}
             <div className="flex-1 min-w-0">
               {l.noi_dung ? (
                 <div className="min-h-[38px] px-3 py-1.5 border border-slate-200 rounded-xl flex items-start gap-2 bg-slate-50">

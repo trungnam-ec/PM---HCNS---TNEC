@@ -52,7 +52,7 @@ export default function AtldIssueModal({
   onSaved,
 }: {
   items: AtldItem[];
-  lastSalePrice: Map<string, number>; // item_id -> giá xuất gần nhất (gợi ý)
+  lastSalePrice: Map<string, number>; // item_id -> đơn giá tự điền (Giá bán của mã > giá xuất > giá nhập gần nhất)
   voucherId: string | null;           // null = tạo mới
   actorName: string;
   approverEdit?: boolean;             // người duyệt sửa nội dung (145)
@@ -152,11 +152,15 @@ export default function AtldIssueModal({
       ls.map((l) => {
         if (l.key !== key) return l;
         const next = { ...l, ...patch };
-        // Vừa chọn mã mà ô giá còn trống -> gợi ý giá xuất gần nhất của mã đó.
-        if (patch.code !== undefined && !l.price) {
+        // Chọn mã -> tự điền đơn giá của mã đó (user yêu cầu 09/10/2026), vẫn sửa tay
+        // được. Đổi sang mã KHÁC thì giá đổi theo; mã chưa có giá thì để trống.
+        if (patch.code !== undefined) {
           const it = byCode.get(fold(patch.code.trim()));
-          const p = it ? lastSalePrice.get(it.id) : undefined;
-          if (p != null) next.price = String(p);
+          const prev = byCode.get(fold(l.code.trim()));
+          if (it && it.id !== prev?.id) {
+            const p = lastSalePrice.get(it.id);
+            next.price = p != null ? String(p) : "";
+          }
         }
         return next;
       })

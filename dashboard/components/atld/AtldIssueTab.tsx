@@ -75,14 +75,26 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
     const [it, iss, tp] = await Promise.all([fetchItems(), fetchIssueRows(), fetchTradePrices()]);
     setItems(it.items);
     setRows(iss.rows);
-    // Giá xuất gần nhất ĐÃ CHỐT (Excel cũ / phiếu đã duyệt) — gợi ý ô đơn giá khi lập phiếu.
-    const m = new Map<string, { ngay: string; price: number }>();
-    for (const p of tp.rows) {
-      if (p.loai !== "xuat" || p.unit_price == null || !(p.nguon === "excel" || p.status === "posted")) continue;
-      const cur = m.get(p.item_id);
-      if (!cur || p.ngay >= cur.ngay) m.set(p.item_id, { ngay: p.ngay, price: p.unit_price });
+    // Đơn giá tự điền khi chọn mã trong phiếu xuất (user yêu cầu 09/10/2026), theo thứ tự:
+    // Giá bán của mã (form Tạo danh mục) > giá XUẤT gần nhất đã chốt > giá NHẬP gần
+    // nhất — đều là giá đang hiện ở tab Danh sách Quản lý Xuất-Nhập kho.
+    const latest = (loai: "nhap" | "xuat") => {
+      const m = new Map<string, { ngay: string; price: number }>();
+      for (const p of tp.rows) {
+        if (p.loai !== loai || p.unit_price == null || !(p.nguon === "excel" || p.status === "posted")) continue;
+        const cur = m.get(p.item_id);
+        if (!cur || p.ngay >= cur.ngay) m.set(p.item_id, { ngay: p.ngay, price: p.unit_price });
+      }
+      return m;
+    };
+    const lastXuat = latest("xuat");
+    const lastNhap = latest("nhap");
+    const suggest = new Map<string, number>();
+    for (const i of it.items) {
+      const p = i.gia_ban ?? lastXuat.get(i.id)?.price ?? lastNhap.get(i.id)?.price;
+      if (p != null) suggest.set(i.id, p);
     }
-    setLastSalePrice(new Map([...m.entries()].map(([k, v]) => [k, v.price])));
+    setLastSalePrice(suggest);
     setError(it.error || iss.error);
     setLoading(false);
   }, []);

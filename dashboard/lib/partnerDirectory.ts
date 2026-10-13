@@ -524,26 +524,67 @@ export function completeness(r: PartnerRow | PartnerInput): { score: number; tot
   return { score: COMPLETENESS_CHECKS.length - missing.length, total: COMPLETENESS_CHECKS.length, missing };
 }
 
-export function searchHaystack(r: PartnerRow): string {
-  return normalizeName(
-    [
-      r.name, r.short_name, r.tax_code, r.contact_name, r.legal_rep_name, r.phone, r.phone2,
-      r.email, r.address, r.capability, r.source, ...r.fields, ...r.provinces,
-    ]
-      .filter(Boolean)
-      .join(" ")
-  );
+// ─── Tìm kiếm có xếp hạng ───
+// Trước đây: tách từ khoá rồi chỉ cần mỗi từ nằm ở BẤT KỲ ĐÂU (chuỗi con) trong mọi trường -> gõ
+// "Thành An" ra cả những công ty không liên quan vì "an" nằm trong "tân", "nam", "hạng"… và không có
+// thứ tự nên công ty tên "Thành An" thật bị chìm. Nay:
+//   • khớp theo TỪ (bỏ dấu, không phân biệt hoa/thường): từ ≥ 3 ký tự khớp đầu từ ("thanh" ra "Thành");
+//     từ ≤ 2 ký tự ("an") phải khớp NGUYÊN từ, không khớp lẫn trong từ khác;
+//   • TẤT CẢ các từ phải khớp (có thể ở các trường khác nhau: "cọc đồng nai");
+//   • xếp hạng: tên khớp nguyên cụm > tên chứa cụm > từ nằm trong tên > tên viết tắt / người liên hệ /
+//     MST / email / lĩnh vực / tỉnh > năng lực, địa chỉ, nguồn. Cùng điểm thì giữ thứ tự mới nhập trước.
+type SearchIdx = { nameWords: string[]; nameJoined: string; mid: string[]; midJoined: string; low: string[]; lowJoined: string; digits: string };
+const SEARCH_CACHE = new WeakMap<PartnerRow, SearchIdx>();
+const wordsOf = (...parts: (string | null | undefined)[]): string[] =>
+  normalizeName(parts.filter(Boolean).join(" ")).split(/[^a-z0-9]+/).filter(Boolean);
+
+function searchIdx(r: PartnerRow): SearchIdx {
+  let x = SEARCH_CACHE.get(r);
+  if (!x) {
+    const nameWords = wordsOf(r.name);
+    const mid = wordsOf(r.short_name, r.contact_name, r.legal_rep_name, r.tax_code, r.email, ...r.fields, ...r.provinces);
+    const low = wordsOf(r.capability, r.address, r.source, r.website);
+    x = {
+      nameWords,
+      nameJoined: nameWords.join(" "),
+      mid,
+      midJoined: mid.join(" "),
+      low,
+      lowJoined: low.join(" "),
+      // Số điện thoại / MST gõ có hay không có dấu cách, dấu chấm: so thêm bản chỉ chữ số.
+      digits: `${r.phone || ""} ${r.phone2 || ""} ${r.tax_code || ""}`.replace(/[^\d ]/g, "").replace(/\s+/g, " "),
+    };
+    SEARCH_CACHE.set(r, x);
+  }
+  return x;
 }
 
-export function matchesQuery(r: PartnerRow, query: string): boolean {
-  const tokens = normalizeName(query).split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return true;
-  const hay = searchHaystack(r);
-  // Số điện thoại gõ có/không khoảng trắng, dấu chấm: so thêm bản chỉ chữ số.
-  const digits = `${r.phone || ""}${r.phone2 || ""}${r.tax_code || ""}`.replace(/\D/g, "");
-  return tokens.every((tk) => hay.includes(tk) || (/^\d{4,}$/.test(tk) && digits.includes(tk)));
-}
+const wordHit = (words: string[], tk: string): boolean =>
+  tk.length <= 2 ? words.includes(tk) : words.some((w) => w.startsWith(tk));
 
+// 0 = không khớp; càng cao càng khớp. Không có từ khoá -> 1 (mọi đối tác giữ nguyên thứ tự).
+export function scorePartner(r: PartnerRow, query: string): number {
+  const tokens = normalizeName(query).split(/[^a-z0-9]+/).filter(Boolean);
+  if (tokens.length === 0) return 1;
+  const x = searchIdx(r);
+  const phrase = tokens.join(" ");
+  let tierSum = 0;
+  for (const tk of tokens) {
+    if (wordHit(x.nameWords, tk)) tierSum += 3;
+    else if (wordHit(x.mid, tk) || (/^\d{4,}$/.test(tk) && x.digits.replace(/ /g, "").includes(tk))) tierSum += 2;
+    else if (wordHit(x.low, tk)) {
+      // Nhiều chữ mà một chữ chỉ khớp lẻ trong địa chỉ / năng lực ("thành" trong "Thành phố") là nhiễu:
+      // chỉ nhận khi cả cụm nằm LIỀN NHAU ở đó (VD "bến lức" trong địa chỉ).
+      if (tokens.length > 1 && !` ${x.lowJoined}`.includes(` ${phrase}`)) return 0;
+      tierSum += 1;
+    } else return 0;
+  }
+  let base = 0;
+  if (x.nameJoined === phrase) base = 1000;
+  else if (x.nameJoined.startsWith(phrase)) base = 900;
+  else if (` ${x.nameJoined}`.includes(` ${phrase}`)) base = 800;
+  return base + tierSum * 10;
+}
 export function phoneHref(p: string | null): string | null {
   if (!p) return null;
   const d = p.replace(/[^\d+]/g, "");

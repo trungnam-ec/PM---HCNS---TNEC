@@ -19,7 +19,7 @@ import {
   type PartnerRow, type PartnerInput, type PartnerKind, type PartnerRegion, type PartnerStatus, type PartnerAccess,
   KIND_LABELS, KIND_ORDER, REGION_LABELS, REGION_ORDER, STATUS_LABELS, PROVINCE_SUGGESTIONS, FIELD_SUGGESTIONS,
   fetchPartners, createPartner, updatePartner, setPartnerStatus, deletePartner,
-  emptyInput, inputFromRow, validateInput, completeness, matchesQuery, phoneHref, zaloHref,
+  emptyInput, inputFromRow, validateInput, completeness, scorePartner, phoneHref, zaloHref,
   viberHref, whatsappHref, telegramHref, emailHref, getMailPref, setMailPref, MAIL_APP_LABELS, type MailApp,
   lookupTax, taxLevel, formatCheckedDate, cleanTaxCode, taxAgeDays, taxAgeText, TAX_STALE_DAYS,
   NEEDS_REASON, exportPartnersXlsx, type PartnerFile, type PartnerDocType, DOC_TYPE_LABELS, MAX_FILE_BYTES,
@@ -113,8 +113,10 @@ export default function PartnerDirectory({ access, who }: { access: PartnerAcces
   }, [rows]);
 
   const filtered = useMemo(
-    () =>
-      rows.filter((r) => {
+    () => {
+      const q = query.trim();
+      const scored = rows
+        .filter((r) => {
         if (kind !== "all" && r.kind !== kind) return false;
         if (status && r.status !== status) return false;
         // Đối tác "Toàn quốc" khớp mọi bộ lọc miền.
@@ -123,8 +125,14 @@ export default function PartnerDirectory({ access, who }: { access: PartnerAcces
         // Như bộ lọc miền: đối tác "Toàn quốc" phục vụ được mọi tỉnh.
         if (province && !r.provinces.includes(province) && !r.regions.includes("toan_quoc")) return false;
         if (minRating > 0 && (r.rating ?? 0) < minRating) return false;
-        return matchesQuery(r, query);
-      }),
+        return true;
+      })
+        .map((r) => ({ r, s: scorePartner(r, q) }))
+        .filter((x) => x.s > 0);
+      // Có từ khoá: khớp tốt nhất lên đầu (sắp xếp ổn định nên cùng điểm giữ thứ tự mới nhập trước).
+      if (q) scored.sort((a, b) => b.s - a.s);
+      return scored.map((x) => x.r);
+    },
     [rows, kind, status, region, field, province, minRating, query]
   );
 

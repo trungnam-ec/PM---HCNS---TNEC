@@ -45,7 +45,7 @@ const STATUS_STYLE: Record<PartnerStatus, string> = {
 
 // Ô chọn của hàng lọc: cao đều nhau, giãn đầy ô lưới để thẳng cột với hàng thẻ thống kê.
 const FILTER_SELECT =
-  "w-full min-w-0 h-10 sm:h-9 text-base sm:text-xs font-semibold bg-white border border-slate-200 rounded-xl px-3 text-slate-600 cursor-pointer truncate";
+  "w-full min-w-0 h-10 sm:h-9 text-base sm:text-[11px] font-semibold bg-white border border-slate-200 rounded-xl px-3 text-slate-600 cursor-pointer truncate";
 
 const inputCls =
   // text-base trên điện thoại: iOS tự phóng to trang khi ô nhập nhỏ hơn 16px.
@@ -197,7 +197,7 @@ export default function PartnerDirectory({ access, who }: { access: PartnerAcces
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Tìm tên, MST, SĐT, liên hệ, lĩnh vực…"
-            className="flex-1 min-w-0 bg-transparent text-base sm:text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none"
+            className="flex-1 min-w-0 bg-transparent text-base sm:text-[11px] font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none"
           />
           {query && (
             <button type="button" onClick={() => setQuery("")} className="text-slate-400 hover:text-slate-600 cursor-pointer" aria-label="Xoá ô tìm">
@@ -252,13 +252,14 @@ export default function PartnerDirectory({ access, who }: { access: PartnerAcces
         <p className="text-[11px] font-semibold text-slate-400">
           {loading ? "" : filtering ? `${filtered.length} / ${rows.length} đối tác` : `${rows.length} đối tác`}
         </p>
-        <div className="w-full sm:w-auto flex gap-2">
+        {/* Điện thoại: Excel + AI chia đôi một hàng, "Thêm đối tác" (nút chính) chiếm cả hàng dưới. */}
+        <div className="w-full sm:w-auto grid grid-cols-2 sm:flex gap-2">
           <button
             type="button"
             onClick={doExport}
             disabled={exporting || filtered.length === 0}
             title={filtering ? "Xuất các đối tác đang lọc ra Excel" : "Xuất toàn bộ danh bạ ra Excel"}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:border-[#005BAC] hover:text-[#005BAC] disabled:opacity-50 text-slate-600 text-xs sm:text-[11px] font-bold px-4 h-10 sm:h-9 rounded-xl cursor-pointer"
+            className="[&:only-child]:col-span-2 whitespace-nowrap sm:flex-none flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:border-[#005BAC] hover:text-[#005BAC] disabled:opacity-50 text-slate-600 text-xs sm:text-[11px] font-bold px-3 sm:px-4 h-10 sm:h-9 rounded-xl cursor-pointer"
           >
             {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Xuất Excel
           </button>
@@ -267,7 +268,7 @@ export default function PartnerDirectory({ access, who }: { access: PartnerAcces
               type="button"
               onClick={() => setAiOpen(true)}
               title="Tải ảnh, PDF, mã QR, Excel để AI tự điền thông tin đối tác"
-              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-white border border-[#005BAC] text-[#005BAC] hover:bg-blue-50 text-xs sm:text-[11px] font-bold px-4 h-10 sm:h-9 rounded-xl cursor-pointer"
+              className="whitespace-nowrap sm:flex-none flex items-center justify-center gap-1.5 bg-white border border-[#005BAC] text-[#005BAC] hover:bg-blue-50 text-xs sm:text-[11px] font-bold px-3 sm:px-4 h-10 sm:h-9 rounded-xl cursor-pointer"
             >
               <Sparkles size={14} /> Nhập bằng AI
             </button>
@@ -276,7 +277,7 @@ export default function PartnerDirectory({ access, who }: { access: PartnerAcces
             <button
               type="button"
               onClick={() => setEditing("new")}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs sm:text-[11px] font-bold px-4 h-10 sm:h-9 rounded-xl shadow-sm cursor-pointer"
+              className="col-span-2 sm:col-span-1 whitespace-nowrap sm:flex-none flex items-center justify-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs sm:text-[11px] font-bold px-4 h-10 sm:h-9 rounded-xl shadow-sm cursor-pointer"
             >
               <Plus size={14} /> Thêm đối tác
             </button>

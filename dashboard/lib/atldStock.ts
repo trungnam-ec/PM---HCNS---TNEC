@@ -504,6 +504,59 @@ export async function deletePriceHistory(id: string): Promise<string | null> {
   );
 }
 
+// ─── Cột Ghi chú + cột tự thêm của tab Danh sách Quản lý Xuất-Nhập kho (migration 149) ───
+export type TradeColumn = { id: string; title: string; sort_order: number };
+export type TradeNote = { note: string; extra: Record<string, string> };
+
+const NO_149 = "Chưa chạy migration 149 (cột Ghi chú) trong Supabase > SQL Editor.";
+
+export async function fetchTradeExtras(): Promise<{ columns: TradeColumn[]; notes: Map<string, TradeNote>; error: string | null }> {
+  const [c, n] = await Promise.all([
+    supabase.from("atld_trade_columns").select("id,title,sort_order").order("sort_order").order("created_at"),
+    supabase.from("atld_trade_notes").select("row_key,note,extra").limit(20000),
+  ]);
+  const err = c.error || n.error;
+  if (err) {
+    const missing = /atld_trade_(columns|notes)/i.test(err.message || "") && /find|exist/i.test(err.message || "");
+    return { columns: [], notes: new Map(), error: missing ? NO_149 : atldErrorMessage(err) };
+  }
+  const notes = new Map<string, TradeNote>();
+  for (const r of (n.data as { row_key: string; note: string | null; extra: Record<string, string> | null }[]) || []) {
+    notes.set(r.row_key, { note: r.note || "", extra: r.extra || {} });
+  }
+  return { columns: ((c.data as TradeColumn[]) || []).map((x) => ({ ...x, sort_order: Number(x.sort_order) || 0 })), notes, error: null };
+}
+
+export async function saveTradeNote(rowKey: string, value: TradeNote): Promise<string | null> {
+  const extra: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value.extra)) if (v.trim() !== "") extra[k] = v;
+  return writeChecked(
+    () => supabase.from("atld_trade_notes").upsert({ row_key: rowKey, note: value.note.trim() || null, extra }, { onConflict: "row_key" }).select("row_key"),
+    "Không lưu được — tài khoản chưa có quyền sửa (Thủ kho / TP-PP ATLĐ)."
+  );
+}
+
+export async function addTradeColumn(title: string, sortOrder: number): Promise<string | null> {
+  return writeChecked(
+    () => supabase.from("atld_trade_columns").insert({ title: title.trim(), sort_order: sortOrder }).select("id"),
+    "Không thêm được cột — tài khoản chưa có quyền (Thủ kho / TP-PP ATLĐ)."
+  );
+}
+
+export async function renameTradeColumn(id: string, title: string): Promise<string | null> {
+  return writeChecked(
+    () => supabase.from("atld_trade_columns").update({ title: title.trim() }).eq("id", id).select("id"),
+    "Không đổi được tên cột — tài khoản chưa có quyền."
+  );
+}
+
+export async function deleteTradeColumn(id: string): Promise<string | null> {
+  return writeChecked(
+    () => supabase.from("atld_trade_columns").delete().eq("id", id).select("id"),
+    "Không xoá được cột — chỉ TP/PP có cờ \"Duyệt xuất kho ATLĐ\" và Admin được xoá."
+  );
+}
+
 // Tên đối tác trong Danh mục đối tác CHUNG của Hồ sơ trình ký (migration 122) —
 // gợi ý cho ô "Khách hàng". Chỉ tên + tên gọi tắt, không kèm STK / MST.
 export async function fetchSharedPartnerNames(): Promise<string[]> {

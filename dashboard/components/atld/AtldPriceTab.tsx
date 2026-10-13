@@ -24,6 +24,13 @@ import * as XLSX from "xlsx";
 import {
   type AtldItem,
   type TradePrice,
+  type TradeColumn,
+  type TradeNote,
+  fetchTradeExtras,
+  saveTradeNote,
+  addTradeColumn,
+  renameTradeColumn,
+  deleteTradeColumn,
   fetchItems,
   fetchTradePrices,
   insertPriceHistory,
@@ -47,7 +54,7 @@ import {
   type SharedPartner,
 } from "@/lib/atldVouchers";
 import { BTN_OUTLINE, BTN_PRIMARY, BTN_SUCCESS, CONTROL_BOX } from "@/components/atld/ui";
-import { Search, X, Loader2, AlertCircle, ReceiptText, ArrowUpRight, ArrowDownRight, FileDown, FileUp, CheckCircle2, Ban, AlertTriangle, Pencil, Trash2, Lock, ExternalLink } from "lucide-react";
+import { Search, X, Loader2, AlertCircle, ReceiptText, ArrowUpRight, ArrowDownRight, FileDown, FileUp, CheckCircle2, Ban, AlertTriangle, Pencil, Trash2, Lock, ExternalLink, Plus, Check } from "lucide-react";
 
 type Row = TradePrice & { item: AtldItem | null; prevPrice: number | null; haystack: string };
 type LoaiFilter = "all" | "nhap" | "xuat";
@@ -69,8 +76,8 @@ function LoaiBadge({ loai }: { loai: "nhap" | "xuat" }) {
 // "Tải về": xuất ĐÚNG các dòng đang hiện (theo bộ lọc) ra Excel. Tên cột giữ giống
 // sheet Chi Tiet (Ngày / Loại / Mã SP / Số lượng / Đơn giá / Khách hàng / Báo giá / HĐ)
 // nên sửa trong Excel xong "Upload Excel" ngược lại được — dòng giống hệt tự bỏ qua.
-function exportTradeExcel(rows: Row[]) {
-  const header = ["Ngày", "Loại", "Mã SP", "Tên SP", "Size", "Màu", "ĐVT", "Số lượng", "Đơn giá", "Thành tiền", "Khách hàng", "Báo giá / HĐ", "Nguồn", "Trạng thái"];
+function exportTradeExcel(rows: Row[], columns: TradeColumn[], notes: Map<string, TradeNote>) {
+  const header = ["Ngày", "Loại", "Mã SP", "Tên SP", "Size", "Màu", "ĐVT", "Số lượng", "Đơn giá", "Thành tiền", "Khách hàng", "Báo giá / HĐ", "Nguồn", "Trạng thái", "Ghi chú", ...columns.map((c) => c.title)];
   const body = rows.map((r) => {
     const [y, m, d] = r.ngay.split("-").map(Number);
     return [
@@ -88,10 +95,12 @@ function exportTradeExcel(rows: Row[]) {
       r.chung_tu || "",
       r.nguon === "phieu" ? r.so_phieu || "Phiếu" : "Excel cũ",
       r.status ? ISSUE_STATUS_META[r.status as IssueStatus]?.label || r.status : "",
+      notes.get(`${r.nguon}-${r.id}`)?.note || "",
+      ...columns.map((c) => notes.get(`${r.nguon}-${r.id}`)?.extra[c.id] || ""),
     ];
   });
   const ws = XLSX.utils.aoa_to_sheet([header, ...body], { cellDates: true, dateNF: "dd/mm/yyyy" });
-  ws["!cols"] = [12, 7, 11, 30, 10, 9, 7, 10, 12, 14, 32, 22, 24, 12].map((wch) => ({ wch }));
+  ws["!cols"] = [12, 7, 11, 30, 10, 9, 7, 10, 12, 14, 32, 22, 24, 12, 30, ...columns.map(() => 22)].map((wch) => ({ wch }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Gia nhap xuat");
   const t = new Date();
@@ -123,14 +132,20 @@ export default function AtldPriceTab({
   // Bấm vào dòng -> popup xem đủ thông tin (màn hình nhỏ không phải cuộn ngang).
   const [viewing, setViewing] = useState<Row | null>(null);
   const [rowErr, setRowErr] = useState<string | null>(null);
+  // Cột Ghi chú + cột tự thêm (migration 149): dùng chung mọi người, lưu theo "nguon-id" của dòng.
+  const [columns, setColumns] = useState<TradeColumn[]>([]);
+  const [notes, setNotes] = useState<Map<string, TradeNote>>(new Map());
+  const [newCol, setNewCol] = useState<string | null>(null); // null = ô nhập tên cột đang đóng
   const { ask, confirmNode } = useConfirmBox();
   const showActions = true; // dòng phiếu luôn có nút mở sang tab Xuất kho
 
   const load = useCallback(async () => {
-    const [it, pr] = await Promise.all([fetchItems(), fetchTradePrices()]);
+    const [it, pr, ex] = await Promise.all([fetchItems(), fetchTradePrices(), fetchTradeExtras()]);
     setItems(it.items);
     setPrices(pr.rows);
-    setError(it.error || pr.error);
+    setColumns(ex.columns);
+    setNotes(ex.notes);
+    setError(it.error || pr.error || ex.error);
     setLoading(false);
   }, []);
 
@@ -156,10 +171,49 @@ export default function AtldPriceTab({
         ...p,
         item,
         prevPrice: prev.get(`${p.nguon}-${p.id}`) ?? null,
-        haystack: normalizeName(`${item ? itemSearchText(item) : ""} ${p.doi_tac || ""} ${p.chung_tu || ""} ${p.so_phieu || ""}`),
+        haystack: normalizeName(`${item ? itemSearchText(item) : ""} ${p.doi_tac || ""} ${p.chung_tu || ""} ${p.so_phieu || ""} ${notes.get(`${p.nguon}-${p.id}`)?.note || ""}`),
       };
     });
-  }, [prices, items]);
+  }, [prices, items, notes]);
+
+  const keyOf = (r: { nguon: string; id: string }) => `${r.nguon}-${r.id}`;
+
+  // Ghi 1 ô (Ghi chú hoặc cột tự thêm): cập nhật ngay trên màn hình, lỗi thì báo + tải lại.
+  async function saveCell(r: Row, colId: string | null, text: string) {
+    const key = keyOf(r);
+    const cur = notes.get(key) || { note: "", extra: {} };
+    const next: TradeNote = colId === null ? { ...cur, note: text } : { ...cur, extra: { ...cur.extra, [colId]: text } };
+    if ((colId === null ? cur.note : cur.extra[colId] || "") === text) return;
+    setNotes((m) => new Map(m).set(key, next));
+    setRowErr(null);
+    const e = await saveTradeNote(key, next);
+    if (e) {
+      setRowErr(e);
+      load();
+    }
+  }
+
+  async function submitNewCol() {
+    const title = (newCol || "").trim();
+    if (!title) return setNewCol(null);
+    setRowErr(null);
+    const e = await addTradeColumn(title, (columns.reduce((m, c) => Math.max(m, c.sort_order), 0) || 0) + 1);
+    if (e) return setRowErr(e);
+    setNewCol(null);
+    load();
+  }
+
+  const removeCol = (c: TradeColumn) =>
+    ask({
+      title: `Xoá cột "${c.title}"?`,
+      message: "Dữ liệu đã điền trong cột này sẽ không hiện nữa. Không ảnh hưởng tồn kho / giá. Không hoàn tác được.",
+      onConfirm: async () => {
+        setRowErr(null);
+        const e = await deleteTradeColumn(c.id);
+        if (e) return setRowErr(e);
+        load();
+      },
+    });
 
   const partners = useMemo(
     () =>
@@ -249,9 +303,36 @@ export default function AtldPriceTab({
             </button>
           )}
         </div>
-        <button type="button" onClick={() => exportTradeExcel(filtered)} disabled={filtered.length === 0} className={BTN_OUTLINE}>
+        <button type="button" onClick={() => exportTradeExcel(filtered, columns, notes)} disabled={filtered.length === 0} className={BTN_OUTLINE}>
           <FileDown size={14} /> Tải danh sách
         </button>
+        {canEditRow &&
+          (newCol === null ? (
+            <button type="button" onClick={() => setNewCol("")} className={BTN_OUTLINE} title="Chèn thêm một cột trống sau cột Ghi chú để tự điền dữ liệu">
+              <Plus size={14} /> Chèn cột
+            </button>
+          ) : (
+            <div className={`${CONTROL_BOX} gap-1 pl-3 pr-1 focus-within:border-[#00AEEF]`}>
+              <input
+                autoFocus
+                value={newCol}
+                onChange={(e) => setNewCol(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") submitNewCol();
+                  if (e.key === "Escape") setNewCol(null);
+                }}
+                maxLength={80}
+                placeholder="Tên cột mới…"
+                className="w-36 bg-transparent text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none"
+              />
+              <button type="button" onClick={submitNewCol} className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 cursor-pointer" aria-label="Thêm cột">
+                <Check size={14} />
+              </button>
+              <button type="button" onClick={() => setNewCol(null)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 cursor-pointer" aria-label="Huỷ">
+                <X size={14} />
+              </button>
+            </div>
+          ))}
         {canEdit && items.length > 0 && <TradeHistoryImport items={items} existing={prices} onDone={load} />}
       </div>
 
@@ -343,7 +424,7 @@ export default function AtldPriceTab({
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-x-auto">
-          <table className="w-full text-xs min-w-[1520px]">
+          <table className="w-full text-xs" style={{ minWidth: 1710 + columns.length * 170 }}>
             <thead>
               {/* Thanh tiêu đề xanh dương — cùng kiểu Tổng kho ATLĐ / Hồ sơ trình ký. */}
               <tr className="bg-gradient-to-r from-[#005BAC] to-blue-500 text-[10px] font-extrabold uppercase tracking-wider text-white text-left whitespace-nowrap">
@@ -362,6 +443,21 @@ export default function AtldPriceTab({
                 <th className="px-4 py-3">Báo giá / HĐ</th>
                 <th className="px-4 py-3">Nguồn</th>
                 <th className="px-3 py-3">Trạng thái</th>
+                <th className="px-3 py-3 min-w-[190px]">Ghi chú</th>
+                {columns.map((c) => (
+                  <ColumnHead
+                    key={c.id}
+                    col={c}
+                    canRename={canEditRow}
+                    canDelete={canDelete}
+                    onRename={async (t) => {
+                      const e = await renameTradeColumn(c.id, t);
+                      if (e) setRowErr(e);
+                      else load();
+                    }}
+                    onDelete={() => removeCol(c)}
+                  />
+                ))}
                 {showActions && <th className="px-3 py-3 w-28" />}
               </tr>
             </thead>
@@ -433,6 +529,14 @@ export default function AtldPriceTab({
                         <span className="text-slate-300">—</span>
                       )}
                     </td>
+                    <td className="px-2 py-1.5 min-w-[190px]">
+                      <EditableCell value={notes.get(keyOf(r))?.note || ""} editable={canEditRow} onSave={(t) => saveCell(r, null, t)} />
+                    </td>
+                    {columns.map((c) => (
+                      <td key={c.id} className="px-2 py-1.5 min-w-[160px]">
+                        <EditableCell value={notes.get(keyOf(r))?.extra[c.id] || ""} editable={canEditRow} onSave={(t) => saveCell(r, c.id, t)} />
+                      </td>
+                    ))}
                     {showActions && (
                       <td className="px-3 py-2.5">
                         {r.nguon === "phieu" && r.loai === "xuat" ? (
@@ -529,6 +633,14 @@ export default function AtldPriceTab({
                 { label: "Người lập", value: viewing.created_by_name || viewing.created_by },
               ],
             },
+            ...(() => {
+              const n = notes.get(keyOf(viewing));
+              const fields = [
+                { label: "Ghi chú", value: n?.note, wide: true },
+                ...columns.map((c) => ({ label: c.title, value: n?.extra[c.id], wide: true })),
+              ].filter((f) => f.value);
+              return fields.length ? [{ title: "Ghi chú", tone: "orange" as const, fields }] : [];
+            })(),
           ]}
           actions={
             viewing.nguon === "phieu" && viewing.loai === "xuat" ? (
@@ -588,6 +700,90 @@ export default function AtldPriceTab({
       )}
       {confirmNode}
     </div>
+  );
+}
+
+// ─── Ô chỉnh tay trong bảng (cột Ghi chú + cột tự thêm) ───
+// Gõ xong bấm ra ngoài hoặc Enter là lưu; Esc bỏ thay đổi. Không có quyền thì chỉ đọc.
+function EditableCell({ value, editable, onSave }: { value: string; editable: boolean; onSave: (t: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  if (!editable) return <span className="block px-2 text-slate-600 whitespace-pre-wrap">{value || <span className="text-slate-300">—</span>}</span>;
+  return (
+    <input
+      value={draft ?? value}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft !== null && draft !== value) onSave(draft);
+        setDraft(null);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        if (e.key === "Escape") {
+          setDraft(null);
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      placeholder="Nhập…"
+      className="w-full h-8 text-xs font-semibold text-slate-700 bg-transparent border border-transparent hover:border-slate-200 rounded-lg px-2 focus:bg-white focus:outline-none focus:border-[#00AEEF]"
+    />
+  );
+}
+
+// Tiêu đề cột tự thêm: bấm bút đổi tên, bấm thùng rác xoá cột (nền xanh nên dùng chữ trắng).
+function ColumnHead({
+  col,
+  canRename,
+  canDelete,
+  onRename,
+  onDelete,
+}: {
+  col: TradeColumn;
+  canRename: boolean;
+  canDelete: boolean;
+  onRename: (t: string) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(col.title);
+  const done = () => {
+    setEditing(false);
+    if (text.trim() && text.trim() !== col.title) onRename(text.trim());
+    else setText(col.title);
+  };
+  return (
+    <th className="px-3 py-3 min-w-[160px]">
+      {editing ? (
+        <input
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={done}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") done();
+            if (e.key === "Escape") {
+              setText(col.title);
+              setEditing(false);
+            }
+          }}
+          maxLength={80}
+          className="w-full h-7 rounded-md px-2 text-[11px] font-bold normal-case text-slate-800 bg-white focus:outline-none"
+        />
+      ) : (
+        <span className="inline-flex items-center gap-1.5">
+          {col.title}
+          {canRename && (
+            <button type="button" title="Đổi tên cột" aria-label="Đổi tên cột" onClick={() => setEditing(true)} className="text-white/70 hover:text-white cursor-pointer">
+              <Pencil size={11} />
+            </button>
+          )}
+          {canDelete && (
+            <button type="button" title="Xoá cột" aria-label="Xoá cột" onClick={onDelete} className="text-white/70 hover:text-white cursor-pointer">
+              <Trash2 size={11} />
+            </button>
+          )}
+        </span>
+      )}
+    </th>
   );
 }
 

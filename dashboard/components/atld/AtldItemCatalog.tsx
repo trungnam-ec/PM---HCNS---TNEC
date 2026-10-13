@@ -49,7 +49,7 @@ import {
   formatMoney,
 } from "@/lib/atldStock";
 import { deleteInactiveItem } from "@/lib/atldVouchers";
-import { Search, Plus, Pencil, Trash2, Loader2, AlertCircle, X, Boxes, PackageX, TriangleAlert, Wallet, EyeOff, Eye, ChevronLeft, ChevronRight, CalendarDays, FileDown, Check } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Loader2, AlertCircle, X, Boxes, PackageX, TriangleAlert, Wallet, Package, PackageOpen, PackagePlus, PackageMinus, EyeOff, Eye, ChevronLeft, ChevronRight, CalendarDays, FileDown, Check } from "lucide-react";
 
 // Bộ lọc trạng thái: 3 mức tồn xét theo TỒN CUỐI KỲ của tháng đang xem; "Tất cả"
 // và 3 mức chỉ tính mã đang dùng, "Ngừng dùng" là nhóm riêng.
@@ -159,6 +159,10 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
     inactive: rows.length - activeRows.length,
   };
   const totalValue = activeRows.reduce((s, r) => s + r.giaTriCuoi, 0);
+  const totals = activeRows.reduce(
+    (t, r) => ({ tonDau: t.tonDau + r.tonDau, nhap: t.nhap + r.nhap, xuat: t.xuat + r.xuat, tonCuoi: t.tonCuoi + r.tonCuoi }),
+    { tonDau: 0, nhap: 0, xuat: 0, tonCuoi: 0 }
+  );
   const [mY, mM] = month.split("-");
   const isCurrentMonth = month === currentMonthVN();
 
@@ -257,17 +261,49 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
         <StatCard icon={PackageX} label={`Hết hàng cuối T${Number(mM)}`} value={formatQty(counts.out)} tone="rose" onClick={() => setFilter("out")} />
         <StatCard icon={TriangleAlert} label="Dưới tồn tối thiểu" value={formatQty(counts.low)} tone="amber" onClick={() => setFilter("low")} />
         <StatCard icon={Wallet} label={`Giá trị tồn cuối T${Number(mM)} (đồng)`} value={formatMoney(totalValue)} tone="emerald" />
+        {/* Hàng 2: Tồn đầu – Nhập – Xuất – Tồn cuối kỳ (mã đang dùng), chung lưới để các ô thẳng cột, đều khoảng cách */}
+        <StatCard icon={PackageOpen} label={`Tồn đầu kỳ T${Number(mM)}`} value={formatQty(totals.tonDau)} tone="blue" />
+        <StatCard icon={PackagePlus} label="Nhập SP" value={formatQty(totals.nhap)} tone="emerald" />
+        <StatCard icon={PackageMinus} label="Xuất SP" value={formatQty(totals.xuat)} tone="rose" />
+        <StatCard icon={Package} label={`Tồn cuối kỳ T${Number(mM)}`} value={formatQty(totals.tonCuoi)} tone="blue" />
       </div>
 
-      {/* ── Thanh công cụ: hàng 1 = ô tìm + nút thao tác, hàng 2 = lọc trạng thái ── */}
+      {/* ── Thanh công cụ: trạng thái + ô tìm cùng một dòng, nút thao tác bên phải ── */}
       <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className={`${CONTROL_BOX} gap-2 px-3 flex-1 min-w-[240px] focus-within:border-[#00AEEF]`}>
+        {/* Cùng lưới với các thẻ: nhóm Trạng thái chiếm nửa trái, ô tìm bắt đầu đúng cột giữa (thẳng với thẻ Nhập SP/Xuất SP) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 items-center">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0">
+          <span className="text-[11px] font-bold text-slate-500 hidden xl:inline">Trạng thái</span>
+          <div className="inline-flex flex-wrap items-center gap-1 p-1 min-w-0 max-w-full bg-white border border-slate-200 rounded-xl" role="tablist" aria-label="Lọc theo trạng thái">
+            {FILTERS.map((f) => {
+              const active = filter === f.key;
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setFilter(f.key)}
+                  className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                    active ? "bg-[#005BAC] text-white shadow-sm" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${active ? "bg-white" : f.dot}`} />
+                  {f.label}
+                  <span className={`tabular-nums ${active ? "text-white/80" : "text-slate-400"}`}>{f.count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0">
+          <div className={`${CONTROL_BOX} gap-2 px-3 w-64 max-w-full focus-within:border-[#00AEEF]`}>
             <Search size={14} className="text-slate-400 shrink-0" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Tìm mã, tên, size, màu… VD: giay 42, non vang, ppe003"
+              placeholder="Tìm mã, tên, size, màu…"
+              title="VD: giay 42, non vang, ppe003"
               className="flex-1 min-w-0 bg-transparent text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none"
             />
             {query && (
@@ -276,7 +312,11 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
               </button>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-slate-400">
+            Đang hiện <b className="text-slate-600">{filtered.length}</b> / {shownOf} mã
+          </span>
+        </div>
+          <div className="col-span-2 flex flex-wrap items-center justify-end gap-2">
             <button type="button" onClick={() => exportStockExcel(filtered, month)} disabled={filtered.length === 0} className={BTN_OUTLINE}>
               <FileDown size={14} /> Tải về
             </button>
@@ -289,34 +329,6 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
               </>
             )}
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <span className="text-[11px] font-bold text-slate-500">Trạng thái</span>
-          <div className="inline-flex flex-wrap items-center gap-1 p-1 bg-white border border-slate-200 rounded-xl" role="tablist" aria-label="Lọc theo trạng thái">
-            {FILTERS.map((f) => {
-              const active = filter === f.key;
-              return (
-                <button
-                  key={f.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setFilter(f.key)}
-                  className={`h-7 inline-flex items-center gap-1.5 px-3 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                    active ? "bg-[#005BAC] text-white shadow-sm" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                  }`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${active ? "bg-white" : f.dot}`} />
-                  {f.label}
-                  <span className={`tabular-nums ${active ? "text-white/80" : "text-slate-400"}`}>{f.count}</span>
-                </button>
-              );
-            })}
-          </div>
-          <span className="ml-auto text-[11px] text-slate-400">
-            Đang hiện <b className="text-slate-600">{filtered.length}</b> / {shownOf} mã
-          </span>
         </div>
       </div>
 

@@ -43,6 +43,10 @@ const STATUS_STYLE: Record<PartnerStatus, string> = {
   blacklist: "bg-rose-50 text-rose-600 border-rose-200",
 };
 
+// Ô chọn của hàng lọc: cao đều nhau, giãn đầy ô lưới để thẳng cột với hàng thẻ thống kê.
+const FILTER_SELECT =
+  "w-full min-w-0 h-10 sm:h-9 text-base sm:text-xs font-semibold bg-white border border-slate-200 rounded-xl px-3 text-slate-600 cursor-pointer truncate";
+
 const inputCls =
   // text-base trên điện thoại: iOS tự phóng to trang khi ô nhập nhỏ hơn 16px.
   "w-full text-base sm:text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 sm:py-2 focus:bg-white focus:outline-none focus:border-[#00AEEF]";
@@ -177,13 +181,14 @@ export default function PartnerDirectory({ access, who }: { access: PartnerAcces
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-2 px-3 py-2.5 sm:py-2 rounded-xl bg-white border border-slate-200 w-full sm:w-auto sm:flex-1 sm:min-w-[240px] sm:max-w-xl focus-within:border-[#00AEEF]">
+      {/* Hàng lọc căn theo đúng 4 cột của hàng thẻ thống kê phía trên: mép các ô thẳng nhau. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="col-span-2 lg:col-span-1 flex items-center gap-2 px-3 h-10 sm:h-9 rounded-xl bg-white border border-slate-200 focus-within:border-[#00AEEF]">
           <Search size={14} className="text-slate-400 shrink-0" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Tìm theo tên, MST, SĐT, người liên hệ, lĩnh vực, tỉnh…"
+            placeholder="Tìm tên, MST, SĐT, liên hệ, lĩnh vực…"
             className="flex-1 min-w-0 bg-transparent text-base sm:text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none"
           />
           {query && (
@@ -192,47 +197,60 @@ export default function PartnerDirectory({ access, who }: { access: PartnerAcces
             </button>
           )}
         </div>
-        <select value={region} onChange={(e) => setRegion(e.target.value as PartnerRegion | "")} className="flex-1 min-w-[140px] sm:flex-none text-base sm:text-xs font-semibold bg-white border border-slate-200 rounded-xl px-3 py-2.5 sm:py-2 text-slate-600 cursor-pointer">
-          <option value="">Mọi khu vực</option>
-          {REGION_ORDER.map((r) => (
-            <option key={r} value={r}>{REGION_LABELS[r]}</option>
-          ))}
-        </select>
-        <select value={province} onChange={(e) => setProvince(e.target.value)} className="flex-1 min-w-[140px] sm:flex-none text-base sm:text-xs font-semibold bg-white border border-slate-200 rounded-xl px-3 py-2.5 sm:py-2 text-slate-600 cursor-pointer max-w-[200px]">
-          <option value="">Mọi tỉnh/thành</option>
-          {allProvinces.map((p) => (
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </select>
-        <select value={field} onChange={(e) => setField(e.target.value)} className="flex-1 min-w-[140px] sm:flex-none text-base sm:text-xs font-semibold bg-white border border-slate-200 rounded-xl px-3 py-2.5 sm:py-2 text-slate-600 cursor-pointer max-w-[220px]">
-          <option value="">Mọi lĩnh vực</option>
-          {allFields.map((f) => (
-            <option key={f} value={f}>{f}</option>
-          ))}
-        </select>
-        <select value={minRating} onChange={(e) => setMinRating(Number(e.target.value))} className="flex-1 min-w-[140px] sm:flex-none text-base sm:text-xs font-semibold bg-white border border-slate-200 rounded-xl px-3 py-2.5 sm:py-2 text-slate-600 cursor-pointer">
-          <option value={0}>Mọi điểm</option>
-          <option value={4.5}>≥ 4.5 ★ Xuất sắc</option>
-          <option value={4}>≥ 4.0 ★ Tốt</option>
-          <option value={3.5}>≥ 3.5 ★ Khá</option>
-        </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value as PartnerStatus | "")} className="flex-1 min-w-[140px] sm:flex-none text-base sm:text-xs font-semibold bg-white border border-slate-200 rounded-xl px-3 py-2.5 sm:py-2 text-slate-600 cursor-pointer">
-          <option value="">Mọi trạng thái</option>
-          {(Object.keys(STATUS_LABELS) as PartnerStatus[]).map((s) => (
-            <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-          ))}
-        </select>
-        <div className="flex p-0.5 bg-white border border-slate-200 rounded-lg">
-          <ViewBtn active={view === "cards"} onClick={() => setView("cards")} title="Dạng thẻ"><LayoutGrid size={14} /></ViewBtn>
-          <ViewBtn active={view === "table"} onClick={() => setView("table")} title="Dạng bảng"><Rows3 size={14} /></ViewBtn>
+        <div className="col-span-2 lg:col-span-1 grid grid-cols-2 gap-3">
+          <select value={region} onChange={(e) => setRegion(e.target.value as PartnerRegion | "")} className={FILTER_SELECT}>
+            <option value="">Mọi khu vực</option>
+            {REGION_ORDER.map((r) => (
+              <option key={r} value={r}>{REGION_LABELS[r]}</option>
+            ))}
+          </select>
+          <select value={province} onChange={(e) => setProvince(e.target.value)} className={FILTER_SELECT}>
+            <option value="">Mọi tỉnh/thành</option>
+            {allProvinces.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
         </div>
-        <div className="w-full sm:w-auto sm:ml-auto flex gap-2">
+        <div className="col-span-2 lg:col-span-1 grid grid-cols-2 gap-3">
+          <select value={field} onChange={(e) => setField(e.target.value)} className={FILTER_SELECT}>
+            <option value="">Mọi lĩnh vực</option>
+            {allFields.map((f) => (
+              <option key={f} value={f}>{f}</option>
+            ))}
+          </select>
+          <select value={minRating} onChange={(e) => setMinRating(Number(e.target.value))} className={FILTER_SELECT}>
+            <option value={0}>Mọi điểm</option>
+            <option value={4.5}>≥ 4.5 ★ Xuất sắc</option>
+            <option value={4}>≥ 4.0 ★ Tốt</option>
+            <option value={3.5}>≥ 3.5 ★ Khá</option>
+          </select>
+        </div>
+        <div className="col-span-2 lg:col-span-1 grid grid-cols-[1fr_auto] gap-3">
+          <select value={status} onChange={(e) => setStatus(e.target.value as PartnerStatus | "")} className={FILTER_SELECT}>
+            <option value="">Mọi trạng thái</option>
+            {(Object.keys(STATUS_LABELS) as PartnerStatus[]).map((s) => (
+              <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+            ))}
+          </select>
+          <div className="flex items-center p-0.5 h-10 sm:h-9 bg-white border border-slate-200 rounded-xl">
+            <ViewBtn active={view === "cards"} onClick={() => setView("cards")} title="Dạng thẻ"><LayoutGrid size={14} /></ViewBtn>
+            <ViewBtn active={view === "table"} onClick={() => setView("table")} title="Dạng bảng"><Rows3 size={14} /></ViewBtn>
+          </div>
+        </div>
+      </div>
+
+      {/* Số lượng bên trái, các nút thao tác bên phải */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold text-slate-400">
+          {loading ? "" : filtering ? `${filtered.length} / ${rows.length} đối tác` : `${rows.length} đối tác`}
+        </p>
+        <div className="w-full sm:w-auto flex gap-2">
           <button
             type="button"
             onClick={doExport}
             disabled={exporting || filtered.length === 0}
             title={filtering ? "Xuất các đối tác đang lọc ra Excel" : "Xuất toàn bộ danh bạ ra Excel"}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:border-[#005BAC] hover:text-[#005BAC] disabled:opacity-50 text-slate-600 text-xs sm:text-[11px] font-bold px-4 py-2.5 sm:py-2 rounded-xl cursor-pointer"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:border-[#005BAC] hover:text-[#005BAC] disabled:opacity-50 text-slate-600 text-xs sm:text-[11px] font-bold px-4 h-10 sm:h-9 rounded-xl cursor-pointer"
           >
             {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Xuất Excel
           </button>
@@ -241,7 +259,7 @@ export default function PartnerDirectory({ access, who }: { access: PartnerAcces
               type="button"
               onClick={() => setAiOpen(true)}
               title="Tải ảnh, PDF, mã QR, Excel để AI tự điền thông tin đối tác"
-              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-white border border-[#005BAC] text-[#005BAC] hover:bg-blue-50 text-xs sm:text-[11px] font-bold px-4 py-2.5 sm:py-2 rounded-xl cursor-pointer"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-white border border-[#005BAC] text-[#005BAC] hover:bg-blue-50 text-xs sm:text-[11px] font-bold px-4 h-10 sm:h-9 rounded-xl cursor-pointer"
             >
               <Sparkles size={14} /> Nhập bằng AI
             </button>
@@ -250,14 +268,13 @@ export default function PartnerDirectory({ access, who }: { access: PartnerAcces
             <button
               type="button"
               onClick={() => setEditing("new")}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs sm:text-[11px] font-bold px-4 py-2.5 sm:py-2 rounded-xl shadow-sm cursor-pointer"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-[#005BAC] hover:bg-blue-700 text-white text-xs sm:text-[11px] font-bold px-4 h-10 sm:h-9 rounded-xl shadow-sm cursor-pointer"
             >
               <Plus size={14} /> Thêm đối tác
             </button>
           )}
         </div>
       </div>
-
       {(error || rowErr) && (
         <div className="flex items-start gap-2 bg-rose-50 border border-rose-200 text-rose-600 text-xs font-semibold px-4 py-3 rounded-xl">
           <AlertCircle size={14} className="mt-0.5 shrink-0" /> {error || rowErr}
@@ -276,9 +293,6 @@ export default function PartnerDirectory({ access, who }: { access: PartnerAcces
         </div>
       ) : (
         <>
-          <p className="text-[11px] font-semibold text-slate-400">
-            {filtering ? `${filtered.length} / ${rows.length} đối tác` : `${rows.length} đối tác`}
-          </p>
           {view === "cards" ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5">
               {filtered.map((r) => (

@@ -66,6 +66,7 @@ export const ROUTE_MIN_PLAN: { prefix: string; min: Plan }[] = [
   { prefix: "/van-thu", min: "professional" },
   { prefix: "/tong-hop", min: "professional" },
   { prefix: "/an-toan-lao-dong", min: "enterprise" },
+  { prefix: "/danh-ba-doi-tac", min: "enterprise" },
 ];
 
 // ─── PHÂN GÓI THEO TÍNH NĂNG (không gắn với route riêng) ───

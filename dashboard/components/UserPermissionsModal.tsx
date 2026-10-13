@@ -108,6 +108,15 @@ const FLAG_GROUPS: { title: string; note?: string; flags: { key: string; label: 
       { key: "can_process_atld_penalty", label: "Khấu trừ xử phạt — P.KHĐT xử lý", desc: "Nhập thông tin đầu ra: ngày tiếp nhận, đợt thanh toán, giá trị đã khấu trừ, số chứng từ. Không cần cờ Xem module — chỉ thấy tab Khấu trừ xử phạt" },
     ],
   },
+  {
+    // Danh bạ đối tác (migration 150): gói Enterprise + bắt buộc cờ. Danh bạ không
+    // chứa số tài khoản ngân hàng. Xoá đối tác CHỈ Admin, không có cờ nào mở được.
+    title: "Danh bạ đối tác — Nhà thầu phụ / Nhà cung cấp / Tổ đội",
+    flags: [
+      { key: "can_view_partner_dir", label: "Xem Danh bạ đối tác", desc: "Vào được module, xem và tìm kiếm toàn bộ đối tác (liên hệ, năng lực, đánh giá nội bộ). Không thêm/sửa được" },
+      { key: "can_manage_partner_dir", label: "Chỉnh sửa Danh bạ đối tác", desc: "Thêm đối tác, sửa thông tin, đổi trạng thái (tạm dừng / danh sách đen). Tự kèm quyền xem. Xoá đối tác chỉ Admin" },
+    ],
+  },
 ];
 
 const ALL_FLAG_KEYS = FLAG_GROUPS.flatMap(g => g.flags.map(f => f.key));

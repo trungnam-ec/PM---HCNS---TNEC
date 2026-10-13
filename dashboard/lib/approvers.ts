@@ -79,6 +79,9 @@ export type ApprovalPermissions = {
   canApproveAtldIssue: boolean;  // TP/PP ATLĐ: duyệt / trả lại phiếu xuất, huỷ phiếu
   canInputAtldPenalty: boolean;   // P.ATLĐ: nhập đầu vào tab Khấu trừ xử phạt (migration 139)
   canProcessAtldPenalty: boolean; // P.KHĐT: nhập đầu ra tab Khấu trừ xử phạt (migration 139)
+  // ─── Danh bạ đối tác (migration 150) ───
+  canViewPartners: boolean;       // Xem danh bạ — module bắt buộc cờ
+  canManagePartners: boolean;     // Thêm / sửa / ngừng hợp tác (tự kèm quyền xem)
   // Quan hệ giám sát: tên hiển thị (khớp cột `assignee` dạng text) của người mà chủ
   // dòng này được thấy task, ngoài task của chính họ. VD: Như Quỳnh -> "Thanh Hằng".
   supervisesName: string | null;
@@ -122,6 +125,8 @@ export const NO_APPROVAL_PERMISSIONS: ApprovalPermissions = {
   canApproveAtldIssue: false,
   canInputAtldPenalty: false,
   canProcessAtldPenalty: false,
+  canViewPartners: false,
+  canManagePartners: false,
   supervisesName: null,
 };
 
@@ -746,6 +751,8 @@ export async function fetchApprovalPermissions(email?: string | null): Promise<A
       canApproveAtldIssue: !!row.can_approve_atld_issue,
       canInputAtldPenalty: !!row.can_input_atld_penalty,
       canProcessAtldPenalty: !!row.can_process_atld_penalty,
+      canViewPartners: !!row.can_view_partner_dir,
+      canManagePartners: !!row.can_manage_partner_dir,
       supervisesName: row.supervises_name || null,
     };
   } catch {

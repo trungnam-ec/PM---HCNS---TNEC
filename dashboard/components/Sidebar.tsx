@@ -34,7 +34,8 @@ import {
   FolderKanban,
   ClipboardType,
   HardHat,
-  Gauge
+  Gauge,
+  Contact
 } from "lucide-react";
 import { useSidebar } from "./SidebarContext";
 import { useDepartments } from "@/lib/departments";
@@ -119,6 +120,7 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
     { label: "Hồ sơ trình ký", href: "/ho-so-trinh-ky", icon: TrendingUp },
     { label: "Văn Thư", href: "/document-control", icon: FileText },
     { label: "P. An toàn lao động", href: "/an-toan-lao-dong", icon: HardHat },
+    { label: "Danh bạ đối tác", href: "/danh-ba-doi-tac", icon: Contact },
     { label: "Biên bản họp (Meeting)", href: "/meeting-team", icon: Mic },
     { label: "Góp ý & Kiến nghị", href: "/suggestions", icon: MessageSquare },
     { label: "Cài đặt hệ thống", href: "/settings?tab=system", icon: Settings },

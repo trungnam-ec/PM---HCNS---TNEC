@@ -65,6 +65,7 @@ export type ModuleKey =
   | "accounting"
   | "meeting"
   | "safety"
+  | "partners"
   | "employees"
   | "cb"
   | "suggestions"
@@ -151,6 +152,16 @@ export const MODULE_REGISTRY: Record<ModuleKey, ModuleDef> = {
     grantFlag: "canViewAtld",
     // 2 cờ Khấu trừ xử phạt (139) cũng vào được module nhưng CHỈ thấy tab đó.
     altFlags: ["canManageAtldStock", "canApproveAtldIssue", "canInputAtldPenalty", "canProcessAtldPenalty"],
+    requireFlag: true,
+  },
+  // Danh bạ đối tác (migration 150) — Sếp chốt 13/10/2026: gói Enterprise + BẮT BUỘC
+  // cờ. Admin luôn vào; người khác cần cờ Xem (can_view_partner_dir) hoặc cờ Sửa
+  // (can_manage_partner_dir, tự kèm quyền xem). RLS partner_directory chặn đọc/ghi.
+  partners: {
+    minPlan: "enterprise",
+    route: "/danh-ba-doi-tac",
+    grantFlag: "canViewPartners",
+    altFlags: ["canManagePartners"],
     requireFlag: true,
   },
 };

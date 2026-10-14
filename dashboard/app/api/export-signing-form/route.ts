@@ -23,9 +23,9 @@ import Docxtemplater from "docxtemplater";
 // sinh ra từ file gốc của công ty — letterhead, khung viền, ô ký giữ nguyên.
 const TEMPLATE_HO_SO = "phieu_trinh_ky_ho_so_van_ban_template.docx";
 const TEMPLATE_HOP_DONG = "phieu_trinh_ky_hop_dong_template.docx";
-// Tờ trình TTr/TNE&C (migration 088). Bản đã gắn tag sinh ra từ to_trinh.doc của
+// Tờ trình TTr/TNE&C (migration 088). Bản đã gắn tag sinh ra từ To_Trinh_2.docx của
 // công ty — letterhead, footer, khung 3 ô ký giữ nguyên 100%.
-const TEMPLATE_TO_TRINH = "to_trinh_template.docx";
+const TEMPLATE_TO_TRINH = "to_trinh_2_template.docx";
 // Phiếu yêu cầu HC-BM 023/PYC (migration 091). Bảng vật tư dùng VÒNG LẶP HÀNG
 // `{#vatTu}` nên số dòng in ra do dữ liệu quyết định, không phải do file mẫu.
 const TEMPLATE_PHIEU_YEU_CAU = "phieu_yeu_cau_template.docx";

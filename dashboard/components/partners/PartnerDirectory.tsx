@@ -27,7 +27,7 @@ import {
 } from "@/lib/partnerDirectory";
 import {
   Search, Plus, Pencil, Trash2, Loader2, AlertCircle, X, Phone, Mail, MapPin, LayoutGrid, Rows3,
-  Star, Building2, HardHat, Truck, Users, PauseCircle, PlayCircle, Ban, Globe, Link2, Bookmark, ChevronDown, Copy, Check, AlertTriangle, ShieldCheck, Eye, Download, FileText, Upload, Sparkles,
+  Star, Building2, HardHat, Truck, Users, PauseCircle, PlayCircle, Ban, Globe, Link2, Bookmark, ChevronDown, Copy, Check, AlertTriangle, ShieldCheck, Eye, Download, FileText, Upload, Sparkles, Folder,
 } from "lucide-react";
 
 const KIND_STYLE: Record<PartnerKind, { cls: string; icon: typeof Building2 }> = {
@@ -310,7 +310,7 @@ export default function PartnerDirectory({ access, who }: { access: PartnerAcces
             </div>
           ) : (
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-x-auto">
-              <table className="w-full text-xs min-w-[1060px]">
+              <table className="w-full text-xs min-w-[1120px]">
                 <thead>
                   <tr className="bg-[#005BAC] text-white text-[10px] font-extrabold uppercase tracking-wider text-left">
                     <th className="pl-3 pr-2 py-3 w-12">STT</th>
@@ -321,6 +321,7 @@ export default function PartnerDirectory({ access, who }: { access: PartnerAcces
                     <th className="px-4 py-3">Khu vực</th>
                     <th className="px-4 py-3">Lĩnh vực</th>
                     <th className="px-4 py-3 text-center">Profile</th>
+                    <th className="px-4 py-3 text-center">Website</th>
                     <th className="px-4 py-3 text-center">Đánh giá</th>
                     <th className="px-4 py-3">Điểm</th>
                   </tr>
@@ -351,9 +352,25 @@ export default function PartnerDirectory({ access, who }: { access: PartnerAcces
                               rel="noopener noreferrer"
                               title="Xem Profile công ty"
                               aria-label="Xem Profile công ty"
+                              className="inline-flex p-1.5 rounded-lg text-amber-600 hover:bg-amber-50"
+                            >
+                              <Folder size={16} />
+                            </a>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                          {linkOf(r.website) ? (
+                            <a
+                              href={linkOf(r.website) as string}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={`Mở website: ${r.website}`}
+                              aria-label="Mở website"
                               className="inline-flex p-1.5 rounded-lg text-[#005BAC] hover:bg-blue-50"
                             >
-                              <Eye size={16} />
+                              <Globe size={16} />
                             </a>
                           ) : (
                             <span className="text-slate-300">—</span>
@@ -529,6 +546,33 @@ function ChatLinks({ r, withLabel, small }: { r: PartnerRow; withLabel?: boolean
             <path d={BRAND_ICONS[i.key].path} />
           </svg>
           {withLabel && i.name}
+        </a>
+      ))}
+    </>
+  );
+}
+
+// Biểu tượng mở nhanh Website (quả địa cầu) và Profile công ty (thư mục) trên thẻ, cùng kiểu tròn nhỏ
+// với Zalo / Viber…; chỉ hiện khi đối tác có lưu link tương ứng.
+function LinkIcons({ r }: { r: PartnerRow }) {
+  const items = [
+    { key: "web", href: linkOf(r.website), title: "Mở website", Icon: Globe, bg: "#0E7490" },
+    { key: "profile", href: linkOf(r.profile_url), title: "Xem Profile công ty", Icon: Folder, bg: "#D97706" },
+  ].filter((i) => i.href);
+  return (
+    <>
+      {items.map(({ key, href, title, Icon, bg }) => (
+        <a
+          key={key}
+          href={href as string}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={title}
+          aria-label={title}
+          className="w-7 h-7 sm:w-6 sm:h-6 flex items-center justify-center rounded-full text-white hover:opacity-85"
+          style={{ backgroundColor: bg }}
+        >
+          <Icon size={13} />
         </a>
       ))}
     </>
@@ -1059,6 +1103,7 @@ function PartnerCard({ r, onOpen, onDelete }: { r: PartnerRow; onOpen: () => voi
           </a>
         )}
         <ChatLinks r={r} small />
+        <LinkIcons r={r} />
       </div>
       <CompletenessBar r={r} />
     </div>

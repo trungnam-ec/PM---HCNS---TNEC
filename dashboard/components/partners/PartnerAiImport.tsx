@@ -15,7 +15,7 @@ import { createPortal } from "react-dom";
 import {
   type PartnerRow, type PartnerInput, type PartnerKind,
   KIND_LABELS, KIND_ORDER, REGION_LABELS,
-  createPartner, updatePartner, validateInput, lookupTax, taxLevel, formatCheckedDate, cleanTaxCode,
+  createPartner, updatePartner, validateInput, lookupTax, taxLevel, taxStatusText, formatCheckedDate, cleanTaxCode,
 } from "@/lib/partnerDirectory";
 import {
   type AiSource, type AiItem, AI_MODELS, MAX_SOURCE_BYTES,
@@ -579,9 +579,9 @@ function ResultRow({ it, selectable, onToggle, onEdit, onRemove }: { it: AiItem;
           {it.matchId && !saved && <span className="flex items-center gap-1 text-[11px] font-bold text-sky-700"><Pencil size={12} /> Chép đè lên đối tác đã có: {it.matchName}</span>}
           {it.merged > 0 && <span className="text-[11px] font-semibold text-slate-400">đã gộp {it.merged} dòng trùng trong tệp</span>}
           {it.dup && <span className="flex items-center gap-1 text-[11px] font-bold text-amber-600"><AlertTriangle size={12} /> Có thể trùng: {it.dup} — vẫn lưu được</span>}
-          {lv === "red" && <span className="flex items-center gap-1 text-[11px] font-extrabold text-rose-600"><AlertTriangle size={12} /> Cờ đỏ MST — {v.tax_status}</span>}
+          {lv === "red" && <span className="flex items-center gap-1 text-[11px] font-extrabold text-rose-600"><AlertTriangle size={12} /> Cờ đỏ MST — {taxStatusText(v.tax_status)}</span>}
           {lv === "ok" && <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600"><ShieldCheck size={12} /> MST đang hoạt động{v.tax_checked_at && ` · ${formatCheckedDate(v.tax_checked_at)}`}</span>}
-          {lv === "unknown" && v.tax_status && <span className="text-[11px] font-bold text-amber-600">MST: {v.tax_status}</span>}
+          {lv === "unknown" && v.tax_status && <span className="text-[11px] font-bold text-amber-600">MST: {taxStatusText(v.tax_status)}</span>}
           {it.tax === "pending" && <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-400"><Loader2 size={11} className="animate-spin" /> Đang kiểm tra MST…</span>}
           {it.tax === "notfound" && <span className="text-[11px] font-semibold text-slate-400">Nguồn tra cứu không có MST này</span>}
           {it.tax === "error" && <span className="text-[11px] font-semibold text-slate-400">Chưa tra được MST</span>}

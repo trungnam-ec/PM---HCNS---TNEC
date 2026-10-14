@@ -21,7 +21,7 @@ import {
   fetchPartners, createPartner, updatePartner, setPartnerStatus, deletePartner,
   emptyInput, inputFromRow, validateInput, completeness, scorePartner, phoneHref, zaloHref,
   viberHref, whatsappHref, telegramHref, emailHref, getMailPref, setMailPref, MAIL_APP_LABELS, type MailApp,
-  lookupTax, taxLevel, formatCheckedDate, cleanTaxCode, taxAgeDays, taxAgeText, TAX_STALE_DAYS,
+  lookupTax, taxLevel, taxStatusText, formatCheckedDate, cleanTaxCode, taxAgeDays, taxAgeText, TAX_STALE_DAYS,
   NEEDS_REASON, exportPartnersXlsx, type PartnerFile, type PartnerDocType, DOC_TYPE_LABELS, MAX_FILE_BYTES,
   fetchPartnerFiles, uploadPartnerFile, deletePartnerFile, downloadPartnerFile, formatFileSize, checkPartnerFile, tooBigNotice,
 } from "@/lib/partnerDirectory";
@@ -974,7 +974,7 @@ function TaxChip({ status, checkedAt }: { status: string | null; checkedAt: stri
   if (lv === "red")
     return (
       <p className="flex items-start gap-1.5 text-[11px] font-extrabold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5">
-        <AlertTriangle size={13} className="mt-px shrink-0" /> <span>Cờ đỏ — {status}</span>
+        <AlertTriangle size={13} className="mt-px shrink-0" /> <span>{taxStatusText(status)}</span>
       </p>
     );
   if (lv === "ok") {
@@ -990,7 +990,7 @@ function TaxChip({ status, checkedAt }: { status: string | null; checkedAt: stri
       </p>
     );
   }
-  return <p className="text-[10px] font-bold text-amber-600">MST: {status}</p>;
+  return <p className="text-[10px] font-bold text-amber-600">MST: {taxStatusText(status)}</p>;
 }
 
 function TaxBanner({ status, checkedAt }: { status: string | null; checkedAt: string | null }) {
@@ -1008,19 +1008,19 @@ function TaxBanner({ status, checkedAt }: { status: string | null; checkedAt: st
   const Icon = lv === "ok" && !stale ? ShieldCheck : AlertTriangle;
   const title =
     lv === "red"
-      ? `CỜ ĐỎ: ${status}`
+      ? taxStatusText(status) // băng đỏ: ghi đúng tình trạng, màu đỏ + biểu tượng cảnh báo đã đủ báo hiệu
       : lv === "ok"
         ? stale
           ? `Mã số thuế từng ghi nhận đang hoạt động — đã tra ${age}, nên tra lại`
           : "Mã số thuế đang hoạt động"
-        : `Tình trạng mã số thuế: ${status}`;
+        : `Tình trạng mã số thuế: ${taxStatusText(status)}`;
   const note =
     lv === "red"
-      ? "Cần xác minh lại trước khi ký hợp đồng hoặc thanh toán."
+      ? "" // băng đỏ: gọn như băng xanh
       : stale
         ? "Kết quả đã cũ, tình trạng có thể đã thay đổi. Bấm Kiểm tra lại ở form Sửa trước khi giao dịch."
         : lv === "ok"
-          ? "Chỉ cho biết tình trạng hiện tại, không đảm bảo uy tín hay không nợ thuế."
+          ? "" // nhãn xanh: gọn, chỉ còn dòng "Tra cứu ngày … theo dữ liệu cơ quan thuế" bên dưới
           : "Cần kiểm tra thủ công tại tracuunnt.gdt.gov.vn.";
   return (
     <div className={`flex items-start gap-2.5 border rounded-xl px-3.5 py-2.5 ${cls}`}>
@@ -1029,7 +1029,9 @@ function TaxBanner({ status, checkedAt }: { status: string | null; checkedAt: st
         <p className="font-extrabold leading-snug">{title}</p>
         <p className="font-semibold opacity-80 mt-0.5">
           {note}
-          {date && ` Tra cứu ngày ${date}${age ? ` (${age})` : ""}, theo dữ liệu cơ quan thuế (có thể trễ vài ngày).`}
+          {date && ((lv === "ok" && !stale) || lv === "red"
+            ? `Tra cứu ngày ${date}. Theo dữ liệu cơ quan thuế cập nhật (có thể trễ vài ngày).`
+            : ` Tra cứu ngày ${date}${age ? ` (${age})` : ""}, theo dữ liệu cơ quan thuế (có thể trễ vài ngày).`)}
         </p>
       </div>
     </div>

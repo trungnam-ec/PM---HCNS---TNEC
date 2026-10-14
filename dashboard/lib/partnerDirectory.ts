@@ -454,6 +454,12 @@ export function taxLevel(status: string | null | undefined): TaxLevel {
   return "unknown";
 }
 
+// Cơ quan thuế ghi "NNT …" (người nộp thuế) — người dùng không hiểu viết tắt này: hiển thị "Doanh nghiệp …".
+// Chỉ đổi chữ hiển thị; dữ liệu lưu giữ nguyên văn để phân loại cờ đỏ (taxLevel) như cũ.
+export function taxStatusText(s: string | null | undefined): string {
+  return (s || "").replace(/\bNNT\b/g, "Doanh nghiệp").replace(/\s+/g, " ").trim();
+}
+
 export type TaxLookupResult =
   | { ok: true; found: true; name: string | null; address: string | null; status: string | null; usedBase: boolean; checkedAt: string }
   | { ok: true; found: false }
@@ -691,7 +697,7 @@ export async function exportPartnersXlsx(rows: PartnerRow[]): Promise<void> {
     "Đánh giá (0-5)", "Nhận xét đánh giá", "Nguồn", "Trạng thái", "Lý do (tạm dừng / danh sách đen)", "Website", "Profile công ty", "Ghi chú",
   ];
   const body = rows.map((r, i) => [
-    i + 1, KIND_LABELS[r.kind], r.name, r.short_name || "", r.tax_code || "", r.tax_status || "", vn(r.tax_checked_at),
+    i + 1, KIND_LABELS[r.kind], r.name, r.short_name || "", r.tax_code || "", taxStatusText(r.tax_status), vn(r.tax_checked_at),
     r.address || "", r.contact_name || "", r.contact_title || "", r.phone || "", r.phone2 || "", r.email || "",
     r.zalo || "", r.viber || "", r.whatsapp || "", r.telegram || "",
     r.legal_rep_name || "", r.legal_rep_title || "", r.regions.map((x) => REGION_LABELS[x]).join(", "), r.provinces.join(", "),

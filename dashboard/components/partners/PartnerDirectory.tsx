@@ -1284,53 +1284,109 @@ function Field({ label, value, icon: Icon, href, copy }: { label: string; value:
   );
 }
 
-// ─── Ô nhập nhiều giá trị (tỉnh/thành, lĩnh vực): Enter hoặc dấu phẩy để thêm ───
-function ChipInput({ values, onChange, suggestions, listId, placeholder }: { values: string[]; onChange: (v: string[]) => void; suggestions: string[]; listId: string; placeholder: string }) {
+// ─── Ô nhập nhiều giá trị (tỉnh/thành, lĩnh vực): gõ để lọc gợi ý, Enter hoặc bấm để thêm ───
+// Danh sách gợi ý tự vẽ (không dùng <datalist> gốc của trình duyệt: khung trắng kiểu hệ điều hành,
+// lệch hẳn giao diện). Lọc không phân biệt dấu; vẫn cho gõ giá trị tự do ngoài danh sách.
+function ChipInput({ values, onChange, suggestions, placeholder }: { values: string[]; onChange: (v: string[]) => void; suggestions: string[]; placeholder: string }) {
   const [text, setText] = useState("");
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
   const add = (raw: string) => {
     const v = raw.trim().replace(/\s+/g, " ");
     if (!v) return;
     if (!values.some((x) => x.toLowerCase() === v.toLowerCase())) onChange([...values, v]);
     setText("");
+    setActive(-1);
   };
+
+  const q = normalizeName(text);
+  const options = suggestions
+    .filter((s) => !values.some((x) => x.toLowerCase() === s.toLowerCase()))
+    .filter((s) => !q || normalizeName(s).includes(q))
+    // Gợi ý bắt đầu bằng chữ đã gõ lên trước.
+    .sort((a, b) => Number(normalizeName(b).startsWith(q)) - Number(normalizeName(a).startsWith(q)));
+  const exact = suggestions.some((s) => s.toLowerCase() === text.trim().toLowerCase());
+  // Dòng "Thêm “…”" cho giá trị chưa có trong danh sách.
+  const freeOpt = text.trim() && !exact && !values.some((x) => x.toLowerCase() === text.trim().toLowerCase()) ? text.trim() : null;
+  const items: { label: string; free?: boolean }[] = [...options.map((o) => ({ label: o })), ...(freeOpt ? [{ label: freeOpt, free: true }] : [])];
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
   return (
-    <div className="bg-slate-50 border border-slate-200 rounded-lg p-1.5 focus-within:bg-white focus-within:border-[#00AEEF]">
-      <div className="flex flex-wrap gap-1">
-        {values.map((v) => (
-          <span key={v} className="inline-flex items-center gap-1 text-[11px] font-semibold bg-white border border-slate-200 text-slate-700 pl-2 pr-1 py-0.5 rounded-md">
-            {v}
-            <button type="button" onClick={() => onChange(values.filter((x) => x !== v))} className="text-slate-300 hover:text-rose-500 cursor-pointer" aria-label={`Bỏ ${v}`}><X size={11} /></button>
-          </span>
-        ))}
-        <input
-          list={listId}
-          value={text}
-          onChange={(e) => {
-            const v = e.target.value;
-            // Chọn từ gợi ý (datalist) trả về nguyên giá trị -> thêm luôn.
-            if (suggestions.includes(v)) add(v);
-            else setText(v);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === ",") {
-              e.preventDefault();
-              add(text);
-            } else if (e.key === "Backspace" && !text && values.length) onChange(values.slice(0, -1));
-          }}
-          onBlur={() => add(text)}
-          placeholder={values.length ? "" : placeholder}
-          className="flex-1 min-w-[120px] bg-transparent text-xs font-semibold text-slate-700 focus:outline-none px-1.5 py-1"
-        />
+    <div ref={wrapRef} className="relative">
+      <div className="bg-slate-50 border border-slate-200 rounded-lg p-1.5 focus-within:bg-white focus-within:border-[#00AEEF]">
+        <div className="flex flex-wrap gap-1">
+          {values.map((v) => (
+            <span key={v} className="inline-flex items-center gap-1 text-[11px] font-semibold bg-white border border-slate-200 text-slate-700 pl-2 pr-1 py-0.5 rounded-md">
+              {v}
+              <button type="button" onClick={() => onChange(values.filter((x) => x !== v))} className="text-slate-300 hover:text-rose-500 cursor-pointer" aria-label={`Bỏ ${v}`}><X size={11} /></button>
+            </span>
+          ))}
+          <input
+            value={text}
+            onFocus={() => setOpen(true)}
+            onChange={(e) => {
+              setText(e.target.value);
+              setOpen(true);
+              setActive(-1);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setOpen(true);
+                setActive((a) => Math.min(items.length - 1, a + 1));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setActive((a) => Math.max(-1, a - 1));
+              } else if (e.key === "Enter" || e.key === ",") {
+                e.preventDefault();
+                if (active >= 0 && items[active]) add(items[active].label);
+                else add(text);
+              } else if (e.key === "Escape" && open) {
+                // Chỉ đóng gợi ý, không đóng cả cửa sổ sửa.
+                e.stopPropagation();
+                setOpen(false);
+              } else if (e.key === "Backspace" && !text && values.length) onChange(values.slice(0, -1));
+            }}
+            onBlur={() => add(text)}
+            placeholder={values.length ? "" : placeholder}
+            className="flex-1 min-w-[120px] bg-transparent text-base sm:text-xs font-semibold text-slate-700 focus:outline-none px-1.5 py-1"
+          />
+        </div>
       </div>
-      <datalist id={listId}>
-        {suggestions.filter((s) => !values.includes(s)).map((s) => (
-          <option key={s} value={s} />
-        ))}
-      </datalist>
+      {open && items.length > 0 && (
+        <ul className="absolute z-30 left-0 right-0 mt-1 max-h-52 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg p-1" role="listbox">
+          {items.map((it, i) => (
+            <li key={`${it.free ? "free:" : ""}${it.label}`} role="option" aria-selected={i === active}>
+              <button
+                type="button"
+                // mousedown + preventDefault: giữ ô nhập đang focus để onBlur không thêm chữ gõ dở trước khi chọn.
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  add(it.label);
+                }}
+                onMouseEnter={() => setActive(i)}
+                className={`w-full text-left flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg cursor-pointer ${i === active ? "bg-blue-50 text-[#005BAC]" : "text-slate-600 hover:bg-slate-50"}`}
+              >
+                {it.free ? <Plus size={12} className="text-[#005BAC] shrink-0" /> : null}
+                {it.free ? <span>Thêm &ldquo;{it.label}&rdquo;</span> : it.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
-
 function Lbl({ text, req, className = "", children }: { text: string; req?: boolean; className?: string; children: React.ReactNode }) {
   return (
     <label className={`block space-y-1 ${className}`}>
@@ -1547,13 +1603,13 @@ function PartnerFormModal({ partner, initial, defaultKind, who, onClose, onSaved
               ))}
             </div>
             <Lbl text="Tỉnh / thành phố (gõ rồi Enter, chọn được nhiều)" className="sm:col-span-2">
-              <ChipInput values={v.provinces} onChange={(x) => set("provinces", x)} suggestions={PROVINCE_SUGGESTIONS} listId="pd-provinces" placeholder="VD: Đồng Nai" />
+              <ChipInput values={v.provinces} onChange={(x) => set("provinces", x)} suggestions={PROVINCE_SUGGESTIONS} placeholder="VD: Đồng Nai" />
             </Lbl>
           </Block>
 
           <Block title="Năng lực">
             <Lbl text="Lĩnh vực / nhóm ngành" className="sm:col-span-2">
-              <ChipInput values={v.fields} onChange={(x) => set("fields", x)} suggestions={FIELD_SUGGESTIONS} listId="pd-fields" placeholder="VD: Bê tông thương phẩm" />
+              <ChipInput values={v.fields} onChange={(x) => set("fields", x)} suggestions={FIELD_SUGGESTIONS} placeholder="VD: Bê tông thương phẩm" />
             </Lbl>
             <Lbl text="Mô tả năng lực, mặt hàng / dịch vụ chính" className="sm:col-span-2">
               <textarea value={v.capability} onChange={(e) => set("capability", e.target.value)} rows={3} className={inputCls} />

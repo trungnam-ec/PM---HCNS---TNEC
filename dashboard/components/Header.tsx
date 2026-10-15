@@ -18,7 +18,7 @@ import {
   isLeaveTripCap2Approver,
   normalizeName,
 } from "@/lib/approvers";
-import { isHrDept } from "@/lib/access";
+import { isHrDept, canUseAiSearch } from "@/lib/access";
 import { emailFieldMatches } from "@/lib/emailMatch";
 import { useSidebar } from "./SidebarContext";
 import { useTenantConfig } from "@/lib/tenantConfig";
@@ -37,7 +37,7 @@ interface Props {
 export default function Header({ title, subtitle }: Props) {
   const tenant = useTenantConfig();
   const { isFeatureAllowed } = usePlan();
-  const aiSearchAllowed = isFeatureAllowed("ai_search");
+  const aiSearchPlanOk = isFeatureAllowed("ai_search");
   const [profile, setProfile] = useState<{ name: string; role: string; avatar: string }>({
     name: "Đang tải...",
     role: "...",
@@ -54,6 +54,10 @@ export default function Header({ title, subtitle }: Props) {
     department: string;
     isAdmin: boolean;
   } | null>(null);
+
+  // Tìm kiếm AI: đủ gói Enterprise VÀ là Admin / Ban lãnh đạo. Chưa tải xong
+  // danh tính thì ẩn (currentUser null) để không nhá nút rồi mất.
+  const aiSearchAllowed = aiSearchPlanOk && !!currentUser && canUseAiSearch(currentUser);
 
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -1535,7 +1539,7 @@ export default function Header({ title, subtitle }: Props) {
                   <span className="text-[9px] text-slate-400 font-semibold">Nhấn Enter để gửi câu hỏi</span>
                 )}
                 <div className="text-[9px] text-slate-400 font-bold flex items-center gap-1">
-                  <Sparkles size={10} className="text-blue-500" /> Mô hình <span className="text-slate-600">gpt-4o</span> · bảo mật cao
+                  <Sparkles size={10} className="text-blue-500" /> Mô hình <span className="text-slate-600">GPT-6.1 Sol</span> · bảo mật cao
                 </div>
               </div>
             </div>

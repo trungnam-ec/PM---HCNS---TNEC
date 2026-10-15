@@ -45,6 +45,12 @@ export function isDirectorRole(role?: string | null): boolean {
   );
 }
 
+// ─── Tìm kiếm AI (Ctrl+K): chỉ Admin + Ban lãnh đạo (user chốt 15/10/2026) ───
+// Dùng chung cho ô tìm kiếm ở Header và cổng chặn ở /api/ai-search.
+export function canUseAiSearch(user: { isAdmin: boolean; role?: string | null }): boolean {
+  return user.isAdmin || isDirectorRole(user.role);
+}
+
 // ─── SỔ ĐĂNG KÝ MODULE ───
 // Thêm module mới = thêm 1 dòng ở đây (một nguồn sự thật cho cả gate UI lẫn RLS).
 //   minPlan   : gói tối thiểu để phòng được thấy module theo mặc định.

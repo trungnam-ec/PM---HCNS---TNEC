@@ -5,6 +5,8 @@ import OpenAI from "openai";
 import { normalizePlan, isFeatureAllowed } from "@/lib/planShared";
 import { getTenantConfigServer } from "@/lib/tenantConfigServer";
 import { emailFieldMatches } from "@/lib/emailMatch";
+import { SOL_MODEL, chatParams } from "@/lib/aiModel";
+import { canUseAiSearch } from "@/lib/access";
 
 export const maxDuration = 60; // Allow enough time for AI response
 
@@ -106,6 +108,15 @@ export async function POST(req: NextRequest) {
     const verifiedRole = empData?.role || (isAdmin ? "Admin" : "Nhân viên");
     const verifiedDept = empData?.department || "";
     const displayName = verifiedName || currentUser?.name || verifiedEmail;
+
+    // CỔNG ĐỐI TƯỢNG: chỉ Admin + Ban lãnh đạo được dùng Tìm kiếm AI. Ẩn nút ở
+    // Header chưa đủ — gọi thẳng API vẫn lọt — nên chặn cả ở đây, theo danh tính
+    // đã xác minh từ token chứ không tin dữ liệu client gửi.
+    if (!canUseAiSearch({ isAdmin, role: verifiedRole })) {
+      return NextResponse.json({
+        error: "Tìm kiếm AI chỉ dành cho Admin và Ban lãnh đạo."
+      }, { status: 403 });
+    }
 
     // 1. Phân quyền truy cập thông tin nhạy cảm (PII: CCCD, địa chỉ...) — KHÔNG liên quan tới lương.
     const roleLc = verifiedRole.toLowerCase();
@@ -597,7 +608,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 5. Gọi OpenAI (GPT-4o).
+    // 5. Gọi OpenAI (GPT-6.1 Sol).
     const openai = new OpenAI({ apiKey });
 
     const tenantCfg = await getTenantConfigServer();
@@ -641,10 +652,9 @@ QUY TẮC BẢO MẬT & VẬN HÀNH QUAN TRỌNG:
     chatMessages.push({ role: "user", content: query });
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: SOL_MODEL,
       messages: chatMessages,
-      temperature: 0.3,
-      max_tokens: 1200
+      ...chatParams(SOL_MODEL, 1200),
     });
 
     const answer = completion.choices[0]?.message?.content || "Không có phản hồi từ trợ lý AI.";

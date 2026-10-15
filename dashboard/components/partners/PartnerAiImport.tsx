@@ -18,7 +18,7 @@ import {
   createPartner, updatePartner, validateInput, lookupTax, taxLevel, taxStatusText, formatCheckedDate, cleanTaxCode,
 } from "@/lib/partnerDirectory";
 import {
-  type AiSource, type AiItem, AI_MODELS, MAX_SOURCE_BYTES,
+  type AiSource, type AiItem, AI_MODELS, DEFAULT_AI_MODEL, MAX_SOURCE_BYTES,
   loadAiConfig, saveAiConfig, extractFromSource, findDup, dupPoolFromRows, sourceKindOf,
   findMatch, identityKey, mergeInputs, overlayOnRow,
 } from "@/lib/partnerAi";
@@ -62,7 +62,7 @@ export default function PartnerAiImport({
 }) {
   // ─── Cấu hình khoá / model ───
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("gpt-4o");
+  const [model, setModel] = useState(DEFAULT_AI_MODEL);
   const [showCfg, setShowCfg] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [cfgSaved, setCfgSaved] = useState(false);
@@ -358,10 +358,6 @@ export default function PartnerAiImport({
                   </select>
                 </label>
               </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                {AI_MODELS.find((m) => m.id === model)?.label}. Khoá được lưu trong <b>trình duyệt trên máy này</b> và gửi thẳng tới OpenAI, không qua máy chủ của hệ thống;
-                dùng chung với các module khác nên nhập một lần là đủ. Không dùng máy công cộng để lưu khoá.
-              </p>
               <div className="flex items-center gap-2">
                 <button type="button" onClick={saveCfg} className="text-xs sm:text-[11px] font-bold bg-[#005BAC] hover:bg-blue-700 text-white px-4 py-2 sm:py-1.5 rounded-lg cursor-pointer">Lưu cấu hình</button>
                 {cfgSaved && <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600"><Check size={13} /> Đã lưu</span>}
@@ -387,7 +383,6 @@ export default function PartnerAiImport({
             >
               <Upload size={22} className="text-[#005BAC]" />
               <p className="text-xs font-bold text-slate-700">Kéo thả hoặc bấm để chọn tệp</p>
-              <p className="text-[11px] text-slate-400">Ảnh (danh thiếp, tin nhắn Zalo, mã QR) · PDF · Word · TXT dùng AI. <b className="text-slate-500">Excel / CSV đọc theo tiêu đề cột, không tốn API.</b> Dán ảnh bằng Ctrl+V cũng được.</p>
               <input
                 ref={fileRef}
                 type="file"

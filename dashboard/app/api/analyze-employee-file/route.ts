@@ -6,6 +6,7 @@ import { getTenantConfigServer } from "@/lib/tenantConfigServer";
 import OpenAI from "openai";
 import * as XLSX from "xlsx";
 
+import { resolveModel, chatParams, responsesParams } from "@/lib/aiModel";
 // Danh sách phòng ban đọc động từ bảng `departments` (lib/departmentsServer)
 
 interface ExtractedEmployee {
@@ -427,11 +428,12 @@ Hãy trích xuất danh sách nhân viên dạng JSON chứa mảng 'employees'.
       ];
     } else if (fileType.endsWith(".pdf")) {
       const base64Pdf = fileBuffer.toString("base64");
-      const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o";
+      const model = resolveModel(req.headers.get("x-openai-model") || process.env.OPENAI_MODEL);
       try {
         if (typeof (openai as any).responses?.create === "function") {
           const response = await (openai as any).responses.create({
-            model: model === "gpt-4o-mini" ? "gpt-4o-mini" : model,
+            model,
+            ...responsesParams(model),
             input: [{
               role: "user",
               content: [
@@ -465,11 +467,11 @@ Hãy trích xuất danh sách nhân viên dạng JSON chứa mảng 'employees'.
       return NextResponse.json({ error: "Định dạng file không hỗ trợ. Sử dụng Excel (XLSX/XLS), Word (DOCX/DOC), PDF hoặc ảnh (PNG/JPG)." }, { status: 400 });
     }
 
-    const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o-mini";
+    const model = resolveModel(req.headers.get("x-openai-model") || process.env.OPENAI_MODEL);
     const completion = await openai.chat.completions.create({
       model,
       messages,
-      temperature: 0,
+      ...chatParams(model),
       response_format: { type: "json_object" },
       max_tokens: 16384, // allow maximum output tokens to prevent cut-offs for large lists
     });
@@ -482,7 +484,7 @@ Hãy trích xuất danh sách nhân viên dạng JSON chứa mảng 'employees'.
       console.error("JSON parse error of OpenAI reply. Reply length:", reply.length);
       console.error("Reply start:", reply.substring(0, 1000));
       console.error("Reply end:", reply.substring(reply.length > 1000 ? reply.length - 1000 : 0));
-      throw new Error(`Lỗi cú pháp phản hồi từ AI: ${parseErr.message || parseErr}. Vui lòng thử lại với model gpt-4o.`);
+      throw new Error(`Lỗi cú pháp phản hồi từ AI: ${parseErr.message || parseErr}. Vui lòng thử lại.`);
     }
 
     return NextResponse.json(extractedData);

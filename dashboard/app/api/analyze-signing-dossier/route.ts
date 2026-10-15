@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { getTenantConfigServer } from "@/lib/tenantConfigServer";
 
+import { resolveModel, responsesParams } from "@/lib/aiModel";
 // ============================================================
 // POST /api/analyze-signing-dossier — bóc tách hồ sơ thanh toán cho PHIẾU TRÌNH KÝ
 //
@@ -284,7 +285,7 @@ export async function POST(req: NextRequest) {
     const openai = new OpenAI({ apiKey });
     const systemPrompt = buildSystemPrompt((await getTenantConfigServer()).company_name);
     const model =
-      req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o";
+      resolveModel(req.headers.get("x-openai-model") || process.env.OPENAI_MODEL);
 
     // ─── Gộp mọi file thành MỘT mảng nội dung cho một lượt gọi ───
     const content: OpenAI.Responses.ResponseInputContent[] = [
@@ -423,6 +424,7 @@ export async function POST(req: NextRequest) {
 
     const response = await openai.responses.create({
       model,
+      ...responsesParams(model),
       input: [{ role: "user", content }],
       text: { format: { type: "json_object" } },
     });

@@ -64,6 +64,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
+import { resolveModel, SOL_MODEL } from "@/lib/aiModel";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, LineChart, Line
@@ -710,11 +711,11 @@ export default function CBPage() {
   const [savingContracts, setSavingContracts] = useState(false);
   const [syncingProbation, setSyncingProbation] = useState(false);
   const [showAiSettingsModal, setShowAiSettingsModal] = useState(false);
-  const [selectedAiModel, setSelectedAiModel] = useState("gpt-4o-mini");
+  const [selectedAiModel, setSelectedAiModel] = useState(SOL_MODEL);
   const [selectedAiApiKey, setSelectedAiApiKey] = useState("");
 
   const openAiSettings = () => {
-    const savedModel = localStorage.getItem("openai_model_nhan_su") || localStorage.getItem("openai_model_hanh_chinh") || "gpt-4o-mini";
+    const savedModel = resolveModel(localStorage.getItem("openai_model_nhan_su") || localStorage.getItem("openai_model_hanh_chinh"));
     const savedKey = localStorage.getItem("openai_api_key_hanh_chinh") || localStorage.getItem("openai_api_key") || "";
     setSelectedAiModel(savedModel);
     setSelectedAiApiKey(savedKey);
@@ -2853,7 +2854,7 @@ export default function CBPage() {
       setIsExcelImporting(true);
       setExcelImportStage("reading");
       const customKey = localStorage.getItem("openai_api_key_hanh_chinh") || localStorage.getItem("openai_api_key") || "";
-      const customModel = localStorage.getItem("openai_model_hanh_chinh") || localStorage.getItem("openai_model_nhan_su") || "gpt-4o";
+      const customModel = resolveModel(localStorage.getItem("openai_model_hanh_chinh") || localStorage.getItem("openai_model_nhan_su"));
 
       const formData = new FormData();
       formData.append("excel_file", file);
@@ -3060,7 +3061,7 @@ export default function CBPage() {
     try {
       setIsContractReading(true);
       const customKey = localStorage.getItem("openai_api_key_hanh_chinh") || localStorage.getItem("openai_api_key") || "";
-      const customModel = localStorage.getItem("openai_model_hanh_chinh") || localStorage.getItem("openai_model_nhan_su") || "gpt-4o-mini";
+      const customModel = resolveModel(localStorage.getItem("openai_model_hanh_chinh") || localStorage.getItem("openai_model_nhan_su"));
 
       const formData = new FormData();
       formData.append("contract_file", file);
@@ -9951,8 +9952,7 @@ export default function CBPage() {
                       onChange={(e) => setSelectedAiModel(e.target.value)}
                       className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none text-xs font-semibold text-slate-700 bg-slate-50 cursor-pointer"
                     >
-                      <option value="gpt-4o-mini">gpt-4o-mini (Khuyên dùng, Nhanh & Tối ưu chi phí)</option>
-                      <option value="gpt-4o">gpt-4o (Đọc thông tin phức tạp, chính xác cao)</option>
+                      <option value="gpt-6.1-sol">GPT-6.1 Sol (chính xác nhất, đọc được ảnh, PDF, bảng)</option>
                     </select>
                   </div>
 

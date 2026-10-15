@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { getTenantConfigServer } from "@/lib/tenantConfigServer";
 
+import { resolveModel, chatParams, responsesParams } from "@/lib/aiModel";
 const buildSystemPrompt = (companyName: string, companyShort: string) => `
 Bạn là một AI phân tích công văn chuyên nghiệp cho phòng Văn thư của công ty ${companyName}.
 Nhiệm vụ của bạn là đọc nội dung văn bản (hoặc phân tích hình ảnh quét công văn) và trích xuất chính xác các thông tin cần thiết dưới định dạng JSON, bao gồm cả việc TỰ ĐỘNG PHÂN LOẠI công văn.
@@ -82,10 +83,11 @@ Hãy trích xuất thông tin dạng JSON gồm: type, doc_number, doc_date, rec
     if (fileType.endsWith(".pdf")) {
       // Gửi PDF trực tiếp lên OpenAI Responses API (không cần pdf-parse, tương thích Vercel)
       const base64Pdf = fileBuffer.toString("base64");
-      const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o";
+      const model = resolveModel(req.headers.get("x-openai-model") || process.env.OPENAI_MODEL);
       try {
         const response = await openai.responses.create({
-          model: model === "gpt-4o-mini" ? "gpt-4o-mini" : model,
+          model,
+          ...responsesParams(model),
           input: [{
             role: "user",
             content: [
@@ -133,11 +135,11 @@ Hãy trích xuất thông tin dạng JSON gồm: type, doc_number, doc_date, rec
       return NextResponse.json({ error: "Định dạng file không hỗ trợ. Sử dụng PDF, DOCX, PNG, JPG hoặc TXT." }, { status: 400 });
     }
 
-    const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o-mini";
+    const model = resolveModel(req.headers.get("x-openai-model") || process.env.OPENAI_MODEL);
     const completion = await openai.chat.completions.create({
       model,
       messages,
-      temperature: 0,
+      ...chatParams(model),
       response_format: { type: "json_object" },
     });
 

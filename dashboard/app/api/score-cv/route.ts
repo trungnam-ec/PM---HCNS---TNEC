@@ -2,6 +2,7 @@ import { requireApiAuth } from "@/lib/apiAuth";
 import { getDepartmentListsServer } from "@/lib/departmentsServer";
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
+import { resolveModel, responsesParams } from "@/lib/aiModel";
 
 // Polyfill DOMMatrix cho Node.js (pdfjs-dist v5+ yêu cầu DOMMatrix trong môi trường browser)
 if (typeof globalThis.DOMMatrix === "undefined") {
@@ -323,7 +324,7 @@ export async function POST(req: NextRequest) {
       // Gửi PDF trực tiếp lên OpenAI Responses API (không cần pdf-parse, tương thích Vercel)
       const base64Pdf = fileBuffer.toString("base64");
       const cvPrompt = `--- MÔ TẢ CÔNG VIỆC (JD) ---\n${jdText}\n\nTRÍCH XUẤT ĐẦY ĐỦ 16 TRƯỜNG VÀ CHẤM ĐIỂM. TRẢ VỀ JSON.`;
-      const cvModel = process.env.OPENAI_MODEL || "gpt-4o";
+      const cvModel = resolveModel(process.env.OPENAI_MODEL);
       try {
         const response = await openai.responses.create({
           model: cvModel,
@@ -335,7 +336,7 @@ export async function POST(req: NextRequest) {
             ],
           }],
           text: { format: { type: "json_object" } },
-          temperature: 0,
+          ...responsesParams(cvModel),
         });
         const rawJson = response.output_text || "{}";
         const data = JSON.parse(rawJson);
@@ -369,7 +370,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Không thể đọc nội dung file DOCX. File có thể bị lỗi hoặc được bảo vệ bằng mật khẩu." }, { status: 400 });
       }
 
-      const cvModel = process.env.OPENAI_MODEL || "gpt-4o";
+      const cvModel = resolveModel(process.env.OPENAI_MODEL);
       try {
         const response = await openai.responses.create({
           model: cvModel,
@@ -383,7 +384,7 @@ export async function POST(req: NextRequest) {
             ],
           }],
           text: { format: { type: "json_object" } },
-          temperature: 0,
+          ...responsesParams(cvModel),
         });
         const rawJson = response.output_text || "{}";
         const data = JSON.parse(rawJson);
@@ -410,7 +411,7 @@ export async function POST(req: NextRequest) {
       // Vision mode via Responses API
       const base64 = fileBuffer.toString("base64");
       const mimeType = fileType.endsWith(".png") ? "image/png" : "image/jpeg";
-      const cvModel = process.env.OPENAI_MODEL || "gpt-4o";
+      const cvModel = resolveModel(process.env.OPENAI_MODEL);
       try {
         const response = await openai.responses.create({
           model: cvModel,
@@ -422,7 +423,7 @@ export async function POST(req: NextRequest) {
             ],
           }],
           text: { format: { type: "json_object" } },
-          temperature: 0,
+          ...responsesParams(cvModel),
         });
         const rawJson = response.output_text || "{}";
         const data = JSON.parse(rawJson);
@@ -447,7 +448,7 @@ export async function POST(req: NextRequest) {
       }
     } else if (fileType.endsWith(".txt")) {
       const cvText = fileBuffer.toString("utf-8");
-      const cvModel = process.env.OPENAI_MODEL || "gpt-4o";
+      const cvModel = resolveModel(process.env.OPENAI_MODEL);
       try {
         const response = await openai.responses.create({
           model: cvModel,
@@ -461,7 +462,7 @@ export async function POST(req: NextRequest) {
             ],
           }],
           text: { format: { type: "json_object" } },
-          temperature: 0,
+          ...responsesParams(cvModel),
         });
         const rawJson = response.output_text || "{}";
         const data = JSON.parse(rawJson);

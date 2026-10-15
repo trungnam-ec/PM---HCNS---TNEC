@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { getTenantConfigServer } from "@/lib/tenantConfigServer";
 
+import { resolveModel, chatParams, responsesParams } from "@/lib/aiModel";
 const buildSystemPrompt = (companyName: string) => `
 Bạn là một AI phân tích hợp đồng lao động chuyên nghiệp cho phòng Hành chính Nhân sự của công ty ${companyName}.
 Nhiệm vụ của bạn là đọc nội dung hợp đồng lao động cá nhân (tệp PDF, Word hoặc hình ảnh quét) và trích xuất chính xác các thông tin cần thiết dưới định dạng JSON.
@@ -115,11 +116,12 @@ ${filenameInfo}`;
       ];
     } else if (fileType.endsWith(".pdf")) {
       const base64Pdf = fileBuffer.toString("base64");
-      const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o";
+      const model = resolveModel(req.headers.get("x-openai-model") || process.env.OPENAI_MODEL);
       try {
         if (typeof (openai as any).responses?.create === "function") {
           const response = await (openai as any).responses.create({
-            model: model === "gpt-4o-mini" ? "gpt-4o-mini" : model,
+            model,
+            ...responsesParams(model),
             input: [{
               role: "user",
               content: [
@@ -159,11 +161,11 @@ ${filenameInfo}`;
       return NextResponse.json({ error: "Định dạng file không hỗ trợ. Sử dụng PDF, DOCX, PNG, JPG hoặc TXT." }, { status: 400 });
     }
 
-    const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o-mini";
+    const model = resolveModel(req.headers.get("x-openai-model") || process.env.OPENAI_MODEL);
     const completion = await openai.chat.completions.create({
       model,
       messages,
-      temperature: 0,
+      ...chatParams(model),
       response_format: { type: "json_object" },
     });
 

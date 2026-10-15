@@ -46,6 +46,7 @@ import { isManagerRole } from "@/lib/approvers";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { isHrDept } from "@/lib/access";
 import * as XLSX from "xlsx";
+import { resolveModel, SOL_MODEL } from "@/lib/aiModel";
 
 // ─── TYPES & INTERFACES ──────────────────────────────────────────────────────
 // Một dòng trong bảng `vpp_supplies`. CHỈ giữ số liệu đầu vào — số cấp phát,
@@ -821,7 +822,7 @@ export default function AdministrationPage() {
 
   // AI Settings States for Invoice Reader
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("gpt-4o-mini");
+  const [model, setModel] = useState(SOL_MODEL);
   const [showAiSettingsModal, setShowAiSettingsModal] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
@@ -1690,7 +1691,7 @@ export default function AdministrationPage() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       setApiKey(localStorage.getItem("openai_api_key_hanh_chinh") || "");
-      setModel(localStorage.getItem("openai_model_hanh_chinh") || "gpt-4o-mini");
+      setModel(resolveModel(localStorage.getItem("openai_model_hanh_chinh")));
       
       const savedName = localStorage.getItem("employee_name") || localStorage.getItem("display_name");
       if (savedName) setEmployeeName(savedName);
@@ -3851,7 +3852,7 @@ export default function AdministrationPage() {
 
     try {
       const customKey = localStorage.getItem("openai_api_key_hanh_chinh") || localStorage.getItem("openai_api_key") || "";
-      const customModel = localStorage.getItem("openai_model_hanh_chinh") || "gpt-4o-mini";
+      const customModel = resolveModel(localStorage.getItem("openai_model_hanh_chinh"));
 
       const currentFilter = vppSubTab === "phongban" ? selectedDeptFilter : selectedProjectFilter;
       const formData = new FormData();
@@ -4171,7 +4172,7 @@ export default function AdministrationPage() {
     ));
 
     const customKey = localStorage.getItem("openai_api_key_hanh_chinh") || localStorage.getItem("openai_api_key") || "";
-    const customModel = localStorage.getItem("openai_model_hanh_chinh") || "gpt-4o-mini";
+    const customModel = resolveModel(localStorage.getItem("openai_model_hanh_chinh"));
 
     for (const item of pendingItems) {
       let uploadedUrl = "";
@@ -9085,8 +9086,7 @@ export default function AdministrationPage() {
                   onChange={(e) => setModel(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 bg-white cursor-pointer text-xs"
                 >
-                  <option value="gpt-4o-mini">gpt-4o-mini (Nhanh chóng & Rất tiết kiệm)</option>
-                  <option value="gpt-4o">gpt-4o (Độ chính xác cao & Đọc ảnh hóa đơn tốt nhất)</option>
+                  <option value="gpt-6.1-sol">GPT-6.1 Sol (chính xác nhất, đọc được ảnh, PDF, bảng)</option>
                 </select>
               </div>
 

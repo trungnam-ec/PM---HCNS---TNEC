@@ -11,6 +11,7 @@ import { emailFieldMatches } from "@/lib/emailMatch";
 import { useDepartments } from "@/lib/departments";
 import { useTenantConfig, invalidateTenantConfig } from "@/lib/tenantConfig";
 import { useNoticeBox, useConfirmBox } from "@/components/ConfirmDialog";
+import { resolveModel, SOL_MODEL } from "@/lib/aiModel";
 import {
   Search,
   Plus,
@@ -137,7 +138,7 @@ export default function EmployeeManagementPage() {
   // Settings State
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [tempApiKey, setTempApiKey] = useState("");
-  const [tempModel, setTempModel] = useState("gpt-4o-mini");
+  const [tempModel, setTempModel] = useState(SOL_MODEL);
 
   // Batch Progress State
   const [totalFiles, setTotalFiles] = useState(0);
@@ -210,7 +211,7 @@ export default function EmployeeManagementPage() {
   const processUploadedFiles = async (files: FileList | File[]) => {
     // Retrieve OpenAI key and model from localStorage
     const customKey = localStorage.getItem("openai_api_key") || "";
-    const selectedModel = localStorage.getItem("openai_model_nhan_su") || "gpt-4o-mini";
+    const selectedModel = resolveModel(localStorage.getItem("openai_model_nhan_su"));
 
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
@@ -333,7 +334,7 @@ export default function EmployeeManagementPage() {
   // Settings handlers
   const openSettings = () => {
     setTempApiKey(localStorage.getItem("openai_api_key") || "");
-    setTempModel(localStorage.getItem("openai_model_nhan_su") || "gpt-4o-mini");
+    setTempModel(resolveModel(localStorage.getItem("openai_model_nhan_su")));
     setShowSettingsModal(true);
   };
 
@@ -1889,8 +1890,7 @@ export default function EmployeeManagementPage() {
                   onChange={(e) => setTempModel(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 bg-white"
                 >
-                  <option value="gpt-4o-mini">gpt-4o-mini (Nhanh & Tiết kiệm chi phí)</option>
-                  <option value="gpt-4o">gpt-4o (Thông minh & Đọc file chính xác hơn)</option>
+                  <option value="gpt-6.1-sol">GPT-6.1 Sol (chính xác nhất, đọc được ảnh, PDF, bảng)</option>
                 </select>
               </div>
 

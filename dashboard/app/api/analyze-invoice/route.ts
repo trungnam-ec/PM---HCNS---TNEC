@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { getTenantConfigServer } from "@/lib/tenantConfigServer";
 
+import { resolveModel, chatParams, responsesParams } from "@/lib/aiModel";
 const buildSystemPrompt = (companyName: string) => `
 Bạn là một AI phân tích hóa đơn chuyên nghiệp cho phòng Hành chính của công ty ${companyName}.
 Nhiệm vụ của bạn là đọc nội dung hóa đơn (hoặc phân tích hình ảnh hóa đơn) và trích xuất chính xác các thông tin cần thiết dưới định dạng JSON theo đúng hướng dẫn nghiệp vụ sau:
@@ -66,7 +67,8 @@ async function analyzeWithResponsesAPI(
   const fileDataUrl = `data:${mimeType};base64,${base64Data}`;
 
   const response = await openai.responses.create({
-    model: model === "gpt-4o-mini" ? "gpt-4o-mini" : model,
+    model,
+    ...responsesParams(model),
     input: [
       {
         role: "user",
@@ -92,7 +94,7 @@ async function analyzeWithChatCompletions(
   const completion = await openai.chat.completions.create({
     model,
     messages,
-    temperature: 0,
+    ...chatParams(model),
     response_format: { type: "json_object" },
   });
 
@@ -133,9 +135,7 @@ export async function POST(req: NextRequest) {
     const fileBuffer = Buffer.from(await file.arrayBuffer());
     const fileType = file.name.toLowerCase();
     const model =
-      req.headers.get("x-openai-model") ||
-      process.env.OPENAI_MODEL ||
-      "gpt-4o";
+      resolveModel(req.headers.get("x-openai-model") || process.env.OPENAI_MODEL);
 
     let extractedData: Record<string, unknown>;
 

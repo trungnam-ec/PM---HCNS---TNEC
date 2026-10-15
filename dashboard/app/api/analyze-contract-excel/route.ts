@@ -5,6 +5,7 @@ import OpenAI from "openai";
 import * as XLSX from "xlsx";
 import { getTenantConfigServer } from "@/lib/tenantConfigServer";
 
+import { resolveModel, chatParams, responsesParams } from "@/lib/aiModel";
 export const maxDuration = 300;
 
 const buildSystemPrompt = (companyName: string) => `
@@ -212,11 +213,12 @@ Hãy trích xuất danh sách hợp đồng dạng JSON chứa mảng 'contracts
       ];
     } else if (fileType.endsWith(".pdf")) {
       const base64Pdf = fileBuffer.toString("base64");
-      const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o";
+      const model = resolveModel(req.headers.get("x-openai-model") || process.env.OPENAI_MODEL);
       try {
         if (typeof (openai as any).responses?.create === "function") {
           const response = await (openai as any).responses.create({
-            model: model === "gpt-4o-mini" ? "gpt-4o-mini" : model,
+            model,
+            ...responsesParams(model),
             input: [{
               role: "user",
               content: [
@@ -251,7 +253,7 @@ Hãy trích xuất danh sách hợp đồng dạng JSON chứa mảng 'contracts
     }
 
     // Use gpt-4o by default for better accuracy when analyzing contract tables.
-    const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o";
+    const model = resolveModel(req.headers.get("x-openai-model") || process.env.OPENAI_MODEL);
 
     // Helper: safely parse JSON, recovering partial arrays if truncated
     const safeParseContracts = (raw: string): any[] => {
@@ -291,8 +293,7 @@ Hãy trích xuất danh sách hợp đồng dạng JSON chứa mảng 'contracts
           const completion = await openaiInstance.chat.completions.create({
             model: modelName,
             messages: msgPayload,
-            temperature: 0,
-            max_tokens: 16384,
+            ...chatParams(modelName, 16384),
             response_format: { type: "json_object" },
           });
           return completion;
@@ -404,8 +405,7 @@ Hãy trích xuất danh sách hợp đồng dạng JSON chứa mảng 'contracts
         const completion = await openai.chat.completions.create({
           model,
           messages,
-          temperature: 0,
-          max_tokens: 16384,
+          ...chatParams(model, 16384),
           response_format: { type: "json_object" },
         });
 

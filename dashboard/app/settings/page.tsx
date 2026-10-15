@@ -34,6 +34,7 @@ import { useCurrentUser } from "@/lib/useCurrentUser";
 import { isDirectorRole } from "@/lib/access";
 import { useNoticeBox, useConfirmBox, usePromptBox } from "@/components/ConfirmDialog";
 import { useSearchParams } from "next/navigation";
+import { resolveModel, SOL_MODEL } from "@/lib/aiModel";
 
 /**
  * Đơn có "chạm" vào tháng đang lọc hay không (month dạng "YYYY-MM").
@@ -237,7 +238,7 @@ function SettingsContent() {
 
   const [apiKey, setApiKey] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
-  const [model, setModel] = useState("gpt-4o-mini");
+  const [model, setModel] = useState(SOL_MODEL);
   const [saved, setSaved] = useState(false);
 
   // Approvals States
@@ -319,7 +320,7 @@ function SettingsContent() {
     if (typeof window !== "undefined") {
       setApiKey(localStorage.getItem("openai_api_key") || "");
       setWebhookUrl(localStorage.getItem("apps_script_url") || "");
-      setModel(localStorage.getItem("openai_model") || "gpt-4o-mini");
+      setModel(resolveModel(localStorage.getItem("openai_model")));
 
       // Nạp cấu hình SMTP dùng chung với trang C&B
       setSmtpConfig({
@@ -1298,8 +1299,7 @@ function SettingsContent() {
                   onChange={(e) => setModel(e.target.value)}
                   className="w-full px-4 py-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 cursor-pointer"
                 >
-                  <option value="gpt-4o-mini">gpt-4o-mini (Nhanh & Tối ưu chi phí)</option>
-                  <option value="gpt-4o">gpt-4o (Độ chính xác cao hơn)</option>
+                  <option value="gpt-6.1-sol">GPT-6.1 Sol (chính xác nhất, đọc được ảnh, PDF, bảng)</option>
                 </select>
               </div>
 

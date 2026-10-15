@@ -13,6 +13,7 @@ import { useDepartments } from "@/lib/departments";
 import { normalizeDepartment, isProjectBlock } from "@/lib/recruitDept";
 import { isHrDept } from "@/lib/access";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import { resolveModel, SOL_MODEL } from "@/lib/aiModel";
 import {
   ShieldAlert,
   Search,
@@ -1132,7 +1133,7 @@ export default function RecruitmentPage() {
   // API & Webhook Configuration states
   const [apiKey, setApiKey] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
-  const [model, setModel] = useState("gpt-4o-mini");
+  const [model, setModel] = useState(SOL_MODEL);
   const [saved, setSaved] = useState(false);
 
   // Drag State
@@ -1196,7 +1197,7 @@ export default function RecruitmentPage() {
     if (typeof window !== "undefined") {
       setApiKey(localStorage.getItem("openai_api_key") || "");
       setWebhookUrl(localStorage.getItem("apps_script_url") || "");
-      setModel(localStorage.getItem("openai_model") || "gpt-4o-mini");
+      setModel(resolveModel(localStorage.getItem("openai_model")));
     }
   }, []);
 
@@ -3143,8 +3144,7 @@ export default function RecruitmentPage() {
                           onChange={(e) => setModel(e.target.value)}
                           className="w-full text-xs text-slate-600 font-semibold bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                         >
-                          <option value="gpt-4o-mini">gpt-4o-mini (Nhanh & Tối ưu chi phí)</option>
-                          <option value="gpt-4o">gpt-4o (Độ chính xác cao hơn)</option>
+                          <option value="gpt-6.1-sol">GPT-6.1 Sol (chính xác nhất, đọc được ảnh, PDF, bảng)</option>
                         </select>
                       </div>
 

@@ -23,6 +23,7 @@ import { apiFetch } from "@/lib/apiClient";
 import { useProjectCatalog } from "@/lib/projectCatalog";
 import { exportTransferRequestDocx } from "@/components/TransferRequestPreview";
 import { useDepartments } from "@/lib/departments";
+import { resolveModel, SOL_MODEL } from "@/lib/aiModel";
 import {
   useFinancePartners, PARTY_TYPE_LABELS, foldVi,
   type FinancePartnerContract,
@@ -224,11 +225,11 @@ export default function SigningFormModal({
   // Dùng CHUNG localStorage với trang Hành chính ("..._hanh_chinh") thay vì đẻ
   // khoá riêng: người dùng đã nhập khoá ở đó thì sang đây chạy được ngay, không
   // phải nhập lại lần hai và không phải nhớ có hai chỗ cấu hình.
-  // Mặc định gpt-4o chứ KHÔNG phải mini như trang Hành chính — hợp đồng xây dựng
+  // Mặc định GPT-6.1 Sol — hợp đồng xây dựng
   // dài, nhiều bảng số, mini đọc sai điều khoản.
   const [showCfg, setShowCfg] = useState(false);
   const [aiKey, setAiKey] = useState("");
-  const [aiModel, setAiModel] = useState("gpt-4o");
+  const [aiModel, setAiModel] = useState(SOL_MODEL);
   const [cfgSaved, setCfgSaved] = useState(false);
 
   useEffect(() => {
@@ -237,7 +238,7 @@ export default function SigningFormModal({
       localStorage.getItem("openai_api_key_hanh_chinh") ||
       localStorage.getItem("openai_api_key") || ""
     );
-    setAiModel(localStorage.getItem("openai_model_hanh_chinh") || "gpt-4o");
+    setAiModel(resolveModel(localStorage.getItem("openai_model_hanh_chinh")));
   }, []);
 
   const saveCfg = () => {
@@ -446,7 +447,7 @@ export default function SigningFormModal({
       // Lấy từ ô cấu hình ngay trên màn hình này (đã đồng bộ localStorage).
       // Không có khoá thì server dùng OPENAI_API_KEY của môi trường.
       if (aiKey.trim()) headers["Authorization"] = `Bearer ${aiKey.trim()}`;
-      headers["x-openai-model"] = aiModel || "gpt-4o";
+      headers["x-openai-model"] = resolveModel(aiModel);
 
       const res = await apiFetch("/api/analyze-signing-dossier", {
         method: "POST", headers, body: fd,
@@ -925,8 +926,7 @@ export default function SigningFormModal({
                       <span className={labelCls}>Model</span>
                       <select value={aiModel} onChange={(e) => setAiModel(e.target.value)}
                         className={`${inputCls} cursor-pointer`}>
-                        <option value="gpt-4o">gpt-4o (chính xác — nên dùng cho hợp đồng)</option>
-                        <option value="gpt-4o-mini">gpt-4o-mini (rẻ, nhanh — dễ đọc sót điều khoản)</option>
+                        <option value="gpt-6.1-sol">GPT-6.1 Sol (chính xác nhất, đọc được ảnh, PDF, bảng)</option>
                       </select>
                     </label>
                     <label className="flex flex-col gap-1.5">

@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// partnerAi.ts — Nhập Danh bạ đối tác bằng AI (GPT-4o)
+// partnerAi.ts — Nhập Danh bạ đối tác bằng AI (GPT-6.1 Sol)
 //
 // Nguồn: ảnh chụp (danh thiếp, tin nhắn Zalo/Viber, hồ sơ năng lực), PDF, mã QR trong
 // ảnh, Excel/CSV, Word, văn bản dán vào. AI trả về danh sách đối tác -> người dùng
@@ -11,7 +11,7 @@
 // Vercel gói Free cắt hàm ở 60 giây và giới hạn thân yêu cầu 4.5MB — ảnh chụp điện thoại
 // và PDF hồ sơ năng lực vượt cả hai. Khoá nằm trong localStorage của chính người dùng,
 // KHÔNG đi qua máy chủ của hệ thống. Khoá dùng chung `openai_api_key_hanh_chinh` với các
-// module khác (nhập một lần chạy mọi nơi); model riêng của module này, mặc định gpt-4o.
+// module khác (nhập một lần chạy mọi nơi); model riêng của module này, mặc định gpt-6.1-sol.
 // ============================================================
 
 import OpenAI from "openai";
@@ -33,18 +33,22 @@ const KEY_SHARED = "openai_api_key_hanh_chinh";
 const KEY_LEGACY = "openai_api_key";
 const MODEL_KEY = "openai_model_doi_tac";
 export const AI_MODELS = [
-  { id: "gpt-4o", label: "GPT-4o (khuyên dùng — đọc ảnh, PDF, bảng chính xác)" },
-  { id: "gpt-4o-mini", label: "GPT-4o mini (nhanh, rẻ hơn, dễ sót hoặc đọc sai)" },
+  { id: "gpt-6.1-sol", label: "GPT-6.1 Sol (đọc ảnh, PDF, bảng chính xác nhất)" },
 ];
+export const DEFAULT_AI_MODEL = AI_MODELS[0].id;
+// Dòng 6.1 là model suy luận: KHÔNG truyền temperature, dùng reasoning_effort.
+const REASONING_EFFORT = "medium" as const;
 
 export function loadAiConfig(): { apiKey: string; model: string } {
   try {
+    const saved = localStorage.getItem(MODEL_KEY) || "";
     return {
       apiKey: localStorage.getItem(KEY_SHARED) || localStorage.getItem(KEY_LEGACY) || "",
-      model: localStorage.getItem(MODEL_KEY) || "gpt-4o",
+      // Model cũ (gpt-4o…) đã gỡ khỏi danh sách -> về mặc định.
+      model: AI_MODELS.some((m) => m.id === saved) ? saved : DEFAULT_AI_MODEL,
     };
   } catch {
-    return { apiKey: "", model: "gpt-4o" };
+    return { apiKey: "", model: DEFAULT_AI_MODEL };
   }
 }
 
@@ -247,7 +251,7 @@ type RawPartner = Record<string, unknown>;
 async function callText(openai: OpenAI, model: string, userText: string): Promise<RawPartner[]> {
   const c = await openai.chat.completions.create({
     model,
-    temperature: 0,
+    reasoning_effort: REASONING_EFFORT,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
@@ -273,7 +277,7 @@ async function callImageOnce(openai: OpenAI, model: string, dataUrl: string, qr:
   const qrText = qr.length ? `\n\nNội dung mã QR quét được trong ảnh:\n${qr.map((q, i) => `[QR ${i + 1}] ${q}`).join("\n")}` : "";
   const c = await openai.chat.completions.create({
     model,
-    temperature: 0,
+    reasoning_effort: REASONING_EFFORT,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
@@ -349,7 +353,7 @@ export const isValidVnPhone = (raw: string): boolean => {
 async function callPhonesPass(openai: OpenAI, model: string, dataUrl: string): Promise<PhoneRead[]> {
   const c = await openai.chat.completions.create({
     model,
-    temperature: 0,
+    reasoning_effort: REASONING_EFFORT,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: PHONE_PROMPT },
@@ -461,6 +465,7 @@ async function callPdf(openai: OpenAI, model: string, file: File, hint: string):
       },
     ],
     text: { format: { type: "json_object" } },
+    reasoning: { effort: REASONING_EFFORT },
   });
   return parsePartners(resp.output_text);
 }

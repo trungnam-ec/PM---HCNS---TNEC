@@ -5,6 +5,7 @@ import { getTenantConfigServer } from "@/lib/tenantConfigServer";
 import OpenAI from "openai";
 import * as XLSX from "xlsx";
 
+import { resolveModel, chatParams, responsesParams } from "@/lib/aiModel";
 // Ảnh (PNG/JPEG) và PDF cần thời gian AI đọc lâu hơn Excel rất nhiều.
 // Không khai báo maxDuration, Vercel cắt hàm ở ~10s => chỉ file Excel chạy được.
 export const maxDuration = 300;
@@ -242,12 +243,13 @@ LƯU Ý QUAN TRỌNG:
       ];
     } else if (isPdf) {
       const base64Pdf = fileBuffer.toString("base64");
-      const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o-mini";
+      const model = resolveModel(req.headers.get("x-openai-model") || process.env.OPENAI_MODEL);
       try {
         // Try the responses API first (if available in the library)
         if (typeof (openai as any).responses?.create === "function") {
           const response = await (openai as any).responses.create({
-            model: model === "gpt-4o-mini" ? "gpt-4o-mini" : model,
+            model,
+            ...responsesParams(model),
             input: [{
               role: "user",
               content: [
@@ -283,11 +285,11 @@ LƯU Ý QUAN TRỌNG:
       return NextResponse.json({ error: "Định dạng file không hỗ trợ. Sử dụng Excel (XLSX/XLS), Word (DOCX/DOC), PDF hoặc ảnh (PNG/JPG)." }, { status: 400 });
     }
 
-    const model = req.headers.get("x-openai-model") || process.env.OPENAI_MODEL || "gpt-4o-mini";
+    const model = resolveModel(req.headers.get("x-openai-model") || process.env.OPENAI_MODEL);
     const completion = await openai.chat.completions.create({
       model,
       messages,
-      temperature: 0,
+      ...chatParams(model),
       response_format: { type: "json_object" },
     });
 

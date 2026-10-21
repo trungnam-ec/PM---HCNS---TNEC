@@ -286,10 +286,10 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove, kind 
           <table className="w-full text-xs min-w-[1900px]">
             <thead>
               <tr className="text-white text-[10px] font-extrabold uppercase tracking-wider">
-                <th colSpan={11} className="px-3 py-1.5 bg-[#005BAC] text-left">P.ATLĐ nhập — thông tin đầu vào</th>
-                <th colSpan={6} className="px-3 py-1.5 bg-orange-500 text-left">P.KHĐT nhập — thông tin đầu ra</th>
+                <th colSpan={11} className="px-3 py-3 bg-[#005BAC] text-center">P.ATLĐ nhập — thông tin đầu vào</th>
+                <th colSpan={6} className="px-3 py-3 bg-orange-500 text-center">P.KHĐT nhập — thông tin đầu ra</th>
                 {/* Dải xanh lá phủ luôn cột Thao tác cho liền mạch tới mép bảng. */}
-                <th colSpan={5} className="px-3 py-1.5 bg-emerald-600 text-left">Tự tính — không sửa tay</th>
+                <th colSpan={5} className="px-3 py-3 bg-emerald-600 text-center">Tự tính — không sửa tay</th>
               </tr>
               <tr className="text-left">
                 {["Mã hồ sơ", "Loại hồ sơ", K.docNo, "Ngày ban hành", "Dự án", K.contractor, K.person, "Nội dung"].map((h) => (

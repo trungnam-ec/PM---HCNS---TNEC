@@ -940,6 +940,7 @@ function BookingContent() {
   // Vẫn báo email cho người đăng ký như khi Từ chối/Phê duyệt, để họ biết lịch không còn hiệu lực.
   const handleDeleteFromModal = async (b: BookingRow) => {
     if (!currentUser || processingAction) return;
+    if (b.status === "approved" && !isHcnsApproverUser) return;
     // Lịch từ 2 ngày trở lên: hỏi bỏ ngày nào trước, thay vì xoá sạch cả đơn.
     if (listBookingDays(b.start_time, b.end_time).length >= 2) {
       setTrimTarget(b);
@@ -1547,7 +1548,8 @@ function BookingContent() {
 
                 {/* Nút hành động */}
                 <div className="p-4 border-t border-slate-100 flex items-center justify-end gap-2 flex-wrap bg-slate-50/60 shrink-0">
-                  {(isDeptManagerFor(selectedBooking) || isHcnsApproverUser) && selectedBooking.status !== "rejected" && (
+                  {/* Đã điều phối Hành chính: chỉ Admin / cờ điều phối được xoá, Trưởng phòng cũng không. */}
+                  {(selectedBooking.status === "approved" ? isHcnsApproverUser : isDeptManagerFor(selectedBooking) || isHcnsApproverUser) && selectedBooking.status !== "rejected" && (
                     <button
                       type="button"
                       disabled={processingAction}

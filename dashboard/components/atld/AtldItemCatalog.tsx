@@ -12,6 +12,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AtldComboInput from "@/components/atld/AtldComboInput";
 import { createPortal } from "react-dom";
 import { useConfirmBox, useNoticeBox } from "@/components/ConfirmDialog";
 import { requestDelete, DELETE_REQUEST_SENT } from "@/lib/atldDeleteRequests";
@@ -274,7 +275,7 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 items-center">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0">
           <span className="text-[11px] font-bold text-slate-500 hidden xl:inline">Trạng thái</span>
-          <div className="inline-flex flex-wrap items-center gap-1 p-1 min-w-0 max-w-full bg-white border border-slate-200 rounded-xl" role="tablist" aria-label="Lọc theo trạng thái">
+          <div className="flex flex-1 flex-wrap items-center gap-1 p-1 min-w-0 max-w-full bg-white border border-slate-200 rounded-xl" role="tablist" aria-label="Lọc theo trạng thái">
             {FILTERS.map((f) => {
               const active = filter === f.key;
               return (
@@ -284,7 +285,7 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
                   role="tab"
                   aria-selected={active}
                   onClick={() => setFilter(f.key)}
-                  className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                  className={`h-7 flex-1 inline-flex items-center justify-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                     active ? "bg-[#005BAC] text-white shadow-sm" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                   }`}
                 >
@@ -813,11 +814,11 @@ function ItemModal({
     <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
-        // Không gán Enter = Lưu: Enter còn dùng để chọn gợi ý của datalist.
+        // Không gán Enter = Lưu: Enter còn dùng để chọn gợi ý trong danh sách thả xuống.
         onKeyDown={(e) => {
           if (e.key === "Escape") onClose();
         }}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4 animate-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl p-6 space-y-4 animate-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto"
       >
         <div className="flex items-center gap-2">
           <h2 className="font-heading font-extrabold text-sm text-slate-800 flex-1">
@@ -835,32 +836,27 @@ function ItemModal({
           </label>
           <label className="block space-y-1 sm:col-span-2">
             <span className="text-[10px] font-bold text-slate-500">Tên SP *</span>
-            <input
-              list="atld-item-names"
-              value={v.name}
-              onChange={(e) => set("name", e.target.value)}
-              placeholder="VD: Quần áo CN (Mẫu mới)"
-              className={inputCls}
-            />
+            <AtldComboInput value={v.name} onChange={(x) => set("name", x)} options={names} placeholder="VD: Quần áo CN (Mẫu mới)" inputCls={inputCls} />
           </label>
           <label className="block space-y-1">
             <span className="text-[10px] font-bold text-slate-500">Size SP</span>
-            <input list="atld-item-sizes" value={v.size} onChange={(e) => set("size", e.target.value)} placeholder="M, L, XL, 42…" className={inputCls} />
+            <AtldComboInput value={v.size} onChange={(x) => set("size", x)} options={sizes} placeholder="M, L, XL, 42…" inputCls={inputCls} />
           </label>
           <label className="block space-y-1">
             <span className="text-[10px] font-bold text-slate-500">Màu sắc</span>
-            <select value={v.color} onChange={(e) => set("color", e.target.value)} className={inputCls}>
-              <option value="">— Không có —</option>
-              {COLOR_OPTIONS.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-              {/* Màu cũ ngoài danh sách (VD nhập từ Excel) vẫn giữ được khi sửa */}
-              {v.color && !COLOR_OPTIONS.includes(v.color) && <option value={v.color}>{v.color}</option>}
-            </select>
+            {/* Màu cũ ngoài danh sách (VD nhập từ Excel) vẫn giữ được khi sửa */}
+            <AtldComboInput
+              freeText={false}
+              value={v.color}
+              onChange={(x) => set("color", x)}
+              options={v.color && !COLOR_OPTIONS.includes(v.color) ? [...COLOR_OPTIONS, v.color] : COLOR_OPTIONS}
+              emptyLabel="— Không có —"
+              inputCls={inputCls}
+            />
           </label>
           <label className="block space-y-1">
             <span className="text-[10px] font-bold text-slate-500">Đơn vị tính</span>
-            <input list="atld-item-units" value={v.unit} onChange={(e) => set("unit", e.target.value)} placeholder="Bộ, Cái, Đôi…" className={inputCls} />
+            <AtldComboInput value={v.unit} onChange={(x) => set("unit", x)} options={units} placeholder="Bộ, Cái, Đôi…" inputCls={inputCls} />
           </label>
           <label className="block space-y-1">
             <span className="text-[10px] font-bold text-slate-500">Tồn tối thiểu</span>
@@ -955,10 +951,6 @@ function ItemModal({
             <input value={v.note} onChange={(e) => set("note", e.target.value)} className={inputCls} />
           </label>
         </div>
-
-        <datalist id="atld-item-names">{names.map((n) => <option key={n} value={n} />)}</datalist>
-        <datalist id="atld-item-sizes">{sizes.map((s) => <option key={s} value={s} />)}</datalist>
-        <datalist id="atld-item-units">{units.map((u) => <option key={u} value={u} />)}</datalist>
 
         {codeTaken && (
           <p className="flex items-start gap-1.5 text-[11px] font-semibold text-rose-500">

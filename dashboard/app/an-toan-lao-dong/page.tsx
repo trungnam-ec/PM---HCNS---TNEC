@@ -27,9 +27,9 @@ import { Loader2 } from "lucide-react";
 
 // Tab "Đối tác" bỏ theo yêu cầu user 02/10/2026 (component AtldPartnerCatalog giữ
 // trong code, dữ liệu NCC còn nguyên). Lập + duyệt phiếu xuất ở tab "issues".
-type Tab = "items" | "prices" | "issues" | "penalties" | "rates";
+type Tab = "items" | "prices" | "issues" | "penalties" | "ppe" | "rates";
 
-// 5 tab nay là 5 mục con của nhóm "P. An toàn lao động" ở sidebar (?tab=...);
+// 6 tab nay là 6 mục con của nhóm "P. An toàn lao động" ở sidebar (?tab=...);
 // trang không còn thanh tab riêng.
 // Phụ lục 01 "Mức xử phạt" (143) — cùng nhóm quyền với Khấu trừ xử phạt.
 const TABS: { key: Tab; title: string; subtitle: string }[] = [
@@ -37,6 +37,7 @@ const TABS: { key: Tab; title: string; subtitle: string }[] = [
   { key: "prices", title: "Quản lý Xuất-Nhập kho", subtitle: "Kho BHLĐ — phiếu nhập / xuất, đơn giá" },
   { key: "issues", title: "Xuất kho cho BĐH/Đối tác", subtitle: "Kho BHLĐ — lập và duyệt phiếu xuất" },
   { key: "penalties", title: "Khấu trừ xử phạt", subtitle: "P. An toàn lao động — xử phạt khấu trừ" },
+  { key: "ppe", title: "Khấu trừ PPE", subtitle: "P. An toàn lao động — khấu trừ cấp phát PPE thu hồi chi phí" },
   { key: "rates", title: "Định mức xử phạt", subtitle: "P. An toàn lao động — mức xử phạt theo phụ lục" },
 ];
 
@@ -82,7 +83,7 @@ function SafetyWarehouseContent() {
   // Chỉ thấy tab mình có quyền. Trước khi chạy migration 139 thì hàm quyền xử phạt
   // chưa có -> pen.stock = false; khi đó vẫn hiện 3 tab kho như cũ.
   const showStock = pen.stock || !pen.view;
-  const tabs = TABS.filter((t) => (t.key === "penalties" || t.key === "rates" ? pen.view : showStock));
+  const tabs = TABS.filter((t) => (t.key === "penalties" || t.key === "ppe" || t.key === "rates" ? pen.view : showStock));
   const current: Tab = tabs.some((t) => t.key === tab) ? tab : tabs[0]?.key ?? "items";
 
   const head = TABS.find((t) => t.key === current) ?? TABS[0];
@@ -112,6 +113,7 @@ function SafetyWarehouseContent() {
           )}
           {ready && current === "issues" && <AtldIssueTab key={reloadKey} canEdit={access.keeper} canApprove={access.approver} />}
           {ready && current === "penalties" && <AtldPenaltyTab key={reloadKey} canInput={pen.input} canProcess={pen.process} canApprove={access.approver} />}
+          {ready && current === "ppe" && <AtldPenaltyTab key={reloadKey} kind="ppe" canInput={pen.input} canProcess={pen.process} canApprove={access.approver} />}
           {ready && current === "rates" && <AtldPenaltyRateTab key={reloadKey} canInput={pen.input} canApprove={access.approver} />}
           {ready && delReq && (
             <AtldDeleteRequestModal

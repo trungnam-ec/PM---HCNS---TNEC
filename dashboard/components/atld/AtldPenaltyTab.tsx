@@ -18,7 +18,7 @@ import {
 import {
   type Penalty, type PenaltyInput, type PenaltyOutput, type PenaltyStatus, type PenaltyAlert, type PenaltyDoc,
   DOC_LABEL, docOf,
-  PENALTY_TYPES, PENALTY_STATUS_META, fetchPenalties, createPenalty, updatePenalty, deletePenalty,
+  KIND_CFG, type PenaltyKind, PENALTY_STATUS_META, fetchPenalties, createPenalty, updatePenalty, deletePenalty,
   uploadPenaltyFile, setPenaltyFile, setPenaltyLink, removePenaltyFile, penaltyFileUrl,
   penaltyStatus, trackingDays, penaltyAlert, todayVN, composeViolations, type ViolationLine, downloadPenaltyDecision,
 } from "@/lib/atldPenalties";
@@ -49,7 +49,9 @@ const ROW_BG: Record<Exclude<PenaltyAlert, null>, string> = {
 };
 
 // canApprove = cờ "Duyệt xuất kho ATLĐ" / Admin: xoá thẳng; không có thì Xoá chỉ gửi yêu cầu (142).
-export default function AtldPenaltyTab({ canInput, canProcess, canApprove }: { canInput: boolean; canProcess: boolean; canApprove: boolean }) {
+// kind="ppe": tab "Khấu trừ PPE" — cùng bảng/luồng, chỉ đổi nhãn, bỏ chọn Định mức xử phạt + Xuất phiếu QĐ xử phạt.
+export default function AtldPenaltyTab({ canInput, canProcess, canApprove, kind = "penalty" }: { canInput: boolean; canProcess: boolean; canApprove: boolean; kind?: PenaltyKind }) {
+  const K = KIND_CFG[kind];
   const [items, setItems] = useState<Penalty[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,11 +68,11 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove }: { c
   const { notify, noticeNode } = useNoticeBox();
 
   const load = useCallback(async () => {
-    const r = await fetchPenalties();
+    const r = await fetchPenalties(kind);
     setItems(r.rows);
     setError(r.error);
     setLoading(false);
-  }, []);
+  }, [kind]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -204,12 +206,12 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove }: { c
               <option key={p} value={p}>{p}</option>
             ))}
           </select>
-          <button type="button" onClick={() => exportExcel(filtered)} disabled={filtered.length === 0} className={BTN_OUTLINE}>
+          <button type="button" onClick={() => exportExcel(filtered, kind)} disabled={filtered.length === 0} className={BTN_OUTLINE}>
             <FileDown size={14} /> Tải về
           </button>
           {canInput && (
             <button type="button" onClick={() => setEditing("new")} className={BTN_PRIMARY}>
-              <Plus size={14} /> Tạo hồ sơ xử phạt
+              <Plus size={14} /> {K.createLabel}
             </button>
           )}
         </div>
@@ -254,7 +256,7 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove }: { c
           </div>
         ) : filtered.length === 0 ? (
           <p className="py-16 text-center text-xs font-semibold text-slate-400">
-            {rows.length === 0 ? (canInput ? "Chưa có hồ sơ nào — bấm “Tạo hồ sơ xử phạt” để bắt đầu." : "Chưa có hồ sơ nào.") : "Không có hồ sơ khớp bộ lọc."}
+            {rows.length === 0 ? (canInput ? "Chưa có hồ sơ nào — bấm “{K.createLabel}” để bắt đầu." : "Chưa có hồ sơ nào.") : "Không có hồ sơ khớp bộ lọc."}
           </p>
         ) : (
           <table className="w-full text-xs min-w-[1900px]">
@@ -266,7 +268,7 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove }: { c
                 <th colSpan={5} className="px-3 py-1.5 bg-emerald-600 text-left">Tự tính — không sửa tay</th>
               </tr>
               <tr className="text-left">
-                {["Mã hồ sơ", "Loại hồ sơ", "Số QĐ", "Ngày ban hành", "Dự án", "Nhà thầu phụ", "Người vi phạm", "Nội dung"].map((h) => (
+                {["Mã hồ sơ", "Loại hồ sơ", K.docNo, "Ngày ban hành", "Dự án", K.contractor, K.person, "Nội dung"].map((h) => (
                   <th key={h} className={`${th} bg-blue-50 text-[#005BAC]`}>{h}</th>
                 ))}
                 <th className={`${th} bg-blue-50 text-[#005BAC] text-right`}>Giá trị phải khấu trừ</th>
@@ -339,6 +341,7 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove }: { c
       {viewingId && rows.find((r) => r.id === viewingId) && (
         <PenaltyDetail
           row={rows.find((r) => r.id === viewingId)!}
+          kind={kind}
           canEdit={canInput || canProcess}
           onDelete={canInput ? remove : undefined}
           onClose={() => setViewingId(null)}
@@ -361,6 +364,7 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove }: { c
       {editing && (
         <PenaltyModal
           item={editing === "new" ? null : editing}
+          kind={kind}
           canInput={canInput}
           canProcess={canProcess}
           onClose={() => setEditing(null)}
@@ -377,9 +381,10 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove }: { c
   );
 }
 
-function exportExcel(rows: Row[]) {
+function exportExcel(rows: Row[], kind: PenaltyKind) {
+  const K = KIND_CFG[kind];
   const header = [
-    "Mã Hồ Sơ", "Loại Hồ Sơ", "Số Quyết Định / Phiếu Cấp Phát", "Ngày Ban Hành", "Mã Dự Án", "Dự Án", "Nhà Thầu Phụ", "Nội Dung",
+    "Mã Hồ Sơ", "Loại Hồ Sơ", "Số Quyết Định / Phiếu Cấp Phát", "Ngày Ban Hành", "Mã Dự Án", "Dự Án", kind === "ppe" ? "Tên Đối Tượng / Nhà Thầu" : "Nhà Thầu Phụ", "Nội Dung",
     "Giá Trị Phải Khấu Trừ", "Người Lập", "Ngày Gửi Thông Tin Cho KHĐT",
     "Ngày Tiếp Nhận", "Đợt Thanh Toán", "Giá Trị Đã Khấu Trừ", "Ngày Khấu Trừ", "Số Chứng Từ", "Người Nhập",
     "Giá Trị Còn Lại", "Trạng Thái Xử Lý", "Số Ngày Theo Dõi", "Cảnh Báo Quá Hạn", "Ghi Chú (KHĐT)",
@@ -392,7 +397,7 @@ function exportExcel(rows: Row[]) {
     r.gia_tri_con_lai, PENALTY_STATUS_META[r.status].label, r.days ?? "", r.alert ? alertText[r.alert] : "", r.ghi_chu || "",
   ]);
   const ws = XLSX.utils.aoa_to_sheet([
-    ["BẢNG THEO DÕI HỒ SƠ KHẤU TRỪ - XỬ PHẠT VI PHẠM AN TOÀN (ATLĐ & KHĐT)"],
+    [K.sheetTitle],
     [`Xuất lúc ${new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}`],
     [],
     header,
@@ -400,8 +405,8 @@ function exportExcel(rows: Row[]) {
   ]);
   ws["!cols"] = header.map((h) => ({ wch: Math.max(12, Math.min(40, h.length + 4)) }));
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Khau tru xu phat");
-  XLSX.writeFile(wb, `Khau_tru_xu_phat_${todayVN()}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, K.sheet);
+  XLSX.writeFile(wb, `${K.fileStem}_${todayVN()}.xlsx`);
 }
 
 function AlertBadge({ alert }: { alert: PenaltyAlert }) {
@@ -593,9 +598,10 @@ function Field({ label, value, wide, strong }: { label: string; value: React.Rea
 }
 
 function PenaltyDetail({
-  row, canEdit, onClose, onEdit, onViewFile, onDelete,
+  row, kind, canEdit, onClose, onEdit, onViewFile, onDelete,
 }: {
   row: Row;
+  kind: PenaltyKind;
   canEdit: boolean;
   onClose: () => void;
   onEdit: (r: Row) => void;
@@ -603,6 +609,7 @@ function PenaltyDetail({
   onViewFile: (r: Row, kind: PenaltyDoc) => void;
 }) {
   // "Xuất phiếu" Quyết định xử phạt — hạn khắc phục không lưu trong hồ sơ, chọn lúc xuất.
+  const K = KIND_CFG[kind];
   const [han, setHan] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportErr, setExportErr] = useState<string | null>(null);
@@ -676,11 +683,11 @@ function PenaltyDetail({
           <p className="text-[11px] font-extrabold text-[#005BAC] uppercase tracking-wider">P.ATLĐ — thông tin đầu vào</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Loại hồ sơ" value={row.loai_ho_so} />
-            <Field label="Số QĐ" value={docValue("qd")} />
+            <Field label={K.docNo} value={docValue("qd")} />
             <Field label="Ngày ban hành" value={fmtDate(row.ngay_ban_hanh)} />
             <Field label="Dự án" value={[row.project_code, row.project_name].filter(Boolean).join(" — ")} />
-            <Field label="Nhà thầu phụ" value={row.contractor_name} wide strong />
-            <Field label="Người vi phạm" value={row.nguoi_vi_pham} wide />
+            <Field label={K.contractor} value={row.contractor_name} wide strong />
+            <Field label={K.person} value={row.nguoi_vi_pham} wide />
             <Field label="Nội dung" value={row.noi_dung} wide />
             <Field label="Người lập" value={row.nguoi_lap} />
             <Field label="Ngày gửi thông tin cho KHĐT" value={fmtDate(row.ngay_gui_khdt)} />
@@ -710,13 +717,17 @@ function PenaltyDetail({
               <Trash2 size={13} /> Xoá hồ sơ
             </button>
           )}
-          <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
-            Hạn khắc phục
-            <input type="date" value={han} onChange={(e) => setHan(e.target.value)} className="text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 tabular-nums focus:bg-white focus:outline-none focus:border-[#00AEEF]" />
-          </label>
-          <button type="button" onClick={exportDecision} disabled={exporting} className={BTN_OUTLINE}>
-            {exporting ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />} Xuất phiếu
-          </button>
+          {kind === "penalty" && (
+            <>
+              <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
+                Hạn khắc phục
+                <input type="date" value={han} onChange={(e) => setHan(e.target.value)} className="text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 tabular-nums focus:bg-white focus:outline-none focus:border-[#00AEEF]" />
+              </label>
+              <button type="button" onClick={exportDecision} disabled={exporting} className={BTN_OUTLINE}>
+                {exporting ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />} Xuất phiếu
+              </button>
+            </>
+          )}
           <button type="button" onClick={onClose} className="text-[11px] font-bold text-slate-500 px-3 py-2 rounded-lg hover:bg-slate-100 cursor-pointer">
             Đóng
           </button>
@@ -785,17 +796,19 @@ const parseMoney = (t: string): number => Number(t.replace(/\D/g, "")) || 0;
 const moneyText = (n: number) => (n ? formatMoney(n) : "");
 
 function PenaltyModal({
-  item, canInput, canProcess, onClose, onSaved, onChanged,
+  item, kind, canInput, canProcess, onClose, onSaved, onChanged,
 }: {
   item: Penalty | null;
+  kind: PenaltyKind;
   canInput: boolean;
   canProcess: boolean;
   onClose: () => void;
   onSaved: () => void;
   onChanged: () => void;
 }) {
+  const K = KIND_CFG[kind];
   const [inp, setInp] = useState<PenaltyInput>({
-    loai_ho_so: item?.loai_ho_so ?? PENALTY_TYPES[0],
+    loai_ho_so: item?.loai_ho_so ?? K.types[0],
     so_quyet_dinh: item?.so_quyet_dinh ?? "",
     qd_link: item?.qd_link ?? "",
     ngay_ban_hanh: item?.ngay_ban_hanh ?? "",
@@ -869,7 +882,7 @@ function PenaltyModal({
   async function save() {
     if (savingRef.current) return;
     if (canInput) {
-      if (!inp.contractor_name.trim()) return setErr("Chọn Nhà thầu phụ.");
+      if (!inp.contractor_name.trim()) return setErr(`Chọn ${K.contractor}.`);
       if (!(inp.gia_tri_phai_tru > 0)) return setErr("Nhập Giá trị phải khấu trừ.");
       if (inp.qd_link?.trim() && !/^https?:\/\//i.test(inp.qd_link.trim())) return setErr("Link quyết định phải bắt đầu bằng http:// hoặc https://");
     }
@@ -883,7 +896,7 @@ function PenaltyModal({
     if (id) {
       e = await updatePenalty(id, canInput ? inp : null, canProcess ? out : null);
     } else {
-      const r = await createPenalty(inp, canProcess ? out : null);
+      const r = await createPenalty(inp, canProcess ? out : null, kind);
       e = r.error;
       id = r.id;
     }
@@ -948,7 +961,7 @@ function PenaltyModal({
       >
         <div className="flex items-center gap-2">
           <h2 className="font-heading font-extrabold text-sm text-slate-800 flex-1">
-            {item ? <>Hồ sơ <span className="font-mono text-[#005BAC]">{item.ma_ho_so}</span></> : "Tạo hồ sơ khấu trừ / xử phạt"}
+            {item ? <>Hồ sơ <span className="font-mono text-[#005BAC]">{item.ma_ho_so}</span></> : K.modalTitle}
           </h2>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-rose-500 cursor-pointer" aria-label="Đóng">
             <X size={18} />
@@ -964,12 +977,12 @@ function PenaltyModal({
             <label className="block space-y-1">
               <span className={lbl}>Loại hồ sơ</span>
               <select value={inp.loai_ho_so} disabled={!canInput} onChange={(e) => setI("loai_ho_so", e.target.value)} className={inputCls}>
-                {PENALTY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                {!PENALTY_TYPES.includes(inp.loai_ho_so) && <option value={inp.loai_ho_so}>{inp.loai_ho_so}</option>}
+                {K.types.map((t) => <option key={t} value={t}>{t}</option>)}
+                {!K.types.includes(inp.loai_ho_so) && <option value={inp.loai_ho_so}>{inp.loai_ho_so}</option>}
               </select>
             </label>
             <label className="block space-y-1">
-              <span className={lbl}>Số quyết định / Phiếu cấp phát</span>
+              <span className={lbl}>{kind === "ppe" ? "Số phiếu cấp phát" : "Số quyết định / Phiếu cấp phát"}</span>
               <input value={inp.so_quyet_dinh ?? ""} disabled={!canInput} onChange={(e) => setI("so_quyet_dinh", e.target.value)} placeholder="VD 52/026/QĐ/TNE&C" className={inputCls} />
             </label>
             <label className="block space-y-1">
@@ -1015,7 +1028,7 @@ function PenaltyModal({
             </label>
 
             <div className="sm:col-span-3 space-y-1">
-              <span className={lbl}>Nhà thầu phụ * (danh mục đối tác — Hồ sơ trình ký)</span>
+              <span className={lbl}>{K.contractor} * (danh mục đối tác — Hồ sơ trình ký)</span>
               {canInput ? (
                 <AtldPartnerPicker
                   partners={partners}
@@ -1024,7 +1037,7 @@ function PenaltyModal({
                     const p = partners.find((x) => foldVi(x.name) === foldVi(name));
                     setInp((s) => ({ ...s, contractor_name: name, contractor_id: p?.id ?? null }));
                   }}
-                  placeholder="Tìm nhà thầu phụ hoặc gõ tên…"
+                  placeholder={K.contractorPh}
                 />
               ) : (
                 <div className={inputCls + " bg-slate-100"}>{inp.contractor_name || "—"}</div>
@@ -1032,19 +1045,23 @@ function PenaltyModal({
             </div>
 
             <label className="sm:col-span-3 block space-y-1">
-              <span className={lbl}>Người vi phạm</span>
+              <span className={lbl}>{K.person}</span>
               <input
                 value={inp.nguoi_vi_pham ?? ""}
                 disabled={!canInput}
                 onChange={(e) => setI("nguoi_vi_pham", e.target.value)}
-                placeholder="Họ tên người vi phạm (nếu có)"
+                placeholder={K.personPh}
                 className={inputCls}
               />
             </label>
 
             <div className="space-y-1 sm:col-span-3">
-              <span className={lbl}>Nội dung vi phạm (chọn từ Định mức xử phạt hoặc gõ tay)</span>
-              <AtldViolationLines lines={lines} onChange={changeLines} disabled={!canInput} inputCls={inputCls} />
+              <span className={lbl}>{K.content}</span>
+              {kind === "penalty" ? (
+                <AtldViolationLines lines={lines} onChange={changeLines} disabled={!canInput} inputCls={inputCls} />
+              ) : (
+                <textarea rows={4} value={inp.noi_dung ?? ""} disabled={!canInput} onChange={(e) => setI("noi_dung", e.target.value)} className={inputCls} />
+              )}
             </div>
 
             {/* 3 ô cùng hàng cao bằng nhau: ô Người lập đã chọn người cao 2 dòng -> 2 ô kia giãn theo. */}

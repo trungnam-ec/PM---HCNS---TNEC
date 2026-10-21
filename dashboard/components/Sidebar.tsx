@@ -288,6 +288,7 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
     { label: "Quản lý Xuất-Nhập kho", tab: "prices", icon: ReceiptText, show: showStock },
     { label: "Xuất kho cho BĐH/Đối tác", tab: "issues", icon: Truck, show: showStock },
     { label: "Khấu trừ xử phạt", tab: "penalties", icon: Gavel, show: showPenalty },
+    { label: "Khấu trừ PPE", tab: "ppe", icon: HardHat, show: showPenalty },
     { label: "Định mức xử phạt", tab: "rates", icon: Scale, show: showPenalty },
   ].filter((c) => c.show);
   const atldGroup = (

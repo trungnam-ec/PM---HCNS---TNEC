@@ -14,9 +14,36 @@ import { atldErrorMessage } from "./atldStock";
 import { emailFieldMatches, splitEmails } from "./emailMatch";
 
 export const PENALTY_TYPES = ["Xử phạt vi phạm an toàn", "Khấu trừ cấp phát BHLĐ"];
+export const PPE_TYPES = ["Cấp phát PPE thu hồi chi phí"];
+
+// Tab "Khấu trừ PPE" dùng CHUNG bảng atld_penalties với "Khấu trừ xử phạt", phân biệt
+// bằng cột kind (migration 160): cùng luồng ATLĐ nhập đầu vào / KHĐT nhập đầu ra, chỉ khác nhãn.
+export type PenaltyKind = "penalty" | "ppe";
+export const KIND_CFG: Record<PenaltyKind, {
+  types: string[]; sheetTitle: string; fileStem: string; sheet: string; createLabel: string; modalTitle: string;
+  docNo: string; contractor: string; contractorPh: string; person: string; personPh: string; content: string;
+}> = {
+  penalty: {
+    types: PENALTY_TYPES,
+    sheetTitle: "BẢNG THEO DÕI HỒ SƠ KHẤU TRỪ - XỬ PHẠT VI PHẠM AN TOÀN (ATLĐ & KHĐT)",
+    fileStem: "Khau_tru_xu_phat", sheet: "Khau tru xu phat",
+    createLabel: "Tạo hồ sơ xử phạt", modalTitle: "Tạo hồ sơ khấu trừ / xử phạt",
+    docNo: "Số QĐ", contractor: "Nhà thầu phụ", contractorPh: "Tìm nhà thầu phụ hoặc gõ tên…",
+    person: "Người vi phạm", personPh: "Họ tên người vi phạm (nếu có)", content: "Nội dung vi phạm (chọn từ Định mức xử phạt hoặc gõ tay)",
+  },
+  ppe: {
+    types: PPE_TYPES,
+    sheetTitle: "BẢNG THEO DÕI HỒ SƠ KHẤU TRỪ - CẤP PHÁT PPE THU HỒI CHI PHÍ (ATLĐ & KHĐT)",
+    fileStem: "Khau_tru_PPE", sheet: "Khau tru PPE",
+    createLabel: "Tạo hồ sơ khấu trừ PPE", modalTitle: "Tạo hồ sơ khấu trừ PPE",
+    docNo: "Số phiếu cấp phát", contractor: "Đối tượng / Nhà thầu", contractorPh: "Tìm nhà thầu hoặc gõ tên…",
+    person: "Người nhận", personPh: "Họ tên người nhận PPE (nếu có)", content: "Nội dung cấp phát (mã PPE, số lượng, người nhận…)",
+  },
+};
 
 export type Penalty = {
   id: string;
+  kind?: PenaltyKind; // 160; hồ sơ cũ / chưa chạy 160 coi là "penalty"
   ma_ho_so: string;
   loai_ho_so: string;
   so_quyet_dinh: string | null;
@@ -121,14 +148,15 @@ export async function fetchPenaltyAccess(): Promise<PenaltyAccess> {
   return { view: !!d.view, input: !!d.input, process: !!d.process, stock: !!d.stock };
 }
 
-export async function fetchPenalties(): Promise<{ rows: Penalty[]; error: string | null }> {
+export async function fetchPenalties(kind: PenaltyKind = "penalty"): Promise<{ rows: Penalty[]; error: string | null }> {
   const { data, error } = await supabase.from("atld_penalties").select("*").order("nam", { ascending: false }).order("seq", { ascending: false });
   if (error) {
     const missing = /atld_penalties/i.test(error.message || "") && /find|exist/i.test(error.message || "");
     return { rows: [], error: missing ? "Chưa chạy migration 139 (khấu trừ xử phạt) trong Supabase > SQL Editor." : atldErrorMessage(error) };
   }
   return {
-    rows: ((data as Penalty[]) || []).map((r) => ({
+    // Lọc theo loại ở client: chưa chạy migration 160 (chưa có cột kind) thì tab xử phạt vẫn chạy bình thường.
+    rows: ((data as Penalty[]) || []).filter((r) => (r.kind ?? "penalty") === kind).map((r) => ({
       ...r,
       gia_tri_phai_tru: Number(r.gia_tri_phai_tru) || 0,
       gia_tri_da_tru: Number(r.gia_tri_da_tru) || 0,
@@ -143,9 +171,9 @@ const clean = (s: string | null | undefined) => {
   return t === "" ? null : t;
 };
 
-function cleanInput(v: PenaltyInput) {
+function cleanInput(v: PenaltyInput, kind: PenaltyKind = "penalty") {
   return {
-    loai_ho_so: clean(v.loai_ho_so) || PENALTY_TYPES[0],
+    loai_ho_so: clean(v.loai_ho_so) || KIND_CFG[kind].types[0],
     so_quyet_dinh: clean(v.so_quyet_dinh),
     qd_link: clean(v.qd_link),
     ngay_ban_hanh: v.ngay_ban_hanh || null,
@@ -178,13 +206,14 @@ function cleanOutput(v: PenaltyOutput) {
 function penaltyError(err: { message?: string; code?: string } | null): string {
   const m = err?.message || "";
   if (/atld_penalties_da_tru_le_phai_tru/i.test(m)) return "Giá trị đã khấu trừ không được lớn hơn giá trị phải khấu trừ.";
+  if (/kind/i.test(m) && /column|find/i.test(m)) return "Chưa chạy migration 160 (khấu trừ PPE) trong Supabase > SQL Editor.";
   if (/nguoi_vi_pham/i.test(m) && /column|find/i.test(m)) return "Chưa chạy migration 148 (cột Người vi phạm) trong Supabase > SQL Editor.";
   if (/ct_link|ct_file/i.test(m) && /column|find/i.test(m)) return "Chưa chạy migration 141 (tệp số chứng từ) trong Supabase > SQL Editor.";
   return atldErrorMessage(err);
 }
 
-export async function createPenalty(input: PenaltyInput, output: PenaltyOutput | null): Promise<{ id: string | null; error: string | null }> {
-  const row = { ...cleanInput(input), ...(output ? cleanOutput(output) : {}) };
+export async function createPenalty(input: PenaltyInput, output: PenaltyOutput | null, kind: PenaltyKind = "penalty"): Promise<{ id: string | null; error: string | null }> {
+  const row = { ...cleanInput(input, kind), ...(output ? cleanOutput(output) : {}), ...(kind === "ppe" ? { kind } : {}) };
   const { data, error } = await supabase.from("atld_penalties").insert(row).select("id");
   if (error) return { id: null, error: penaltyError(error) };
   const id = (data as { id: string }[] | null)?.[0]?.id || null;

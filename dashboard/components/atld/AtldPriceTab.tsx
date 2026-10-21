@@ -504,8 +504,14 @@ export default function AtldPriceTab({
                     </td>
                     <td className="px-4 py-2.5 font-semibold text-slate-700 min-w-[160px]">
                       {r.doi_tac || (r.nguon === "phieu" ? "" : "—")}
-                      {r.nguon === "phieu" && (r.nguoi_nhan || r.bdh_name) && (
-                        <span className="block text-[10px] font-medium text-slate-400">{[r.nguoi_nhan, r.bdh_name].filter(Boolean).join(" · ")}</span>
+                      {/* Phiếu xuất cho BĐH không có đối tác: người nhận là nội dung chính (cùng cỡ chữ các cột khác), BĐH ghi nhỏ bên dưới. */}
+                      {r.nguon === "phieu" && !r.doi_tac && r.nguoi_nhan && <span className="block">{r.nguoi_nhan}</span>}
+                      {r.nguon === "phieu" && !r.doi_tac && !r.nguoi_nhan && r.bdh_name && <span className="block">{r.bdh_name}</span>}
+                      {r.nguon === "phieu" && !r.doi_tac && r.nguoi_nhan && r.bdh_name && (
+                        <span className="block text-[11px] font-medium text-slate-400">{r.bdh_name}</span>
+                      )}
+                      {r.nguon === "phieu" && r.doi_tac && (r.nguoi_nhan || r.bdh_name) && (
+                        <span className="block text-[11px] font-medium text-slate-400">{[r.nguoi_nhan, r.bdh_name].filter(Boolean).join(" · ")}</span>
                       )}
                       {r.nguon === "phieu" && !r.doi_tac && !r.nguoi_nhan && !r.bdh_name && "—"}
                     </td>

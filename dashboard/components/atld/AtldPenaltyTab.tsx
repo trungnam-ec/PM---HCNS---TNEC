@@ -24,7 +24,7 @@ import {
 } from "@/lib/atldPenalties";
 import { fetchSharedPartners, type SharedPartner } from "@/lib/atldVouchers";
 import { fetchProjectCatalog, type Project } from "@/lib/projectCatalog";
-import { formatMoney, matchesQuery } from "@/lib/atldStock";
+import { formatMoney } from "@/lib/atldStock";
 import { foldVi } from "@/lib/financePartners";
 import AtldPartnerPicker from "@/components/atld/AtldPartnerPicker";
 import AtldPersonPicker from "@/components/atld/AtldPersonPicker";
@@ -36,6 +36,13 @@ import { normalizeName } from "@/lib/approvers";
 
 type Row = Penalty & { status: PenaltyStatus; days: number | null; alert: PenaltyAlert; haystack: string };
 type Filter = "all" | "open" | "qua_han" | "sap_qua_han" | "da";
+
+// Mỗi từ khoá phải KHỞI ĐẦU một từ trong tên (gõ "an" không ra "Thanh", "Phước").
+const matchesWords = (hay: string, q: string) => {
+  // Tách theo mọi ký tự không phải chữ/số để "001" khớp "HS.XP-2026-001", "026" khớp "52/026/QĐ".
+  const h = ` ${hay.replace(/[^a-z0-9]+/g, " ")}`;
+  return normalizeName(q).split(/[^a-z0-9]+/).filter(Boolean).every((t) => h.includes(` ${t}`));
+};
 
 const fmtDate = (d: string | null) => (d ? d.split("-").reverse().join("/") : "");
 const money = (n: number) => `${formatMoney(n)} đ`;
@@ -59,6 +66,9 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove, kind 
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [project, setProject] = useState("");
+  // Lọc theo Ngày ban hành (yyyy-mm-dd, so sánh chuỗi được).
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [editing, setEditing] = useState<Penalty | "new" | null>(null);
   // Bấm vào dòng -> popup xem toàn bộ thông tin (bảng nhiều cột, màn nhỏ khó đọc).
   const [viewingId, setViewingId] = useState<string | null>(null);
@@ -91,7 +101,8 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove, kind 
           days,
           alert: penaltyAlert(status, days),
           haystack: normalizeName(
-            [p.ma_ho_so, p.loai_ho_so, p.so_quyet_dinh, p.project_code, p.project_name, p.contractor_name, p.nguoi_vi_pham, p.noi_dung, p.nguoi_lap, p.dot_thanh_toan, p.so_chung_tu, p.nguoi_nhap]
+            // Chỉ các trường định danh: gom cả nội dung / người nhập vào thì gõ tên nhà thầu ra thừa dòng.
+            [p.contractor_name, p.ma_ho_so, p.so_quyet_dinh, p.so_chung_tu, p.project_code, p.project_name]
               .filter(Boolean)
               .join(" ")
           ),
@@ -109,12 +120,14 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove, kind 
     () =>
       rows.filter((r) => {
         if (project && (r.project_name || r.project_code) !== project) return false;
+        if (dateFrom && (!r.ngay_ban_hanh || r.ngay_ban_hanh < dateFrom)) return false;
+        if (dateTo && (!r.ngay_ban_hanh || r.ngay_ban_hanh > dateTo)) return false;
         if (filter === "open" && r.status === "da") return false;
         if (filter === "da" && r.status !== "da") return false;
         if ((filter === "qua_han" || filter === "sap_qua_han") && r.alert !== filter) return false;
-        return matchesQuery(r.haystack, query);
+        return matchesWords(r.haystack, query);
       }),
-    [rows, filter, project, query]
+    [rows, filter, project, dateFrom, dateTo, query]
   );
 
   const sum = useMemo(() => {
@@ -191,7 +204,7 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove, kind 
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Tìm mã hồ sơ, số QĐ, nhà thầu, dự án, nội dung…"
+              placeholder="Tìm tên nhà thầu, mã hồ sơ, số QĐ / chứng từ, dự án…"
               className="flex-1 min-w-0 bg-transparent text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none"
             />
             {query && (
@@ -206,6 +219,17 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove, kind 
               <option key={p} value={p}>{p}</option>
             ))}
           </select>
+          <div className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500" title="Lọc theo Ngày ban hành">
+            Ngày ban hành
+            <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} aria-label="Từ ngày" className={`${CONTROL_BOX} px-2 text-xs font-semibold text-slate-600 tabular-nums`} />
+            –
+            <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} aria-label="Đến ngày" className={`${CONTROL_BOX} px-2 text-xs font-semibold text-slate-600 tabular-nums`} />
+            {(dateFrom || dateTo) && (
+              <button type="button" onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-slate-300 hover:text-slate-500 cursor-pointer" aria-label="Xoá lọc ngày">
+                <X size={13} />
+              </button>
+            )}
+          </div>
           <button type="button" onClick={() => exportExcel(filtered, kind)} disabled={filtered.length === 0} className={BTN_OUTLINE}>
             <FileDown size={14} /> Tải về
           </button>

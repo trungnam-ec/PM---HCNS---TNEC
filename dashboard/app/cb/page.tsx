@@ -425,7 +425,12 @@ const normalizeDeptClient = (raw: string | null | undefined): string => {
   if (lower.includes("kế hoạch") || lower.includes("đấu thầu") || lower.includes("khđt")) return "Phòng Kế Hoạch Đấu Thầu";
   if (lower.includes("kỹ thuật")) return "Phòng Kỹ Thuật";
   if (lower.includes("an toàn") || lower.includes("hse") || lower.includes("atlđ")) return "Phòng An Toàn Lao Động";
-  if (lower.includes("quản lý dự án") || lower.includes("qlda")) return "Phòng Quản Lý Dự Án";
+  if (lower.includes("quản lý dự án") || lower.includes("qlda")) {
+    // Giữ số đuôi (QLDA 2, QLDA 3...) — bỏ đi là mọi phòng QLDA dồn về một mối,
+    // bộ lọc phòng ban trong Chấm công không còn khớp với danh mục.
+    const suffix = lower.match(/(?:quản lý dự án|qlda)\s*(\d+)/);
+    return suffix ? `Phòng Quản Lý Dự Án ${suffix[1]}` : "Phòng Quản Lý Dự Án";
+  }
   if (lower.includes("thư ký") || lower.includes("trợ lý")) return "Phòng Thư Ký, Trợ Lý";
 
   // Project departments
@@ -832,6 +837,7 @@ export default function CBPage() {
   // toàn bộ đơn họ phụ trách, giống lỗi đã sửa ở tab Lịch sử nghỉ phép.
   const [explanationSearchQuery, setExplanationSearchQuery] = useState("");
   const [travelDeptFilter, setTravelDeptFilter] = useState("all");
+  const [travelSearchQuery, setTravelSearchQuery] = useState("");
   const [leaveFilterFrom, setLeaveFilterFrom] = useState("");
   const [leaveFilterTo, setLeaveFilterTo] = useState("");
   // Lọc lịch sử nghỉ phép theo phòng ban/BĐH. Đơn nghỉ (task) không lưu phòng ban,
@@ -4190,7 +4196,7 @@ export default function CBPage() {
           .update({ cost: newCost })
           .eq("id", idOrIndex);
         if (error) throw error;
-        alert("Đã cập nhật chi phí chuyến đi thành công!");
+        notify("Đã cập nhật chi phí chuyến đi thành công!", "success");
         fetchTravels();
       } catch (err: any) {
         console.error("Error updating travel cost:", err);
@@ -4521,9 +4527,10 @@ export default function CBPage() {
     return travels
       .filter(t => hasFullAccess || t.name === currentUser?.name)
       .filter(t => travelDeptFilter === "all" || empDeptByName.get(normalizeText(t.name)) === travelDeptFilter)
+      .filter(t => !travelSearchQuery || normalizeText(t.name || "").includes(normalizeText(travelSearchQuery)))
       .filter(t => !travelFilterFrom || new Date(t.from) >= new Date(travelFilterFrom))
       .filter(t => !travelFilterTo || new Date(t.to) <= new Date(travelFilterTo));
-  }, [travels, hasFullAccess, currentUser, travelFilterFrom, travelFilterTo, travelDeptFilter, empDeptByName]);
+  }, [travels, hasFullAccess, currentUser, travelFilterFrom, travelFilterTo, travelDeptFilter, travelSearchQuery, empDeptByName]);
 
   const filteredRegimes = useMemo(() => {
     return leaves
@@ -4963,21 +4970,21 @@ export default function CBPage() {
               const deptEntry = deptFilterMap[activeSubTab];
               return (
                 <div className="flex flex-wrap items-center gap-2">
-                {/* Tìm theo tên nhân viên — riêng tab Thông tin giải trình, đứng trước ô phòng ban */}
-                {activeSubTab === "explanation" && (
+                {/* Tìm theo tên nhân viên — tab Thông tin giải trình & Công tác, đứng trước ô phòng ban */}
+                {(activeSubTab === "explanation" || activeSubTab === "travel") && (
                   <div className="relative w-full sm:w-56 shrink-0">
                     <Search size={13} className="absolute left-3 top-2.5 text-slate-400 pointer-events-none" />
                     <input
                       type="text"
                       placeholder="Tìm tên nhân viên..."
-                      value={explanationSearchQuery}
-                      onChange={(e) => setExplanationSearchQuery(e.target.value)}
+                      value={activeSubTab === "travel" ? travelSearchQuery : explanationSearchQuery}
+                      onChange={(e) => (activeSubTab === "travel" ? setTravelSearchQuery : setExplanationSearchQuery)(e.target.value)}
                       className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-200/60 shadow-sm rounded-xl text-[11px] font-semibold focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none"
                     />
-                    {explanationSearchQuery && (
+                    {(activeSubTab === "travel" ? travelSearchQuery : explanationSearchQuery) && (
                       <button
                         type="button"
-                        onClick={() => setExplanationSearchQuery("")}
+                        onClick={() => (activeSubTab === "travel" ? setTravelSearchQuery : setExplanationSearchQuery)("")}
                         title="Xóa tìm kiếm"
                         className="absolute right-2 top-2 text-slate-400 hover:text-rose-600 cursor-pointer"
                       >

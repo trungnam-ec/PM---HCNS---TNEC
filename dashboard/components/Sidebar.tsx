@@ -35,7 +35,11 @@ import {
   ClipboardType,
   HardHat,
   Gauge,
-  Contact
+  Contact,
+  Boxes,
+  Truck,
+  Gavel,
+  Scale
 } from "lucide-react";
 import { useSidebar } from "./SidebarContext";
 import { useDepartments } from "@/lib/departments";
@@ -46,6 +50,24 @@ import { emailFieldMatches } from "@/lib/emailMatch";
 import { useTenantConfig } from "@/lib/tenantConfig";
 import { usePlan } from "@/lib/plan";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import { fetchPenaltyAccess, NO_PENALTY_ACCESS } from "@/lib/atldPenalties";
+
+// Quyền xử phạt của P. ATLĐ (quyết định mục con nào hiện). Nạp 1 lần mỗi phiên.
+// Cùng luật lọc với trang /an-toan-lao-dong: tab xử phạt cần pen.view, 3 tab kho
+// cần pen.stock (hoặc chưa có quyền xử phạt nào).
+let atldNavCache: Promise<typeof NO_PENALTY_ACCESS> | null = null;
+function useAtldNav(): typeof NO_PENALTY_ACCESS | null {
+  const [nav, setNav] = useState<typeof NO_PENALTY_ACCESS | null>(null);
+  useEffect(() => {
+    let alive = true;
+    if (!atldNavCache) atldNavCache = fetchPenaltyAccess();
+    atldNavCache.then((n) => alive && setNav(n));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return nav;
+}
 
 // Quyền hiện 2 mục Quản trị dự án (RPC pc_nav_access, migration 103). Nạp 1 lần
 // mỗi phiên để menu không nháy khi chuyển trang. Lỗi (chưa chạy migration) ->
@@ -97,6 +119,10 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
     pathname.startsWith("/thong-tin-quan-tri-du-an") ||
     pathname.startsWith("/dashboard-du-an");
   const [projectGroupOpen, setProjectGroupOpen] = useState(isProjectSection);
+  // Nhóm "P. An toàn lao động" — 5 mục con là 5 tab của trang /an-toan-lao-dong (?tab=).
+  const isAtldSection = pathname.startsWith("/an-toan-lao-dong");
+  const [atldGroupOpen, setAtldGroupOpen] = useState(isAtldSection);
+  const atldNav = useAtldNav();
   // Ẩn menu theo GÓI HIỆU LỰC CỦA PHÒNG + cấp phép riêng (không chỉ gói toàn cục).
   // Đang tải danh tính -> hiện tạm (tránh nháy menu trống), narrow lại khi có dữ liệu.
   const currentUser = useCurrentUser();
@@ -255,6 +281,60 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
     </div>
   );
 
+  const showStock = !atldNav || atldNav.stock || !atldNav.view;
+  const showPenalty = !atldNav || atldNav.view;
+  const atldChildren = [
+    { label: "Tổng Danh mục kho ATLĐ", tab: "items", icon: Boxes, show: showStock },
+    { label: "Quản lý Xuất-Nhập kho", tab: "prices", icon: ReceiptText, show: showStock },
+    { label: "Xuất kho cho BĐH/Đối tác", tab: "issues", icon: Truck, show: showStock },
+    { label: "Khấu trừ xử phạt", tab: "penalties", icon: Gavel, show: showPenalty },
+    { label: "Định mức xử phạt", tab: "rates", icon: Scale, show: showPenalty },
+  ].filter((c) => c.show);
+  const atldGroup = (
+    <div key="atld-group" className="space-y-1.5">
+      <button
+        type="button"
+        onClick={() => setAtldGroupOpen((o) => !o)}
+        className={`w-full flex items-center gap-3 px-5 py-2.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-[0.97] border cursor-pointer ${
+          isAtldSection
+            ? "bg-gradient-to-r from-[#005BAC] to-[#00AEEF] border-transparent text-white shadow-md shadow-blue-500/15"
+            : "bg-slate-50/50 border-slate-100 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+        }`}
+      >
+        <HardHat size={15} className={isAtldSection ? "text-white" : "text-slate-500"} />
+        <span className="flex-1 text-left">P. An toàn lao động</span>
+        <ChevronDown
+          size={13}
+          className={`transition-transform duration-200 ${atldGroupOpen || isAtldSection ? "rotate-180" : ""} ${isAtldSection ? "text-white" : "text-slate-400"}`}
+        />
+      </button>
+
+      {(atldGroupOpen || isAtldSection) && (
+        <div className="pl-5 space-y-1.5 animate-in fade-in duration-150">
+          {atldChildren.map((child) => {
+            const ChildIcon = child.icon;
+            const isChildActive = isAtldSection && (currentTab || atldChildren[0]?.tab) === child.tab;
+            return (
+              <Link
+                key={child.tab}
+                href={`/an-toan-lao-dong?tab=${child.tab}`}
+                onClick={() => setSidebarOpen(false)}
+                className={`flex items-center gap-2.5 px-4 py-2 rounded-full text-[11px] font-bold transition-all duration-200 active:scale-[0.97] hover:translate-x-1 border ${
+                  isChildActive
+                    ? "bg-blue-50 border-blue-200 text-[#005BAC]"
+                    : "bg-white border-slate-100 text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                }`}
+              >
+                <ChildIcon size={13} className={isChildActive ? "text-[#005BAC]" : "text-slate-400"} />
+                <span>{child.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   // Nhóm "Kế toán" — chèn ngay dưới "Đề nghị thanh toán" nếu gói cho phép.
   const keToanAllowed = isPathAllowed("/ke-toan");
   const keToanChildren = [
@@ -339,6 +419,9 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
 
         // Mục "Vị trí dự án" hiển thị dưới dạng nhóm "Quản lý dự án" (đã qua lọc gói ở navItems).
         if (item.href === "/vi-tri-du-an") return projectGroup;
+
+        // Mục "P. An toàn lao động" hiển thị dưới dạng nhóm 5 mục con (đã qua lọc gói ở navItems).
+        if (item.href === "/an-toan-lao-dong") return atldGroup;
 
         // Chèn nhóm "Quản lý Đăng ký" ngay sau mục Lịch công việc (nếu gói cho phép)
         if (item.href === "/calendar") {

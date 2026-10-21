@@ -9,6 +9,8 @@ import UserPermissionsModal, { type UserPermissionsTab } from "@/components/User
 import UsageReportPanel from "@/components/UsageReportPanel";
 import ProjectCatalogPanel from "@/components/ProjectCatalogPanel";
 import AvatarUploadCard from "@/components/AvatarUploadCard";
+import PrivacyPolicyPanel from "@/components/PrivacyPolicyPanel";
+import { usePrivacyPolicy } from "@/lib/usePrivacyPolicy";
 import { supabase } from "@/lib/supabase";
 import { usePlan } from "@/lib/plan";
 import { PLAN_LABELS, type Plan } from "@/lib/planShared";
@@ -62,6 +64,8 @@ function SettingsContent() {
   // form giao việc. Chỉ Admin; ProjectCatalogPanel tự chặn quyền, RLS của
   // migration 037 chặn thêm một tầng nữa ở DB.
   const isCatalogTab = activeTab === "danh-muc";
+  // Tab "Chính sách bảo mật" — MỌI tài khoản đọc được và bấm "Tôi đã đọc".
+  const isPrivacyTab = activeTab === "privacy";
   const { plan: activePlan } = usePlan();
   const [changingPlan, setChangingPlan] = useState(false);
 
@@ -247,6 +251,25 @@ function SettingsContent() {
   const user = useCurrentUser();
   const currentUser = user.authenticated ? user : null;
   const approvalPerms = user.perms;
+  // Đã bấm "Tôi đã đọc" chính sách bảo mật phiên bản hiện hành chưa (null = chưa biết).
+  // Chỉ để hiện nhãn ở thẻ lối vào; lỗi đọc thì không hiện nhãn, không chặn gì.
+  const privacyPolicy = usePrivacyPolicy();
+  const [privacyAcked, setPrivacyAcked] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!user.authenticated || !user.email || privacyPolicy.loading) return;
+    setPrivacyAcked(null);
+    let mounted = true;
+    supabase
+      .from("privacy_policy_acks")
+      .select("policy_version")
+      .eq("email", user.email.trim().toLowerCase())
+      .eq("policy_version", privacyPolicy.version)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (mounted && !error) setPrivacyAcked(!!data);
+      });
+    return () => { mounted = false; };
+  }, [user.authenticated, user.email, privacyPolicy.loading, privacyPolicy.version]);
   // Hộp thông báo căn GIỮA màn hình — thay window.alert() (dính mép trên, hiện tên
   // miền, không theo giao diện chung). Dùng chung mẫu với trang Lịch/Báo cáo.
   const { notify, noticeNode } = useNoticeBox();
@@ -1143,7 +1166,7 @@ function SettingsContent() {
       <Sidebar />
       <div className="ml-60 flex-1 flex flex-col min-w-0">
         <Header
-          title={isApprovalsTab ? "Phê duyệt yêu cầu" : isUsageTab ? "Đo lường sử dụng" : isCatalogTab ? "Danh mục công việc" : "Cài đặt hệ thống"}
+          title={isApprovalsTab ? "Phê duyệt yêu cầu" : isUsageTab ? "Đo lường sử dụng" : isCatalogTab ? "Danh mục công việc" : isPrivacyTab ? "Chính sách bảo mật" : "Cài đặt hệ thống"}
           subtitle={isApprovalsTab ? "Xem và phê duyệt các yêu cầu đi công tác, nghỉ phép của nhân sự" : isUsageTab ? "Tài khoản nào thực sự dùng phần mềm — không tính đăng nhập rồi treo tab" : isCatalogTab ? "Dự án, nhóm và nguồn công việc dùng cho form giao việc" : undefined}
         />
 
@@ -1164,12 +1187,36 @@ function SettingsContent() {
           {/* ─── TAB DANH MỤC CÔNG VIỆC (chỉ Admin) ─── */}
           {isCatalogTab && <ProjectCatalogPanel />}
 
-          {!isApprovalsTab && !isUsageTab && !isCatalogTab && (
+          {/* ─── TAB CHÍNH SÁCH BẢO MẬT (mọi tài khoản) ─── */}
+          {isPrivacyTab && <PrivacyPolicyPanel />}
+
+          {!isApprovalsTab && !isUsageTab && !isCatalogTab && !isPrivacyTab && (
             <div className="flex flex-col 2xl:flex-row gap-6 items-start">
             <div className="flex-1 min-w-0 w-full">
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
               {/* ═══ CỘT TRÁI: Gói dịch vụ + Bảo mật & Kết nối ═══ */}
               <div className="space-y-6">
+              {/* ─── LỐI VÀO "CHÍNH SÁCH BẢO MẬT" (mọi tài khoản) ─── */}
+              <a
+                href="/settings?tab=privacy"
+                className="glass bg-white rounded-2xl p-5 border border-slate-200/50 shadow-premium flex items-center gap-4 hover:border-blue-300 hover:shadow-lg transition-all group"
+              >
+                <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <ShieldCheck size={21} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-heading font-bold text-slate-800 text-sm mb-0.5 flex items-center gap-2">
+                    Chính sách bảo mật
+                    {privacyAcked === false && (
+                      <span className="text-[9px] font-extrabold uppercase tracking-wide bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full">Chưa xác nhận</span>
+                    )}
+                    {privacyAcked === true && (
+                      <span className="text-[9px] font-extrabold uppercase tracking-wide bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">Đã xác nhận</span>
+                    )}
+                  </h2>
+                </div>
+                <ChevronRight size={18} className="text-slate-300 shrink-0 group-hover:text-blue-500 transition-colors" />
+              </a>
               {/* ─── LỐI VÀO "ĐO LƯỜNG SỬ DỤNG" (chỉ Admin) ─── */}
               {currentUser?.isAdmin && (
                 <a

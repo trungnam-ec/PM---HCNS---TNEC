@@ -266,20 +266,20 @@ export default function AtldPenaltyRateTab({ canInput, canApprove }: { canInput:
                         : (e) => isRowClick(e) && setViewingId(r.id)
                     }
                     className={`border-t border-slate-100 ${
-                      !isGroup ? "hover:bg-slate-50/60 cursor-pointer" : lvl === 1 ? "bg-blue-50/70 cursor-pointer" : "bg-slate-50 cursor-pointer"
+                      !isGroup ? "hover:bg-slate-50/60 cursor-pointer" : lvl === 1 ? "bg-emerald-100 cursor-pointer" : "bg-[#005BAC] cursor-pointer"
                     }`}
                   >
-                    <td className={`px-3 py-2.5 align-top whitespace-nowrap font-bold ${isGroup && lvl === 1 ? "text-[#005BAC]" : "text-slate-600"}`}>
+                    <td className={`px-3 py-2.5 align-top whitespace-nowrap font-bold ${isGroup && lvl === 1 ? "text-emerald-700" : isGroup ? "text-white" : "text-slate-600"}`}>
                       <span className="inline-flex items-center gap-1">
                         {isGroup && (open ? <ChevronDown size={13} /> : <ChevronRight size={13} />)}
                         {r.code}
                       </span>
                     </td>
                     <td className={`px-3 py-2.5 align-top whitespace-pre-line ${
-                      !isGroup ? "font-semibold text-slate-700 pl-6" : lvl === 1 ? "font-extrabold uppercase text-[#005BAC]" : "font-extrabold text-slate-700"
+                      !isGroup ? "font-semibold text-slate-700 pl-6" : lvl === 1 ? "font-extrabold uppercase text-emerald-700" : "font-extrabold text-white"
                     }`}>
                       {r.noi_dung}
-                      {isGroup && <span className="ml-2 text-[10px] font-semibold normal-case text-slate-400">({childCount.get(r.code) || 0} mục)</span>}
+                      {isGroup && <span className={`ml-2 text-[10px] font-semibold normal-case ${lvl === 1 ? "text-slate-500" : "text-blue-100"}`}>({childCount.get(r.code) || 0} mục)</span>}
                     </td>
                     <td className="px-3 py-2.5 align-top text-right"><MoneyCell v={r.muc_1} unit={r.don_vi} /></td>
                     <td className="px-3 py-2.5 align-top text-right"><MoneyCell v={r.muc_2} unit={r.don_vi} /></td>

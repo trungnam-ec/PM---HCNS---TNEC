@@ -2,6 +2,7 @@
 
 import { apiFetch } from "@/lib/apiClient";
 import { useState, useEffect, useCallback, useMemo } from "react";
+import AtldRowDetail from "@/components/atld/AtldRowDetail";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase";
@@ -77,6 +78,7 @@ export default function DocumentControlPage() {
   const [search, setSearch] = useState("");
 
   // Modal State
+  const [viewingDoc, setViewingDoc] = useState<ClericalDoc | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editingDoc, setEditingDoc] = useState<ClericalDoc | null>(null);
 
@@ -934,7 +936,7 @@ export default function DocumentControlPage() {
           {["incoming", "outgoing_1", "outgoing_2", "outgoing_hdqt"].includes(activeTab) && (
             <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-heading font-bold text-slate-800 text-sm">
+                <h3 className="font-heading font-bold text-[#005BAC] text-sm">
                   {activeTab === "incoming" && "Nhật ký Công văn đến văn phòng"}
                   {activeTab === "outgoing_1" && "Nhật ký Công văn đi 1"}
                   {activeTab === "outgoing_2" && "Nhật ký Công văn đi 2"}
@@ -948,24 +950,24 @@ export default function DocumentControlPage() {
               <div className="overflow-x-auto min-h-[300px]">
                 <table className="w-full text-xs text-left">
                   <thead>
-                    <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                      <th className="pb-3 pr-2">STT</th>
-                      <th className="pb-3 whitespace-nowrap">Ngày/Tháng</th>
-                      <th className="pb-3 whitespace-nowrap">Số văn bản</th>
-                      <th className="pb-3 whitespace-nowrap">Ngày VB</th>
-                      <th className="pb-3 min-w-[200px]">Tóm tắt nội dung chính</th>
-                      <th className="pb-3 whitespace-nowrap">
+                    <tr className="text-blue-800 font-extrabold uppercase tracking-wider text-[10px]">
+                      <th className="bg-blue-100 py-3 pl-3 pr-2 rounded-l-xl">STT</th>
+                      <th className="bg-blue-100 py-3 whitespace-nowrap">Ngày/Tháng</th>
+                      <th className="bg-blue-100 py-3 whitespace-nowrap">Số văn bản</th>
+                      <th className="bg-blue-100 py-3 whitespace-nowrap">Ngày VB</th>
+                      <th className="bg-blue-100 py-3 min-w-[200px]">Tóm tắt nội dung chính</th>
+                      <th className="bg-blue-100 py-3 whitespace-nowrap">
                         {activeTab === "incoming" ? "Đơn vị gửi đến" : "Đơn vị nhận"}
                       </th>
-                      <th className="pb-3 whitespace-nowrap">
+                      <th className="bg-blue-100 py-3 whitespace-nowrap">
                         {activeTab === "incoming" ? "Người nhận" : "Người ký"}
                       </th>
-                      <th className="pb-3 text-center">Bản Scan</th>
-                      <th className="pb-3 text-center">Bản gốc</th>
-                      <th className="pb-3 whitespace-nowrap">Tên file CV</th>
+                      <th className="bg-blue-100 py-3 text-center">Bản Scan</th>
+                      <th className="bg-blue-100 py-3 text-center">Bản gốc</th>
+                      <th className="bg-blue-100 py-3 whitespace-nowrap">Tên file CV</th>
                       {/* Cột luôn hiện: người chỉ-xem vẫn tải được file, nút Sửa/Xoá
                           bên trong mới gate theo canManage. */}
-                      <th className="pb-3 text-right">Thao tác</th>
+                      <th className="bg-blue-100 py-3 pr-3 text-right rounded-r-xl">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-semibold text-slate-600">
@@ -986,8 +988,8 @@ export default function DocumentControlPage() {
                       </tr>
                     ) : (
                       filteredDocs.map((doc, idx) => (
-                        <tr key={doc.id || idx} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="py-4 pr-2 font-mono text-slate-400">{doc.stt}</td>
+                        <tr key={doc.id || idx} onClick={() => setViewingDoc(doc)} className="hover:bg-slate-50/50 transition-colors cursor-pointer">
+                          <td className="py-4 pl-3 pr-2 font-mono text-slate-400">{doc.stt}</td>
                           <td className="py-4 whitespace-nowrap">{doc.receive_send_date ? new Date(doc.receive_send_date).toLocaleDateString("vi-VN") : "–"}</td>
                           <td className="py-4 font-mono font-bold text-slate-800 whitespace-nowrap">{doc.doc_number}</td>
                           <td className="py-4 whitespace-nowrap">{doc.doc_date ? new Date(doc.doc_date).toLocaleDateString("vi-VN") : "–"}</td>
@@ -1007,7 +1009,7 @@ export default function DocumentControlPage() {
                               <span className="text-slate-300 font-normal">–</span>
                             )}
                           </td>
-                          <td className="py-4 text-center">
+                          <td className="py-4 text-center" onClick={(e) => e.stopPropagation()}>
                             {doc.original_file_url ? (
                               <button 
                                 onClick={() => handleOpenPreview(doc.original_file_url!, doc.file_name || "Bản gốc")}
@@ -1025,7 +1027,7 @@ export default function DocumentControlPage() {
                               </span>
                             )}
                           </td>
-                          <td className="py-4 max-w-[160px] pr-2 truncate text-slate-400 font-normal whitespace-nowrap" title={doc.file_name}>
+                          <td className="py-4 max-w-[160px] pr-2 truncate text-slate-400 font-normal whitespace-nowrap" title={doc.file_name} onClick={(e) => e.stopPropagation()}>
                             {doc.scan_file_url ? (
                               <button 
                                 onClick={() => handleOpenPreview(doc.scan_file_url!, doc.file_name || "Bản scan")}
@@ -1037,7 +1039,7 @@ export default function DocumentControlPage() {
                               doc.file_name || "–"
                             )}
                           </td>
-                          <td className="py-4 text-right">
+                          <td className="py-4 text-right" onClick={(e) => e.stopPropagation()}>
                               <div className="flex justify-end gap-2">
                                 {canManage && (
                                 <button
@@ -1097,7 +1099,6 @@ export default function DocumentControlPage() {
                   </div>
                   <div>
                     <h3 className="font-heading font-bold text-slate-800 text-sm">Cấu hình API Văn thư</h3>
-                    <p className="text-slate-400 text-[11px] font-medium">Thiết lập kết nối OpenAI</p>
                   </div>
                 </div>
 
@@ -1111,9 +1112,6 @@ export default function DocumentControlPage() {
                       placeholder="sk-proj-..."
                       className="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 text-xs font-semibold text-slate-700 bg-slate-50/30"
                     />
-                    <p className="text-[10px] text-slate-400 font-medium">
-                      Nhập khoá OpenAI API Key dành riêng cho nhân viên Văn thư để chủ động sử dụng. Để trống hệ thống sẽ dùng khoá chung.
-                    </p>
                   </div>
 
                   <div className="space-y-1.5">
@@ -1152,7 +1150,6 @@ export default function DocumentControlPage() {
                   </div>
                   <div>
                     <h3 className="font-heading font-bold text-slate-800 text-sm">Tải lên & Phân tích Công văn hàng loạt</h3>
-                    <p className="text-slate-400 text-[11px] font-medium">Kéo thả hàng loạt file để AI tự động nhận dạng, phân loại và lưu trữ</p>
                   </div>
                 </div>
 
@@ -1187,7 +1184,6 @@ export default function DocumentControlPage() {
                         accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.txt" 
                       />
                     </label>
-                    <p className="text-[10px] text-slate-400 mt-1 font-medium">Hỗ trợ trích xuất, tự phân loại AI (Đến, Đi 1, Đi 2, HĐQT)</p>
                   </div>
                 </div>
 
@@ -1432,6 +1428,64 @@ export default function DocumentControlPage() {
       </div>
 
       {/* Save/Edit Modal */}
+      {viewingDoc && (
+        <AtldRowDetail
+          title={`${viewingDoc.doc_number || "(chưa có số văn bản)"}`}
+          badges={
+            <span className="text-[10px] font-semibold text-slate-500">
+              {viewingDoc.type === "incoming" ? "Công văn đến" : viewingDoc.type === "outgoing_1" ? "Công văn đi 1" : viewingDoc.type === "outgoing_2" ? "Công văn đi 2" : "Công văn HĐQT"} · STT {viewingDoc.stt}
+            </span>
+          }
+          sections={[
+            {
+              tone: "blue",
+              fields: [
+                { label: "Ngày/Tháng", value: viewingDoc.receive_send_date ? new Date(viewingDoc.receive_send_date).toLocaleDateString("vi-VN") : "" },
+                { label: "Ngày văn bản", value: viewingDoc.doc_date ? new Date(viewingDoc.doc_date).toLocaleDateString("vi-VN") : "" },
+                { label: "Tóm tắt nội dung chính", value: viewingDoc.summary, wide: true, strong: true },
+                { label: viewingDoc.type === "incoming" ? "Đơn vị gửi đến" : "Đơn vị nhận", value: viewingDoc.sender_receiver, wide: true },
+                { label: viewingDoc.type === "incoming" ? "Người nhận" : "Người ký", value: viewingDoc.signer_recipient, wide: true },
+                { label: "Bản scan", value: viewingDoc.has_scan ? "Có" : "Chưa có" },
+                { label: "Bản gốc", value: viewingDoc.has_original || viewingDoc.original_file_url ? "Có" : "Chưa có" },
+                { label: "Tên file CV", value: viewingDoc.file_name, wide: true },
+              ],
+            },
+          ]}
+          actions={
+            <>
+              {viewingDoc.original_file_url && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenPreview(viewingDoc.original_file_url!, viewingDoc.file_name || "Bản gốc")}
+                  className="text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Eye size={13} /> Xem bản gốc
+                </button>
+              )}
+              {(viewingDoc.scan_file_url || viewingDoc.original_file_url) && (
+                <button
+                  type="button"
+                  onClick={() => downloadFile(viewingDoc.scan_file_url || viewingDoc.original_file_url!, viewingDoc.file_name || "cong_van")}
+                  className="text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-2 rounded-lg inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download size={13} /> Tải tệp
+                </button>
+              )}
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() => { const d = viewingDoc; setViewingDoc(null); openEditDocModal(d); }}
+                  className="text-[11px] font-bold text-white bg-[#005BAC] hover:bg-blue-800 px-3 py-2 rounded-lg inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Edit size={13} /> Sửa
+                </button>
+              )}
+            </>
+          }
+          onClose={() => setViewingDoc(null)}
+        />
+      )}
+
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
@@ -1458,10 +1512,6 @@ export default function DocumentControlPage() {
               
               {/* Left side: AI File Upload & Processing */}
               <div className="lg:col-span-2 space-y-4 border-r border-slate-100 pr-6">
-                <div className="flex items-center gap-2 text-[#005BAC] font-bold text-xs uppercase tracking-wider">
-                  <Brain size={14} />
-                  <span>Trợ lý AI Phân tích</span>
-                </div>
                 
                 {/* Drag Drop Area */}
                 <div 
@@ -1521,28 +1571,6 @@ export default function DocumentControlPage() {
                     </>
                   )}
                 </button>
-
-                {/* Auto-upload Checkbox */}
-                <div className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-150">
-                  <input
-                    type="checkbox"
-                    id="autoUploadOnAnalyzeCheckbox"
-                    checked={autoUploadOnAnalyze}
-                    onChange={(e) => setAutoUploadOnAnalyze(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
-                  />
-                  <label htmlFor="autoUploadOnAnalyzeCheckbox" className="text-[11px] font-bold text-slate-600 cursor-pointer select-none">
-                    Tự động tải lên Supabase làm Bản quét (scan)
-                  </label>
-                </div>
-
-                <div className="text-[10px] text-slate-400 bg-blue-50/40 p-3.5 rounded-xl border border-blue-100/50 leading-relaxed font-medium space-y-1">
-                  <div className="flex items-center gap-1.5 text-blue-600 font-bold">
-                    <AlertCircle size={12} />
-                    <span>Lưu ý:</span>
-                  </div>
-                  <p>AI sẽ tự động đọc file và điền thông tin vào form bên phải (Số VB, trích yếu, ngày tháng, bên gửi/nhận). Bạn nên rà soát lại thông tin trước khi nhấn lưu.</p>
-                </div>
               </div>
 
               {/* Right side: Detailed Form */}

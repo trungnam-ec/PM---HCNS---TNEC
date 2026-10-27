@@ -50,8 +50,8 @@ const money = (n: number) => `${formatMoney(n)} đ`;
 // Chỉ dùng lớp màu ĐÃ có bản dark mode trong globals.css (html.dark …) — lớp lạ như
 // bg-rose-50/80 không được map nên dark mode hiện nền hồng nhạt + chữ trắng (lỗi 07/10/2026).
 const ROW_BG: Record<Exclude<PenaltyAlert, null>, string> = {
-  qua_han: "bg-rose-50/50 hover:bg-rose-50",
-  sap_qua_han: "bg-orange-50/80 hover:bg-orange-100/60",
+  qua_han: "bg-rose-100 hover:bg-rose-100/70",
+  sap_qua_han: "bg-orange-100 hover:bg-orange-100/50",
   da: "bg-emerald-50/50 hover:bg-emerald-50",
 };
 

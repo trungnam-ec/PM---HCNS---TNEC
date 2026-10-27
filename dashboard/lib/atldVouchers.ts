@@ -299,6 +299,17 @@ export async function fetchIssueRows(): Promise<{ rows: IssueRow[]; error: strin
       linesBy.set(l.voucher_id as string, arr);
     }
   }
+  // approved_by lưu email người duyệt — đổi sang họ tên trong danh bạ (khớp TUYỆT ĐỐI)
+  // để popup không hiện gmail cá nhân. Không có trong danh bạ mới lùi về email.
+  const approverEmails = [...new Set(list.map((v) => v.approved_by as string).filter(Boolean))];
+  const approverName = new Map<string, string>();
+  if (approverEmails.length) {
+    const { data: dir } = await supabase.from("employees_directory").select("name, email");
+    for (const e of approverEmails) {
+      const name = pickRowByEmail(dir as { name: string; email: string | null }[] | null, e).row?.name?.trim();
+      if (name) approverName.set(e, name);
+    }
+  }
   return {
     rows: list.map((v) => {
       const lines = linesBy.get(v.id as string) || [];
@@ -323,7 +334,7 @@ export async function fetchIssueRows(): Promise<{ rows: IssueRow[]; error: strin
         created_at: String(v.created_at || ""),
         return_reason: (v.return_reason as string) || null,
         cancel_reason: (v.cancel_reason as string) || null,
-        approved_by: (v.approved_by as string) || null,
+        approved_by: approverName.get(v.approved_by as string) || (v.approved_by as string) || null,
         approved_at: (v.approved_at as string) || null,
         edited_by: (v.edited_by_name as string) || (v.edited_by as string) || null,
         edited_at: (v.edited_at as string) || null,

@@ -53,7 +53,7 @@ import {
   fetchSharedPartners,
   type SharedPartner,
 } from "@/lib/atldVouchers";
-import { BTN_OUTLINE, BTN_PRIMARY, BTN_SUCCESS, CONTROL_BOX } from "@/components/atld/ui";
+import { BTN_OUTLINE, BTN_PRIMARY, BTN_SUCCESS, CONTROL_BOX, initialParam } from "@/components/atld/ui";
 import { Search, X, Loader2, AlertCircle, ReceiptText, ArrowUpRight, ArrowDownRight, FileDown, FileUp, CheckCircle2, Ban, AlertTriangle, Pencil, Trash2, Lock, ExternalLink, Plus, Check } from "lucide-react";
 
 type Row = TradePrice & { item: AtldItem | null; prevPrice: number | null; haystack: string };
@@ -123,11 +123,12 @@ export default function AtldPriceTab({
   const [prices, setPrices] = useState<TradePrice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [loai, setLoai] = useState<LoaiFilter>("all");
+  // Bộ lọc ban đầu có thể đến từ tab Dashboard (?q=&...).
+  const [query, setQuery] = useState(() => initialParam("q"));
+  const [loai, setLoai] = useState<LoaiFilter>(() => (initialParam("loai") as LoaiFilter) || "all");
   const [doiTac, setDoiTac] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [from, setFrom] = useState(() => initialParam("from"));
+  const [to, setTo] = useState(() => initialParam("to"));
   const [editing, setEditing] = useState<Row | null>(null);
   // Bấm vào dòng -> popup xem đủ thông tin (màn hình nhỏ không phải cuộn ngang).
   const [viewing, setViewing] = useState<Row | null>(null);

@@ -20,6 +20,7 @@ import AtldPriceTab from "@/components/atld/AtldPriceTab";
 import AtldIssueTab from "@/components/atld/AtldIssueTab";
 import AtldPenaltyTab from "@/components/atld/AtldPenaltyTab";
 import AtldPenaltyRateTab from "@/components/atld/AtldPenaltyRateTab";
+import AtldDashboardTab from "@/components/atld/AtldDashboardTab";
 import AtldDeleteRequestModal from "@/components/atld/AtldDeleteRequestModal";
 import { fetchAtldAccess } from "@/lib/atldStock";
 import { fetchPenaltyAccess, NO_PENALTY_ACCESS } from "@/lib/atldPenalties";
@@ -27,12 +28,13 @@ import { Loader2 } from "lucide-react";
 
 // Tab "Đối tác" bỏ theo yêu cầu user 02/10/2026 (component AtldPartnerCatalog giữ
 // trong code, dữ liệu NCC còn nguyên). Lập + duyệt phiếu xuất ở tab "issues".
-type Tab = "items" | "prices" | "issues" | "penalties" | "ppe" | "rates";
+type Tab = "dashboard" | "items" | "prices" | "issues" | "penalties" | "ppe" | "rates";
 
-// 6 tab nay là 6 mục con của nhóm "P. An toàn lao động" ở sidebar (?tab=...);
+// 7 tab nay là 7 mục con của nhóm "P. An toàn lao động" ở sidebar (?tab=...);
 // trang không còn thanh tab riêng.
 // Phụ lục 01 "Mức xử phạt" (143) — cùng nhóm quyền với Khấu trừ xử phạt.
 const TABS: { key: Tab; title: string; subtitle: string }[] = [
+  { key: "dashboard", title: "Dashboard ATLĐ", subtitle: "P. An toàn lao động — khấu trừ, xuất nhập kho BHLĐ" },
   { key: "items", title: "Tổng Danh mục kho ATLĐ", subtitle: "Kho BHLĐ — danh mục, tồn kho theo tháng" },
   { key: "prices", title: "Quản lý Xuất-Nhập kho", subtitle: "Kho BHLĐ — phiếu nhập / xuất, đơn giá" },
   { key: "issues", title: "Xuất kho cho BĐH/Đối tác", subtitle: "Kho BHLĐ — lập và duyệt phiếu xuất" },
@@ -44,7 +46,7 @@ const TABS: { key: Tab; title: string; subtitle: string }[] = [
 function SafetyWarehouseContent() {
   const router = useRouter();
   const param = useSearchParams().get("tab");
-  const tab: Tab = TABS.some((t) => t.key === param) ? (param as Tab) : "items";
+  const tab: Tab = TABS.some((t) => t.key === param) ? (param as Tab) : "dashboard";
   const setTab = (t: Tab) => router.push(`/an-toan-lao-dong?tab=${t}`);
   const [access, setAccess] = useState({ keeper: false, approver: false });
   // Tab Khấu trừ xử phạt (139): nhân sự KHĐT chỉ có cờ xử phạt -> không thấy 3 tab kho.
@@ -83,8 +85,9 @@ function SafetyWarehouseContent() {
   // Chỉ thấy tab mình có quyền. Trước khi chạy migration 139 thì hàm quyền xử phạt
   // chưa có -> pen.stock = false; khi đó vẫn hiện 3 tab kho như cũ.
   const showStock = pen.stock || !pen.view;
-  const tabs = TABS.filter((t) => (t.key === "penalties" || t.key === "ppe" || t.key === "rates" ? pen.view : showStock));
-  const current: Tab = tabs.some((t) => t.key === tab) ? tab : tabs[0]?.key ?? "items";
+  // Dashboard: ai vào trang cũng thấy, từng phần bên trong tự ẩn theo quyền.
+  const tabs = TABS.filter((t) => t.key === "dashboard" || (t.key === "penalties" || t.key === "ppe" || t.key === "rates" ? pen.view : showStock));
+  const current: Tab = tabs.some((t) => t.key === tab) ? tab : tabs[0]?.key ?? "dashboard";
 
   const head = TABS.find((t) => t.key === current) ?? TABS[0];
 
@@ -101,6 +104,7 @@ function SafetyWarehouseContent() {
               <Loader2 size={16} className="animate-spin" /> Đang tải quyền…
             </div>
           )}
+          {ready && current === "dashboard" && <AtldDashboardTab key={reloadKey} showPenalty={pen.view} showStock={showStock} />}
           {ready && current === "items" && <AtldItemCatalog key={reloadKey} canEdit={access.keeper} canApprove={access.approver} />}
           {ready && current === "prices" && (
             <AtldPriceTab

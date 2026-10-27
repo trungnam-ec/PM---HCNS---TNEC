@@ -18,7 +18,7 @@ import { useConfirmBox, useNoticeBox } from "@/components/ConfirmDialog";
 import { requestDelete, DELETE_REQUEST_SENT } from "@/lib/atldDeleteRequests";
 import AtldItemImport from "@/components/atld/AtldItemImport";
 import ColorTag from "@/components/atld/ColorTag";
-import { BTN_OUTLINE, BTN_PRIMARY, CONTROL_BOX } from "@/components/atld/ui";
+import { BTN_OUTLINE, BTN_PRIMARY, CONTROL_BOX, initialParam } from "@/components/atld/ui";
 import AtldRowDetail, { isRowClick } from "@/components/atld/AtldRowDetail";
 import * as XLSX from "xlsx";
 import {
@@ -99,8 +99,9 @@ export default function AtldItemCatalog({ canEdit, canApprove }: { canEdit: bool
   const [month, setMonth] = useState<string>(() => currentMonthVN());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  // Bộ lọc ban đầu có thể đến từ tab Dashboard (?q=&...).
+  const [query, setQuery] = useState(() => initialParam("q"));
+  const [filter, setFilter] = useState<Filter>(() => (initialParam("filter") as Filter) || "all");
   const [editing, setEditing] = useState<AtldItem | "new" | null>(null);
   const [rowErr, setRowErr] = useState<string | null>(null);
   // Sửa nhanh Tồn đầu kỳ ngay tại ô của bảng.

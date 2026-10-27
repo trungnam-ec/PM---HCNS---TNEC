@@ -29,7 +29,7 @@ import { foldVi } from "@/lib/financePartners";
 import AtldPartnerPicker from "@/components/atld/AtldPartnerPicker";
 import AtldPersonPicker from "@/components/atld/AtldPersonPicker";
 import AtldViolationLines, { EMPTY_LINE } from "@/components/atld/AtldViolationLines";
-import { BTN_OUTLINE, BTN_PRIMARY, CONTROL_BOX } from "@/components/atld/ui";
+import { BTN_OUTLINE, BTN_PRIMARY, CONTROL_BOX, initialParam } from "@/components/atld/ui";
 import { useConfirmBox, useNoticeBox } from "@/components/ConfirmDialog";
 import { requestDelete, DELETE_REQUEST_SENT } from "@/lib/atldDeleteRequests";
 import { normalizeName } from "@/lib/approvers";
@@ -63,12 +63,13 @@ export default function AtldPenaltyTab({ canInput, canProcess, canApprove, kind 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rowErr, setRowErr] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
-  const [project, setProject] = useState("");
+  // Bộ lọc ban đầu có thể đến từ tab Dashboard (?q=&filter=&project=&from=&to=).
+  const [query, setQuery] = useState(() => initialParam("q"));
+  const [filter, setFilter] = useState<Filter>(() => (initialParam("filter") as Filter) || "all");
+  const [project, setProject] = useState(() => initialParam("project"));
   // Lọc theo Ngày ban hành (yyyy-mm-dd, so sánh chuỗi được).
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(() => initialParam("from"));
+  const [dateTo, setDateTo] = useState(() => initialParam("to"));
   const [editing, setEditing] = useState<Penalty | "new" | null>(null);
   // Bấm vào dòng -> popup xem toàn bộ thông tin (bảng nhiều cột, màn nhỏ khó đọc).
   const [viewingId, setViewingId] = useState<string | null>(null);

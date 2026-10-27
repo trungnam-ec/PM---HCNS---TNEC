@@ -284,6 +284,7 @@ function SidebarLinks({ isApprover, pathname, setSidebarOpen }: { isApprover: bo
   const showStock = !atldNav || atldNav.stock || !atldNav.view;
   const showPenalty = !atldNav || atldNav.view;
   const atldChildren = [
+    { label: "Dashboard ATLĐ", tab: "dashboard", icon: LayoutDashboard, show: true },
     { label: "Tổng Danh mục kho ATLĐ", tab: "items", icon: Boxes, show: showStock },
     { label: "Quản lý Xuất-Nhập kho", tab: "prices", icon: ReceiptText, show: showStock },
     { label: "Xuất kho cho BĐH/Đối tác", tab: "issues", icon: Truck, show: showStock },

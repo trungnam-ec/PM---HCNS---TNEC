@@ -10,3 +10,10 @@ export const BTN_OUTLINE_SUCCESS = `${BASE} bg-white border-emerald-200 hover:bo
 
 // Ô nhập / khung điều khiển cùng chiều cao với nút.
 export const CONTROL_BOX = "h-9 flex items-center rounded-xl bg-white border border-slate-200";
+
+// Bộ lọc ban đầu từ URL — tab Dashboard bấm vào biểu đồ sẽ mở tab chi tiết kèm
+// ?q=&from=&to=&... Các tab chỉ render sau khi tải quyền nên window luôn có.
+export function initialParam(key: string): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get(key) || "";
+}

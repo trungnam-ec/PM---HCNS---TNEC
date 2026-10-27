@@ -40,7 +40,7 @@ import AtldIssuePreview from "@/components/atld/AtldIssuePreview";
 import AtldIssueOriginal from "@/components/atld/AtldIssueOriginal";
 import ColorTag from "@/components/atld/ColorTag";
 import { IconAct, ReasonModal } from "@/components/atld/AtldIssueActions";
-import { BTN_OUTLINE, BTN_PRIMARY, CONTROL_BOX } from "@/components/atld/ui";
+import { BTN_OUTLINE, BTN_PRIMARY, CONTROL_BOX, initialParam } from "@/components/atld/ui";
 import AtldRowDetail, { isRowClick } from "@/components/atld/AtldRowDetail";
 import { Search, X, Loader2, AlertCircle, Truck, FilePlus2, Pencil, Send, Trash2, Check, Undo2, XCircle, Lock, ChevronDown, ChevronRight, Eye, Upload } from "lucide-react";
 
@@ -56,10 +56,11 @@ export default function AtldIssueTab({ canEdit, canApprove }: { canEdit: boolean
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rowErr, setRowErr] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("all");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  // Bộ lọc ban đầu có thể đến từ tab Dashboard (?q=&...).
+  const [query, setQuery] = useState(() => initialParam("q"));
+  const [status, setStatus] = useState<StatusFilter>(() => (initialParam("status") as StatusFilter) || "all");
+  const [from, setFrom] = useState(() => initialParam("from"));
+  const [to, setTo] = useState(() => initialParam("to"));
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // approver = TP/PP / Admin sửa nội dung ghi nhầm (145) — kể cả phiếu đã duyệt.
   const [issueModal, setIssueModal] = useState<{ id: string | null; approver?: boolean } | null>(null);

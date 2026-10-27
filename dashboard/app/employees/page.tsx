@@ -12,6 +12,7 @@ import { useDepartments } from "@/lib/departments";
 import { useTenantConfig, invalidateTenantConfig } from "@/lib/tenantConfig";
 import { useNoticeBox, useConfirmBox } from "@/components/ConfirmDialog";
 import { resolveModel, SOL_MODEL } from "@/lib/aiModel";
+import AtldRowDetail from "@/components/atld/AtldRowDetail";
 import {
   Search,
   Plus,
@@ -78,6 +79,9 @@ export default function EmployeeManagementPage() {
   // Popup xác nhận xoá nhân viên — thay window.confirm, hiện giữa màn hình.
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deletingEmp, setDeletingEmp] = useState(false);
+  // Popup xem/sửa nhanh hồ sơ khi bấm vào tên (tiện trên điện thoại). Lưu id
+  // rồi tra lại trong `employees` để popup thấy ngay giá trị vừa sửa.
+  const [detailEmpId, setDetailEmpId] = useState<string | null>(null);
 
   // Hộp thông báo / xác nhận căn giữa màn hình — thay window.alert / window.confirm.
   const { notify, noticeNode } = useNoticeBox();
@@ -1171,7 +1175,14 @@ export default function EmployeeManagementPage() {
                             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-white text-[10px] shadow-sm shrink-0">
                               {emp.avatar}
                             </div>
-                            <p className="font-heading font-bold text-slate-800 text-xs whitespace-nowrap">{emp.name}</p>
+                            <button
+                              type="button"
+                              onClick={() => setDetailEmpId(emp.id)}
+                              className="font-heading font-bold text-slate-800 text-xs whitespace-nowrap hover:text-blue-600 hover:underline text-left"
+                              title="Xem đầy đủ hồ sơ"
+                            >
+                              {emp.name}
+                            </button>
                             {isResignedEmployee(emp) && (
                               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200 uppercase tracking-wider shrink-0">
                                 Nghỉ việc
@@ -1986,6 +1997,46 @@ export default function EmployeeManagementPage() {
           </div>
         </div>
       )}
+
+      {/* Popup hồ sơ đầy đủ — bấm tên nhân viên để mở; sửa từng ô như trên bảng */}
+      {(() => {
+        const emp = detailEmpId ? employees.find(e => e.id === detailEmpId) : null;
+        if (!emp) return null;
+        const save = (field: string) => (val: string) => handleUpdateEmployeeField(emp.id, field, val);
+        const ed = (field: keyof Employee) => <EditableCell value={emp[field]} onSave={save(field)} readOnly={!canEdit} />;
+        const date = (field: keyof Employee) => <EditableDateCell value={emp[field]} onSave={save(field)} readOnly={!canEdit} />;
+        return (
+          <AtldRowDetail
+            title={emp.name}
+            badges={<span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#005BAC] border border-blue-100">{emp.status || "—"}</span>}
+            onClose={() => setDetailEmpId(null)}
+            sections={[
+              { title: "Công việc", tone: "blue", fields: [
+                { label: "Mã nhân viên", value: ed("employee_code") },
+                { label: "Chức danh", value: ed("position") },
+                { label: "Phòng ban", value: <EditableSelect value={emp.department} options={[...DEPARTMENTS, ...BDH_OPTIONS]} onSave={save("department")} readOnly={!canEdit} /> },
+                { label: "Ngày nhận việc", value: date("start") },
+                { label: "Email", value: ed("email"), wide: true },
+              ] },
+              { title: "Thông tin cá nhân", tone: "slate", fields: [
+                { label: "Giới tính", value: <EditableSelect value={emp.gender} options={["", "Nam", "Nữ"]} onSave={save("gender")} readOnly={!canEdit} /> },
+                { label: "Ngày sinh", value: date("date_of_birth") },
+                { label: "Số ĐT", value: ed("phone") },
+                { label: "Bằng cấp", value: ed("degree") },
+                { label: "CCCD", value: ed("cccd") },
+                { label: "Ngày cấp", value: date("cccd_date") },
+                { label: "Nơi cấp", value: ed("cccd_place"), wide: true },
+                { label: "Địa chỉ thường trú", value: ed("permanent_address"), wide: true },
+                { label: "Địa chỉ tạm trú", value: ed("temporary_address"), wide: true },
+                { label: "Họ tên người thân", value: ed("emergency_contact_name") },
+                { label: "Mối quan hệ", value: ed("emergency_contact_relationship") },
+                { label: "Số ĐT người thân", value: ed("emergency_contact_phone") },
+                { label: "Ghi chú", value: <EditableNoteSelect value={emp.notes} onSave={save("notes")} readOnly={!canEdit} /> },
+              ] },
+            ]}
+          />
+        );
+      })()}
 
       {/* Hộp thông báo / xác nhận căn giữa — thay window.alert / window.confirm */}
       {noticeNode}

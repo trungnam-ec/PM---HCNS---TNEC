@@ -8,7 +8,7 @@ import Header from "@/components/Header";
 import { supabase } from "@/lib/supabase";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { uploadClericalFile, resolveClericalUrl, isPrivateRef, displayNameFromRef } from "@/lib/clericalFiles";
-import { resolveModel, SOL_MODEL } from "@/lib/aiModel";
+import { resolveModel, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS } from "@/lib/aiModel";
 import {
   FileDown,
   FileUp,
@@ -185,7 +185,7 @@ export default function DocumentControlPage() {
   
   // API Settings State
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState(SOL_MODEL);
+  const [model, setModel] = useState(DEFAULT_AI_MODEL);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
   // Danh tính người dùng — hook chung (thay khối allowed_users + employees +
@@ -1121,7 +1121,7 @@ export default function DocumentControlPage() {
                       onChange={(e) => setModel(e.target.value)}
                       className="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 cursor-pointer text-xs font-semibold text-slate-700 bg-white"
                     >
-                      <option value="gpt-6.1-sol">GPT-6.1 Sol (chính xác nhất, đọc được ảnh, PDF, bảng)</option>
+                      {AI_MODEL_OPTIONS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                     </select>
                   </div>
 

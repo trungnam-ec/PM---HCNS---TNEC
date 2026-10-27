@@ -64,7 +64,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
-import { resolveModel, SOL_MODEL } from "@/lib/aiModel";
+import { resolveModel, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS } from "@/lib/aiModel";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, LineChart, Line
@@ -716,7 +716,7 @@ export default function CBPage() {
   const [savingContracts, setSavingContracts] = useState(false);
   const [syncingProbation, setSyncingProbation] = useState(false);
   const [showAiSettingsModal, setShowAiSettingsModal] = useState(false);
-  const [selectedAiModel, setSelectedAiModel] = useState(SOL_MODEL);
+  const [selectedAiModel, setSelectedAiModel] = useState(DEFAULT_AI_MODEL);
   const [selectedAiApiKey, setSelectedAiApiKey] = useState("");
 
   const openAiSettings = () => {
@@ -9959,7 +9959,7 @@ export default function CBPage() {
                       onChange={(e) => setSelectedAiModel(e.target.value)}
                       className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:border-[#005BAC] focus:ring-1 focus:ring-[#005BAC] outline-none text-xs font-semibold text-slate-700 bg-slate-50 cursor-pointer"
                     >
-                      <option value="gpt-6.1-sol">GPT-6.1 Sol (chính xác nhất, đọc được ảnh, PDF, bảng)</option>
+                      {AI_MODEL_OPTIONS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                     </select>
                   </div>
 

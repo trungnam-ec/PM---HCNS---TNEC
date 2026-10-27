@@ -13,7 +13,7 @@ import { useDepartments } from "@/lib/departments";
 import { normalizeDepartment, isProjectBlock } from "@/lib/recruitDept";
 import { isHrDept } from "@/lib/access";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
-import { resolveModel, SOL_MODEL } from "@/lib/aiModel";
+import { resolveModel, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS } from "@/lib/aiModel";
 import {
   ShieldAlert,
   Search,
@@ -1133,7 +1133,7 @@ export default function RecruitmentPage() {
   // API & Webhook Configuration states
   const [apiKey, setApiKey] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
-  const [model, setModel] = useState(SOL_MODEL);
+  const [model, setModel] = useState(DEFAULT_AI_MODEL);
   const [saved, setSaved] = useState(false);
 
   // Drag State
@@ -3144,7 +3144,7 @@ export default function RecruitmentPage() {
                           onChange={(e) => setModel(e.target.value)}
                           className="w-full text-xs text-slate-600 font-semibold bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                         >
-                          <option value="gpt-6.1-sol">GPT-6.1 Sol (chính xác nhất, đọc được ảnh, PDF, bảng)</option>
+                          {AI_MODEL_OPTIONS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                         </select>
                       </div>
 

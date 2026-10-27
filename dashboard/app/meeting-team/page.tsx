@@ -22,6 +22,7 @@ import {
   MAX_TRANSCRIBE_BYTES,
   MEETINGS_BUCKET,
   formatTs,
+  resolveSavedAnalysisModel,
 } from "@/lib/meetingModels";
 import {
   Mic,
@@ -215,9 +216,9 @@ function MeetingTeamContent() {
     fetchUserSession();
     const stored = localStorage.getItem("openai_api_key_hanh_chinh");
     if (stored) { setOpenaiKey(stored); setSavedKey(stored); }
-    const savedModel = localStorage.getItem("meeting_analysis_model");
-    // Model cũ đã bị gỡ khỏi danh sách (vd. gpt-5.6-sol) -> về mặc định
-    if (savedModel && ANALYSIS_MODELS.some(m => m.id === savedModel)) setAnalysisModel(savedModel);
+    // Model cũ có bản kế nhiệm (5.6 Terra -> 6.1 Terra) thì chuyển sang; đã gỡ hẳn (vd. gpt-5.6-sol) -> về mặc định
+    const savedModel = resolveSavedAnalysisModel(localStorage.getItem("meeting_analysis_model"));
+    if (savedModel) setAnalysisModel(savedModel);
   }, []);
 
   const fetchMeetings = async () => {

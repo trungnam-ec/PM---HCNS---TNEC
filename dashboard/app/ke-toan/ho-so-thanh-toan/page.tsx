@@ -55,13 +55,12 @@ import {
   type PaymentDossierDraft,
   type PaymentDossierAi,
 } from "@/lib/paymentDossiers";
-import { ANALYSIS_MODELS, DEFAULT_ANALYSIS_MODEL } from "@/lib/meetingModels";
+import { ANALYSIS_MODELS, DEFAULT_ANALYSIS_MODEL, resolveSavedAnalysisModel } from "@/lib/meetingModels";
 
 const KEY_STORAGE = "openai_api_key_hanh_chinh"; // khoá OpenAI dùng chung toàn hệ thống
 // Model để RIÊNG cho Kế toán (dòng 5.6 suy luận). KHÔNG dùng chung
 // openai_model_hanh_chinh vì các route cũ (invoice/vpp) còn gửi temperature.
 const MODEL_STORAGE = "openai_model_ke_toan";
-const VALID_MODEL_IDS = ANALYSIS_MODELS.map((m) => m.id) as string[];
 const ACCEPT = ".pdf,.png,.jpg,.jpeg,.webp,.docx,.doc,.txt";
 
 // Cột hiển thị của bảng danh sách (A→Q). key khớp cột Supabase.
@@ -243,9 +242,8 @@ export default function PaymentDossierPage() {
 
   useEffect(() => {
     setApiKey(localStorage.getItem(KEY_STORAGE) || "");
-    // Model cũ (gpt-4o…) không còn trong danh sách -> tự đưa về mặc định 5.6.
-    const savedModel = localStorage.getItem(MODEL_STORAGE) || "";
-    setModel(VALID_MODEL_IDS.includes(savedModel) ? savedModel : DEFAULT_ANALYSIS_MODEL);
+    // 5.6 Terra -> 6.1 Terra; model đã gỡ hẳn (gpt-4o…) -> tự đưa về mặc định.
+    setModel(resolveSavedAnalysisModel(localStorage.getItem(MODEL_STORAGE)) || DEFAULT_ANALYSIS_MODEL);
     supabase.auth.getSession().then(({ data }) => setUserEmail(data.session?.user?.email || ""));
     // Nạp danh bạ tên -> phòng ban để suy ra "Phòng ban" theo người đề nghị.
     supabase
@@ -298,8 +296,7 @@ export default function PaymentDossierPage() {
     if (list.length === 0) return;
 
     const key = localStorage.getItem(KEY_STORAGE) || "";
-    const savedMdl = localStorage.getItem(MODEL_STORAGE) || "";
-    const mdl = VALID_MODEL_IDS.includes(savedMdl) ? savedMdl : DEFAULT_ANALYSIS_MODEL;
+    const mdl = resolveSavedAnalysisModel(localStorage.getItem(MODEL_STORAGE)) || DEFAULT_ANALYSIS_MODEL;
     if (!key) {
       setShowSettings(true);
       setNotice({ type: "error", text: "Chưa có khoá OpenAI. Vui lòng nhập trong 'Cài đặt AI'." });
@@ -939,9 +936,6 @@ export default function PaymentDossierPage() {
                   <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
               </select>
-              <p className="text-[10px] text-slate-400 mt-1">
-                {ANALYSIS_MODELS.find((m) => m.id === model)?.hint || "Model suy luận GPT-5.6, đọc hồ sơ scan/ảnh chính xác."}
-              </p>
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={() => setShowSettings(false)} className="px-4 py-2 rounded-xl text-[11px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200">

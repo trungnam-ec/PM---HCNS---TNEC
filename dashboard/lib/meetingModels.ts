@@ -20,13 +20,26 @@ export const ANALYSIS_MODELS = [
     hint: "Họp 1–2 tiếng, nhiều số liệu. ~$0.35/cuộc họp.",
   },
   {
-    id: "gpt-5.6-terra",
-    label: "GPT-5.6 Terra — nhanh & rẻ hơn",
-    hint: "Họp nội bộ ngắn, ít số liệu. ~$0.20/cuộc họp.",
+    id: "gpt-6.1-terra",
+    label: "GPT-6.1 Terra — nhanh & rẻ hơn",
+    hint: "Họp nội bộ ngắn, ít số liệu. ~$0.10/cuộc họp.",
   },
 ] as const;
 
 export const DEFAULT_ANALYSIS_MODEL = "gpt-6.1-sol";
+
+// Model đã gỡ khỏi danh sách nhưng có bản kế nhiệm cùng hạng: lựa chọn cũ lưu
+// trong localStorage chuyển sang bản mới thay vì rơi về mặc định (Sol, đắt hơn).
+const LEGACY_ANALYSIS_MODELS: Record<string, string> = {
+  "gpt-5.6-terra": "gpt-6.1-terra",
+};
+
+/** Chuẩn hoá model đọc từ localStorage: ánh xạ model cũ, không hợp lệ thì null. */
+export function resolveSavedAnalysisModel(saved: string | null): string | null {
+  if (!saved) return null;
+  const id = LEGACY_ANALYSIS_MODELS[saved] || saved;
+  return ANALYSIS_MODELS.some((m) => m.id === id) ? id : null;
+}
 
 // Dòng 5.6 / 6.1 là model suy luận: KHÔNG truyền temperature, dùng reasoning_effort.
 export const ANALYSIS_REASONING_EFFORT = "high";

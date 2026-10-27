@@ -11,7 +11,6 @@ import {
   Plus,
   Search,
   Filter,
-  ClipboardList,
   Receipt,
   RefreshCw,
   BarChart3,
@@ -41,12 +40,12 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { docSoVietNam, exportDeNghiChuyenTien, downloadDocFile } from "@/lib/wordExporter";
 import { supabase } from "@/lib/supabase";
 import { useDepartments } from "@/lib/departments";
-import { useTenantConfig, TENANT_DEFAULTS, AdminStaff } from "@/lib/tenantConfig";
+import { useTenantConfig, TENANT_DEFAULTS } from "@/lib/tenantConfig";
 import { isManagerRole } from "@/lib/approvers";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { isHrDept } from "@/lib/access";
 import * as XLSX from "xlsx";
-import { resolveModel, SOL_MODEL } from "@/lib/aiModel";
+import { resolveModel, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS } from "@/lib/aiModel";
 
 // ─── TYPES & INTERFACES ──────────────────────────────────────────────────────
 // Một dòng trong bảng `vpp_supplies`. CHỈ giữ số liệu đầu vào — số cấp phát,
@@ -250,14 +249,6 @@ const INITIAL_ALLOCATION_TARGETS: AllocationTarget[] = [
   { id: "CP-22", type: "phongban", name: "Ban Lãnh Đạo", receiver: "Đại diện Ban Lãnh Đạo", notes: "Văn phòng công ty" }
 ];
 
-const KANBAN_COLUMNS = [
-  { id: "Kế hoạch", label: "KẾ HOẠCH", color: "border-purple-500 bg-purple-50/10 text-purple-700", dotColor: "bg-purple-500", badgeBg: "bg-purple-100 text-purple-800" },
-  { id: "Đang xử lý", label: "ĐANG XỬ LÝ", color: "border-amber-500 bg-amber-50/10 text-amber-700", dotColor: "bg-amber-500", badgeBg: "bg-amber-100 text-amber-800" },
-  { id: "Chờ duyệt", label: "CHỜ DUYỆT", color: "border-blue-500 bg-blue-50/10 text-blue-700", dotColor: "bg-blue-500", badgeBg: "bg-blue-100 text-blue-800" },
-  { id: "Cần chỉnh sửa", label: "CẦN CHỈNH SỬA", color: "border-rose-500 bg-rose-50/10 text-rose-700", dotColor: "bg-rose-500", badgeBg: "bg-rose-100 text-rose-800" },
-  { id: "Hoàn thành", label: "HOÀN THÀNH", color: "border-emerald-500 bg-emerald-50/10 text-emerald-700", dotColor: "bg-emerald-500", badgeBg: "bg-emerald-100 text-emerald-800" }
-];
-
 const INITIAL_CHECKLIST: ChecklistItem[] = [];
 
 
@@ -361,18 +352,6 @@ const DEFAULT_REPORT_ROWS: Array<{ stt: string; content: string; category_type: 
   { stt: "17.1", content: "Tiền thuê nhà BĐH", category_type: "project" },
 ];
 
-// Avatar kanban VPP: chữ viết tắt (2 từ cuối của tên) + màu ổn định theo vị trí
-// trong danh sách nhân sự hành chính (tên lạ ngoài danh sách -> màu cuối bảng).
-const STAFF_AVATAR_COLORS = ["bg-pink-500", "bg-blue-500", "bg-violet-500", "bg-emerald-500", "bg-amber-500", "bg-cyan-600"];
-const staffInitials = (name: string): string => {
-  const words = (name || "").trim().split(/\s+/).filter(Boolean);
-  return words.slice(-2).map(w => w.charAt(0)).join("").toUpperCase() || "?";
-};
-const staffColor = (name: string, staff: AdminStaff[]): string => {
-  const idx = staff.findIndex(s => s.name === name);
-  return STAFF_AVATAR_COLORS[(idx >= 0 ? idx : staff.length) % STAFF_AVATAR_COLORS.length];
-};
-
 // Đổi qua lại giữa "MM/YYYY" (định dạng lưu trong DB) và "YYYY-MM" (định dạng
 // bắt buộc của input type="month") để dùng được lịch chọn tháng có sẵn của trình duyệt.
 const monthToInputValue = (mmYYYY: string): string => {
@@ -425,7 +404,7 @@ export default function AdministrationPage() {
   const tenantCfg = useTenantConfig();
   const adminStaff = tenantCfg.admin_staff.length > 0 ? tenantCfg.admin_staff : TENANT_DEFAULTS.admin_staff;
   const PROJECTS = deptLists.bdh; // giữ nguyên tên để các chỗ dùng bên dưới không đổi
-  const [activeTab, setActiveTab] = useState<"checklist" | "invoice" | "recurring" | "report" | "vpp">("checklist");
+  const [activeTab, setActiveTab] = useState<"invoice" | "recurring" | "report" | "vpp">("invoice");
   const [recurringSubTab, setRecurringSubTab] = useState<"suppliers" | "payments">("suppliers");
 
   // Hộp thông báo giữa màn hình — cùng thiết kế với trang Lịch
@@ -513,7 +492,6 @@ export default function AdministrationPage() {
   const [permsLoaded, setPermsLoaded] = useState(false);
   const [deptRequests, setDeptRequests] = useState<DeptRequest[]>([]);
   const [checklist, setChecklist] = useState<ChecklistItem[]>(INITIAL_CHECKLIST);
-  const [selectedChecklistTask, setSelectedChecklistTask] = useState<ChecklistItem | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>(INITIAL_RECURRING);
 
@@ -561,104 +539,6 @@ export default function AdministrationPage() {
   const visiblePendingPayments = isPayMonthRangeActive
     ? pendingPayments.filter(p => isMonthInRange(p.month, payMonthFilterFrom, payMonthFilterTo))
     : pendingPayments.filter(p => p.month === payMonth);
-
-  // Checklist Kanban States
-  const [draggedOverCol, setDraggedOverCol] = useState<string | null>(null);
-  const [showAddTask, setShowAddTask] = useState(false);
-  const [newTaskName, setNewTaskName] = useState("");
-  const [newTaskAssignee, setNewTaskAssignee] = useState<string>(TENANT_DEFAULTS.admin_staff[0]?.name || "");
-  const [newTaskPriority, setNewTaskPriority] = useState<"Cao" | "Trung bình" | "Thấp">("Trung bình");
-  const [newTaskFreq, setNewTaskFreq] = useState<"Hàng ngày" | "Hàng tuần" | "Hàng tháng">("Hàng ngày");
-
-  // Khi config nạp xong mà người được chọn không nằm trong danh sách nhân sự
-  // của khách (VD deploy công ty khác) -> tự chuyển về người đầu danh sách
-  useEffect(() => {
-    if (adminStaff.length > 0 && !adminStaff.some(s => s.name === newTaskAssignee)) {
-      setNewTaskAssignee(adminStaff[0].name);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminStaff]);
-
-  // Drag and Drop handlers
-  const handleDragStart = (e: React.DragEvent, id: string) => {
-    e.dataTransfer.setData("text/plain", id);
-  };
-
-  const handleDropCard = async (e: React.DragEvent, targetStatus: string) => {
-    e.preventDefault();
-    const id = e.dataTransfer.getData("text/plain");
-    if (!id) return;
-    
-    // Optimistic local update
-    setChecklist(prev => prev.map(item => 
-      item.id === id ? { ...item, status: targetStatus as any } : item
-    ));
-
-    try {
-      const { error } = await supabase
-        .from("tasks")
-        .update({ status: targetStatus })
-        .eq("id", id);
-
-      if (error) throw error;
-      fetchChecklist();
-    } catch (err: any) {
-      console.error("Error updating checklist status in Supabase:", err);
-      fetchChecklist();
-    }
-  };
-
-  const handleDeleteTask = async (id: string) => {
-    if (!(await askConfirm("Xoá công việc này?", "Công việc sẽ bị xoá khỏi danh sách và không khôi phục được.", "Xoá"))) return;
-    
-    // Optimistic update
-    setChecklist(prev => prev.filter(item => item.id !== id));
-
-    try {
-      const { error } = await supabase
-        .from("tasks")
-        .delete()
-        .eq("id", id);
-
-      if (error) throw error;
-      fetchChecklist();
-    } catch (err: any) {
-      console.error("Error deleting checklist task from Supabase:", err);
-      showNotice("error", "Không xoá được công việc", err.message || String(err));
-      fetchChecklist();
-    }
-  };
-
-  const handleAddTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTaskName.trim()) return;
-
-    const dateStr = new Date().toISOString().split("T")[0];
-
-    try {
-      const { error } = await supabase
-        .from("tasks")
-        .insert([{
-          title: newTaskName,
-          assignee: newTaskAssignee,
-          priority: newTaskPriority,
-          status: "Kế hoạch",
-          start_date: dateStr,
-          notes: JSON.stringify({
-            frequency: newTaskFreq
-          })
-        }]);
-
-      if (error) throw error;
-
-      setNewTaskName("");
-      setShowAddTask(false);
-      fetchChecklist();
-    } catch (err: any) {
-      console.error("Error adding checklist task to Supabase:", err);
-      showNotice("error", "Không thêm được công việc", err.message || String(err));
-    }
-  };
 
   // VPP states
   const [vppSubTab, setVppSubTab] = useState<"inventory" | "phongban" | "duan">("inventory");
@@ -822,7 +702,7 @@ export default function AdministrationPage() {
 
   // AI Settings States for Invoice Reader
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState(SOL_MODEL);
+  const [model, setModel] = useState(DEFAULT_AI_MODEL);
   const [showAiSettingsModal, setShowAiSettingsModal] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
@@ -1759,13 +1639,13 @@ export default function AdministrationPage() {
     }
   }, [payMonth]);
 
-  // Nhân viên không phải HCNS không được ở các tab chỉ dành cho HCNS (checklist/report)
+  // Nhân viên không phải HCNS không được ở tab chỉ dành cho HCNS (report)
   // — đưa họ về công cụ tạo & theo dõi thanh toán của chính họ.
   // VPP KHÔNG nằm trong danh sách này: mọi phòng ban đều vào được để tự đặt hàng,
   // phần kho và phần duyệt bên trong tab đó tự ẩn theo isHcnsViewer.
   useEffect(() => {
     if (!permsLoaded || isHcnsViewer) return;
-    if (activeTab === "checklist" || activeTab === "report") {
+    if (activeTab === "report") {
       setActiveTab("recurring");
     }
   }, [permsLoaded, isHcnsViewer, activeTab]);
@@ -4755,13 +4635,12 @@ export default function AdministrationPage() {
               </div>
               <div className="space-y-2.5">
                 {[
-                  { id: "checklist", label: "1. Checklist phân việc định kỳ", restrictedLabel: "Checklist phân việc định kỳ", icon: ClipboardList, desc: "Phân công việc cho nhân sự", hcnsOnly: true },
-                  { id: "invoice", label: "2. Đọc hóa đơn thanh toán", restrictedLabel: "Đọc hóa đơn thanh toán", icon: Receipt, desc: "AI trích xuất làm HS thanh toán", hcnsOnly: false },
-                  { id: "recurring", label: "3. HS thanh toán định kỳ", restrictedLabel: "Tạo & theo dõi thanh toán", icon: RefreshCw, desc: "Ghi nhớ TK ngân hàng định kỳ", hcnsOnly: false },
-                  { id: "report", label: "4. Báo cáo chi phí tháng", restrictedLabel: "Báo cáo chi phí tháng", icon: BarChart3, desc: "Tổng hợp toàn bộ HS thanh toán", hcnsOnly: true },
+                  { id: "invoice", label: "1. Đọc hóa đơn thanh toán", restrictedLabel: "Đọc hóa đơn thanh toán", icon: Receipt, desc: "AI trích xuất làm HS thanh toán", hcnsOnly: false },
+                  { id: "recurring", label: "2. HS thanh toán định kỳ", restrictedLabel: "Tạo & theo dõi thanh toán", icon: RefreshCw, desc: "Ghi nhớ TK ngân hàng định kỳ", hcnsOnly: false },
+                  { id: "report", label: "3. Báo cáo chi phí tháng", restrictedLabel: "Báo cáo chi phí tháng", icon: BarChart3, desc: "Tổng hợp toàn bộ HS thanh toán", hcnsOnly: true },
                   // VPP mở cho mọi phòng ban để họ tự đặt hàng. Người ngoài HCNS chỉ
                   // thấy phần đặt + phiếu của phòng mình (xem isHcnsViewer bên dưới).
-                  { id: "vpp", label: "5. VPP (Văn phòng phẩm)", restrictedLabel: "VPP (Văn phòng phẩm)", icon: Package, desc: "Đặt và theo dõi văn phòng phẩm", hcnsOnly: false }
+                  { id: "vpp", label: "4. VPP (Văn phòng phẩm)", restrictedLabel: "VPP (Văn phòng phẩm)", icon: Package, desc: "Đặt và theo dõi văn phòng phẩm", hcnsOnly: false }
                 ].filter((item) => isHcnsViewer || !item.hcnsOnly).map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
@@ -6957,343 +6836,6 @@ export default function AdministrationPage() {
                 </div>
               )}
 
-              {/* ─── TAB 2: Checklist phân việc định kỳ ─── */}
-              {activeTab === "checklist" && isHcnsViewer && (
-                <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-5">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                    <div>
-                      <h3 className="font-heading font-bold text-slate-800 text-sm">Checklist phân việc định kỳ</h3>
-                      <p className="text-slate-400 text-[10px] font-semibold mt-1">Phân công công việc định kỳ hàng ngày/tuần/tháng cho nhân sự hành chính & văn thư</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => setActiveTab("report")}
-                        className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all active:scale-95 shadow cursor-pointer"
-                      >
-                        <FileSpreadsheet size={13} /> Báo Cáo
-                      </button>
-                      <button 
-                        onClick={() => setShowAddTask(!showAddTask)}
-                        className="flex items-center gap-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all shadow"
-                      >
-                        <Plus size={13} /> {showAddTask ? "Đóng lại" : "Thêm công việc"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Add Task Form */}
-                  {showAddTask && (
-                    <form onSubmit={handleAddTask} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="md:col-span-2 space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Tên công việc</label>
-                          <input
-                            type="text"
-                            value={newTaskName}
-                            onChange={(e) => setNewTaskName(e.target.value)}
-                            placeholder="Nhập tên công việc cần làm..."
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold"
-                            required
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Người thực hiện</label>
-                          <select
-                            value={newTaskAssignee}
-                            onChange={(e) => setNewTaskAssignee(e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold bg-white"
-                          >
-                            {adminStaff.map(s => (
-                              <option key={s.name} value={s.name}>{s.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Độ ưu tiên</label>
-                          <select
-                            value={newTaskPriority}
-                            onChange={(e) => setNewTaskPriority(e.target.value as any)}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold bg-white"
-                          >
-                            <option value="Thấp">Thấp</option>
-                            <option value="Trung bình">Trung bình</option>
-                            <option value="Cao">Cao</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between items-center gap-4">
-                        <div className="space-y-1 w-48">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Tần suất</label>
-                          <select
-                            value={newTaskFreq}
-                            onChange={(e) => setNewTaskFreq(e.target.value as any)}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold bg-white"
-                          >
-                            <option value="Hàng ngày">Hàng ngày</option>
-                            <option value="Hàng tuần">Hàng tuần</option>
-                            <option value="Hàng tháng">Hàng tháng</option>
-                          </select>
-                        </div>
-                        <button
-                          type="submit"
-                          className="bg-[#005BAC] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow mt-4 self-end"
-                        >
-                          Xác nhận thêm
-                        </button>
-                      </div>
-                    </form>
-                  )}
-
-                  {/* Personnel summary — đọc từ tenant_config.admin_staff */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    {adminStaff.map((s, i) => (
-                      <div key={s.name} className={i > 0 ? "border-l border-slate-200 pl-4" : ""}>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Nhân sự: <strong>{s.name} ({s.role})</strong></p>
-                        <p className="text-[11px] text-slate-600 font-semibold mt-1">Nhiệm vụ: {s.duties}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Kanban Drag and Drop Board */}
-                  <div className="overflow-x-auto pb-4">
-                    <div className="flex gap-4 min-w-[1000px] select-none">
-                      {KANBAN_COLUMNS.map((col) => {
-                        const colItems = checklist.filter(item => item.status === col.id);
-                        const isOver = draggedOverCol === col.id;
-                        
-                        return (
-                          <div 
-                            key={col.id}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDragEnter={() => setDraggedOverCol(col.id)}
-                            onDragLeave={() => setDraggedOverCol(null)}
-                            onDrop={(e) => {
-                              handleDropCard(e, col.id);
-                              setDraggedOverCol(null);
-                            }}
-                            className={`flex-1 min-w-[200px] max-w-[240px] rounded-2xl p-3 flex flex-col gap-3 transition-all ${
-                              isOver 
-                                ? "bg-blue-50/50 border-2 border-dashed border-blue-400" 
-                                : "bg-slate-50/70 border border-slate-200/50"
-                            }`}
-                          >
-                            {/* Column Header */}
-                            <div className="flex items-center justify-between px-1.5 py-1">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <span className={`w-2.5 h-2.5 rounded-full ${col.dotColor} shrink-0`} />
-                                <h4 className="font-heading font-extrabold text-[10px] text-slate-700 tracking-wider truncate">{col.label}</h4>
-                              </div>
-                              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${col.badgeBg} shrink-0`}>
-                                {colItems.length}
-                              </span>
-                            </div>
-
-                            {/* Cards List */}
-                            <div className="flex flex-col gap-2.5 overflow-y-auto max-h-[420px] min-h-[300px] pr-0.5">
-                              {colItems.map((item) => (
-                                <div
-                                  key={item.id}
-                                  draggable
-                                  onDragStart={(e) => handleDragStart(e, item.id)}
-                                  onClick={() => setSelectedChecklistTask(item)}
-                                  className="bg-white border border-slate-200/60 rounded-xl p-3.5 shadow-sm hover:shadow-md hover:border-slate-350 transition-all cursor-pointer active:cursor-grabbing flex flex-col gap-2 relative group"
-                                >
-                                  {/* Delete card button */}
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleDeleteTask(item.id); }}
-                                    className="absolute top-2 right-2 text-slate-300 hover:text-rose-600 p-0.5 rounded transition-colors opacity-0 group-hover:opacity-100"
-                                    title="Xoá công việc"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-
-                                  {/* Priority tag */}
-                                  <div className="flex items-center justify-between">
-                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider ${
-                                      item.priority === "Cao" ? "bg-rose-50 text-rose-600" :
-                                      item.priority === "Thấp" ? "bg-slate-100 text-slate-500" :
-                                      "bg-blue-50 text-[#005BAC]"
-                                    }`}>
-                                      {item.priority || "Trung bình"}
-                                    </span>
-                                    <span className="text-[9px] font-bold text-slate-400">
-                                      {item.frequency}
-                                    </span>
-                                  </div>
-
-                                  {/* Task title */}
-                                  <p className="font-heading font-extrabold text-[11px] text-slate-800 leading-snug uppercase break-words pr-4">
-                                    {item.task}
-                                  </p>
-
-                                  {/* Footer: Assignee & Date */}
-                                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
-                                    {/* Assignee indicator */}
-                                    <div className="flex items-center gap-1.5 min-w-0">
-                                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white uppercase shrink-0 ${staffColor(item.assignee, adminStaff)}`}>
-                                        {staffInitials(item.assignee)}
-                                      </div>
-                                      <span className="text-[9px] font-bold text-slate-500 truncate">{item.assignee}</span>
-                                    </div>
-
-                                    {/* Date */}
-                                    {item.date && (
-                                      <span className="text-[9px] font-bold text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded font-mono">
-                                        {item.date}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-
-                              {colItems.length === 0 && (
-                                <div className="flex-1 flex items-center justify-center border border-dashed border-slate-200 rounded-xl py-10 text-[10px] text-slate-400 italic">
-                                  Kéo thả công việc vào đây
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ─── MODAL CHI TIẾT CÔNG VIỆC CHECKLIST ─── */}
-              {selectedChecklistTask && (() => {
-                const t = selectedChecklistTask;
-                let vpp: any = null;
-                try {
-                  if (t.notes && t.notes.startsWith("{")) vpp = JSON.parse(t.notes);
-                } catch (e) {}
-                const vppItems: any[] = vpp && Array.isArray(vpp.items) ? vpp.items : [];
-                const statusBadge =
-                  t.status === "Hoàn thành" ? "bg-emerald-100 text-emerald-800" :
-                  t.status === "Chờ duyệt" ? "bg-blue-100 text-blue-800" :
-                  t.status === "Cần chỉnh sửa" ? "bg-rose-100 text-rose-700" :
-                  t.status === "Đang xử lý" ? "bg-amber-100 text-amber-800" :
-                  "bg-slate-100 text-slate-600";
-                return (
-                  <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in"
-                    onClick={() => setSelectedChecklistTask(null)}
-                  >
-                    <div
-                      className="bg-white w-full max-w-2xl rounded-2xl shadow-premium border border-slate-100 overflow-hidden max-h-[85vh] flex flex-col animate-scale-up"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-[#005BAC] text-white shrink-0">
-                        <h3 className="font-heading font-black text-sm uppercase leading-snug pr-4">{t.task}</h3>
-                        <button
-                          onClick={() => setSelectedChecklistTask(null)}
-                          className="text-white/80 hover:text-white transition-all cursor-pointer p-1 rounded-lg hover:bg-white/10 shrink-0"
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
-
-                      <div className="p-6 overflow-y-auto space-y-5">
-                        {/* Thông tin chung */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                          <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
-                            <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Trạng thái</p>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusBadge}`}>{t.status}</span>
-                          </div>
-                          <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
-                            <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Ưu tiên</p>
-                            <p className="text-xs font-bold text-slate-700">{t.priority || "Trung bình"}</p>
-                          </div>
-                          <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
-                            <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Tần suất</p>
-                            <p className="text-xs font-bold text-slate-700">{t.frequency}</p>
-                          </div>
-                          <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
-                            <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Ngày</p>
-                            <p className="text-xs font-bold text-slate-700 font-mono">{t.date || "—"}</p>
-                          </div>
-                        </div>
-
-                        <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
-                          <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Phụ trách / Đơn vị</p>
-                          <p className="text-xs font-bold text-slate-700">{t.assignee}</p>
-                        </div>
-
-                        {/* Chi tiết phiếu VPP nếu có */}
-                        {vpp && (
-                          <div className="space-y-3">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                              {vpp.dept && (
-                                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                                  <p className="text-[9px] font-extrabold text-blue-400 uppercase tracking-wider mb-1">Phòng ban / Dự án nhận</p>
-                                  <p className="text-xs font-bold text-blue-800">{vpp.dept}</p>
-                                </div>
-                              )}
-                              {vpp.requesterName && (
-                                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                                  <p className="text-[9px] font-extrabold text-blue-400 uppercase tracking-wider mb-1">Người yêu cầu</p>
-                                  <p className="text-xs font-bold text-blue-800">{vpp.requesterName}</p>
-                                </div>
-                              )}
-                            </div>
-
-                            {vppItems.length > 0 && (
-                              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
-                                  <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
-                                    Danh sách vật tư yêu cầu ({vppItems.length})
-                                  </p>
-                                </div>
-                                <div className="overflow-x-auto max-h-[280px] overflow-y-auto">
-                                  <table className="w-full text-[11px] text-left border-collapse">
-                                    <thead>
-                                      <tr className="bg-slate-50/50 text-slate-400 font-extrabold uppercase tracking-wider text-[9px] border-b border-slate-100 sticky top-0 bg-white">
-                                        <th className="py-2 px-3 w-10 text-center">STT</th>
-                                        <th className="py-2 px-3">Tên vật tư</th>
-                                        <th className="py-2 px-3 w-16 text-center">ĐVT</th>
-                                        <th className="py-2 px-3 w-14 text-center">SL</th>
-                                        <th className="py-2 px-3 w-28 text-center">Trạng thái</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                                      {vppItems.map((it: any, idx: number) => (
-                                        <tr key={it.id ?? idx} className="hover:bg-slate-50/50">
-                                          <td className="py-2 px-3 text-center font-bold text-slate-400">{idx + 1}</td>
-                                          <td className="py-2 px-3 font-bold text-slate-800">{it.item || "—"}</td>
-                                          <td className="py-2 px-3 text-center">{it.unit || "—"}</td>
-                                          <td className="py-2 px-3 text-center font-bold">{it.qty ?? "—"}</td>
-                                          <td className="py-2 px-3 text-center">
-                                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                                              it.status === "Đã cấp phát" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                                            }`}>
-                                              {it.status || "Chờ duyệt"}
-                                            </span>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex justify-end shrink-0">
-                        <button
-                          onClick={() => setSelectedChecklistTask(null)}
-                          className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                        >
-                          Đóng
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
               {/* ─── TAB 3: Đọc hóa đơn thanh toán ─── */}
               {activeTab === "invoice" && (
                 <div className="glass bg-white rounded-2xl p-6 border border-slate-200/50 shadow-premium space-y-6">
@@ -9086,7 +8628,7 @@ export default function AdministrationPage() {
                   onChange={(e) => setModel(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 bg-white cursor-pointer text-xs"
                 >
-                  <option value="gpt-6.1-sol">GPT-6.1 Sol (chính xác nhất, đọc được ảnh, PDF, bảng)</option>
+                  {AI_MODEL_OPTIONS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                 </select>
               </div>
 

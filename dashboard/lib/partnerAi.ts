@@ -34,6 +34,7 @@ const KEY_LEGACY = "openai_api_key";
 const MODEL_KEY = "openai_model_doi_tac";
 export const AI_MODELS = [
   { id: "gpt-6.1-sol", label: "GPT-6.1 Sol (đọc ảnh, PDF, bảng chính xác nhất)" },
+  { id: "gpt-6.1-terra", label: "GPT-6.1 Terra (nhanh & rẻ hơn)" },
 ];
 export const DEFAULT_AI_MODEL = AI_MODELS[0].id;
 // Dòng 6.1 là model suy luận: KHÔNG truyền temperature, dùng reasoning_effort.

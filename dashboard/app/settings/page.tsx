@@ -36,7 +36,7 @@ import { useCurrentUser } from "@/lib/useCurrentUser";
 import { isDirectorRole } from "@/lib/access";
 import { useNoticeBox, useConfirmBox, usePromptBox } from "@/components/ConfirmDialog";
 import { useSearchParams } from "next/navigation";
-import { resolveModel, SOL_MODEL } from "@/lib/aiModel";
+import { resolveModel, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS } from "@/lib/aiModel";
 
 /**
  * Đơn có "chạm" vào tháng đang lọc hay không (month dạng "YYYY-MM").
@@ -242,7 +242,7 @@ function SettingsContent() {
 
   const [apiKey, setApiKey] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
-  const [model, setModel] = useState(SOL_MODEL);
+  const [model, setModel] = useState(DEFAULT_AI_MODEL);
   const [saved, setSaved] = useState(false);
 
   // Approvals States
@@ -1346,7 +1346,7 @@ function SettingsContent() {
                   onChange={(e) => setModel(e.target.value)}
                   className="w-full px-4 py-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/40 cursor-pointer"
                 >
-                  <option value="gpt-6.1-sol">GPT-6.1 Sol (chính xác nhất, đọc được ảnh, PDF, bảng)</option>
+                  {AI_MODEL_OPTIONS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                 </select>
               </div>
 

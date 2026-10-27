@@ -11,7 +11,7 @@ import { emailFieldMatches } from "@/lib/emailMatch";
 import { useDepartments } from "@/lib/departments";
 import { useTenantConfig, invalidateTenantConfig } from "@/lib/tenantConfig";
 import { useNoticeBox, useConfirmBox } from "@/components/ConfirmDialog";
-import { resolveModel, SOL_MODEL } from "@/lib/aiModel";
+import { resolveModel, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS } from "@/lib/aiModel";
 import AtldRowDetail from "@/components/atld/AtldRowDetail";
 import {
   Search,
@@ -142,7 +142,7 @@ export default function EmployeeManagementPage() {
   // Settings State
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [tempApiKey, setTempApiKey] = useState("");
-  const [tempModel, setTempModel] = useState(SOL_MODEL);
+  const [tempModel, setTempModel] = useState(DEFAULT_AI_MODEL);
 
   // Batch Progress State
   const [totalFiles, setTotalFiles] = useState(0);
@@ -1901,7 +1901,7 @@ export default function EmployeeManagementPage() {
                   onChange={(e) => setTempModel(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 bg-white"
                 >
-                  <option value="gpt-6.1-sol">GPT-6.1 Sol (chính xác nhất, đọc được ảnh, PDF, bảng)</option>
+                  {AI_MODEL_OPTIONS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                 </select>
               </div>
 

@@ -23,7 +23,7 @@ import { apiFetch } from "@/lib/apiClient";
 import { useProjectCatalog } from "@/lib/projectCatalog";
 import { exportTransferRequestDocx } from "@/components/TransferRequestPreview";
 import { useDepartments } from "@/lib/departments";
-import { resolveModel, SOL_MODEL } from "@/lib/aiModel";
+import { resolveModel, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS } from "@/lib/aiModel";
 import {
   useFinancePartners, PARTY_TYPE_LABELS, foldVi,
   type FinancePartnerContract,
@@ -229,7 +229,7 @@ export default function SigningFormModal({
   // dài, nhiều bảng số, mini đọc sai điều khoản.
   const [showCfg, setShowCfg] = useState(false);
   const [aiKey, setAiKey] = useState("");
-  const [aiModel, setAiModel] = useState(SOL_MODEL);
+  const [aiModel, setAiModel] = useState(DEFAULT_AI_MODEL);
   const [cfgSaved, setCfgSaved] = useState(false);
 
   useEffect(() => {
@@ -926,7 +926,7 @@ export default function SigningFormModal({
                       <span className={labelCls}>Model</span>
                       <select value={aiModel} onChange={(e) => setAiModel(e.target.value)}
                         className={`${inputCls} cursor-pointer`}>
-                        <option value="gpt-6.1-sol">GPT-6.1 Sol (chính xác nhất, đọc được ảnh, PDF, bảng)</option>
+                        {AI_MODEL_OPTIONS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                       </select>
                     </label>
                     <label className="flex flex-col gap-1.5">

@@ -110,6 +110,15 @@ export default function EopGuidePage() {
     return () => mq.removeEventListener("change", apply);
   }, []);
   const selectedIndex = selected ? guides.findIndex((g) => g.id === selected.id) : -1;
+  // Phần có ảnh thu nhỏ: hiện ảnh làm bìa, bấm mới nạp khung phát (khung Drive/YouTube
+  // tự lấy khung hình riêng nên không dùng được ảnh của mình làm poster).
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const selectedThumb = selected?.thumb_path ? thumbUrls[selected.thumb_path] : undefined;
+  const showCover = !!selectedThumb && playingId !== selected?.id;
+  const embedSrc =
+    video && playingId === selected?.id && video.provider === "youtube"
+      ? `${video.embedUrl}&autoplay=1`
+      : video?.embedUrl;
 
   const closeForm = () => {
     if (newThumb) URL.revokeObjectURL(newThumb.preview);
@@ -327,11 +336,26 @@ export default function EopGuidePage() {
               {/* Khung phát */}
               {selected && (
                 <div className="bg-white border border-slate-200/60 rounded-2xl shadow-sm overflow-hidden">
-                  {video && !isMobile ? (
+                  {video && !isMobile && showCover ? (
+                    <button
+                      onClick={() => setPlayingId(selected.id)}
+                      className="group relative block w-full aspect-video bg-black overflow-hidden cursor-pointer"
+                      title="Phát video"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={selectedThumb} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                      <span className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors" />
+                      <span className="absolute inset-0 flex items-center justify-center">
+                        <span className="w-16 h-16 rounded-full bg-white/90 text-[#005BAC] flex items-center justify-center shadow-xl group-hover:scale-105 transition-transform">
+                          <PlayCircle size={36} />
+                        </span>
+                      </span>
+                    </button>
+                  ) : video && !isMobile ? (
                     <div className="aspect-video bg-black">
                       <iframe
                         key={selected.id}
-                        src={video.embedUrl}
+                        src={embedSrc}
                         title={selected.title}
                         className="w-full h-full"
                         allow="autoplay; encrypted-media; picture-in-picture; fullscreen"

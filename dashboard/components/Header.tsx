@@ -1201,7 +1201,7 @@ export default function Header({ title, subtitle }: Props) {
         )}
 
         {/* Global Notifications & Tools */}
-        <div className="flex items-center gap-1 sm:gap-2 relative">
+        <div className="flex items-center gap-1 sm:gap-2 static sm:relative">
           {/* Company Site Link */}
           <button className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-all" title="Cổng thông tin Công ty">
             <Globe size={16} />
@@ -1223,7 +1223,7 @@ export default function Header({ title, subtitle }: Props) {
 
           {/* Notifications Dropdown */}
           {showDropdown && (
-            <div className="absolute right-0 top-12 w-80 bg-white rounded-2xl border border-slate-200/60 shadow-premium z-50 overflow-hidden text-xs text-slate-700 animate-in fade-in-50 slide-in-from-top-1 duration-150">
+            <div className="absolute left-2 right-2 top-full mt-1 sm:left-auto sm:right-0 sm:top-12 sm:mt-0 sm:w-80 bg-white rounded-2xl border border-slate-200/60 shadow-premium z-50 overflow-hidden text-xs text-slate-700 animate-in fade-in-50 slide-in-from-top-1 duration-150">
               <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-150/60">
                 <span className="font-heading font-extrabold text-slate-800">Thông báo mới ({notifications.length})</span>
                 <button 

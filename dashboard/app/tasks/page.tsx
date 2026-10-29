@@ -1037,12 +1037,10 @@ export default function TaskManagementPage() {
     perms.canViewAllTasks
   );
 
-  // Ô "Người nhận" chỉ liệt kê nhân sự CÙNG PHÒNG với tài khoản đang dùng —
-  // Trưởng phòng Thị trường chỉ giao được cho người phòng Thị trường.
-  // Admin / Ban lãnh đạo / người có cờ xem toàn bộ thì vẫn chọn được mọi phòng.
-  const assignableEmployees = seesAllDepartments || !myDeptKey
-    ? employeesList
-    : employeesList.filter(e => normalizeName(e.department || "") === myDeptKey);
+  // Ô "Người nhận" liệt kê TOÀN CÔNG TY để các phòng phối hợp công việc.
+  // Chỉ là danh sách chọn — quyền xem/sửa/duyệt việc vẫn theo luật cũ
+  // (seesAllDepartments và RLS không đổi).
+  const assignableEmployees = employeesList;
 
   // Lọc gợi ý cho ô "Người nhận": khớp cả TÊN lẫn PHÒNG BAN, cắt còn 30 dòng để
   // danh sách 112 người không làm dropdown ì. Giống hệt ô "Nhân viên tham dự".
@@ -1601,7 +1599,7 @@ export default function TaskManagementPage() {
                       }
                     }}
                     onDrop={(e) => handleDrop(e, col.id)}
-                    className={`flex flex-col gap-4 min-w-[220px] shrink-0 bg-slate-100/50 p-3 rounded-2xl border border-slate-200/50 min-h-[500px] ${
+                    className={`flex flex-col gap-4 min-w-[220px] w-[75vw] max-w-[320px] md:w-auto md:max-w-none shrink-0 bg-slate-100/50 p-3 rounded-2xl border border-slate-200/50 min-h-[500px] ${
                       col.id === "completed" && !canManageTasks && draggedTaskId ? "opacity-60" : ""
                     }`}
                   >
@@ -1899,9 +1897,7 @@ export default function TaskManagementPage() {
                   <label className="text-slate-500">
                     Người nhận <span className="text-rose-500">*</span>
                     <span className="ml-1 text-[11px] font-semibold text-slate-400">
-                      {seesAllDepartments
-                        ? `(toàn công ty — ${assignableEmployees.length} người)`
-                        : `(${currentUser?.department || "phòng của bạn"} — ${assignableEmployees.length} người)`}
+                      {`(toàn công ty — ${assignableEmployees.length} người)`}
                     </span>
                   </label>
                   {/* Picker có ô tìm kiếm — dựng theo đúng ô "Nhân viên tham dự" ở

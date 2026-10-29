@@ -10,7 +10,7 @@
 // XEM: mọi tài khoản đăng nhập. THÊM/SỬA/XOÁ: Admin hoặc cờ can_manage_news (RLS 132).
 // ============================================================
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import { useCurrentUser } from "@/lib/useCurrentUser";
@@ -110,15 +110,25 @@ export default function EopGuidePage() {
     return () => mq.removeEventListener("change", apply);
   }, []);
   const selectedIndex = selected ? guides.findIndex((g) => g.id === selected.id) : -1;
-  // Phần có ảnh thu nhỏ: hiện ảnh làm bìa, bấm mới nạp khung phát (khung Drive/YouTube
-  // tự lấy khung hình riêng nên không dùng được ảnh của mình làm poster).
+  // Phần có ảnh thu nhỏ: phủ ảnh lên khung phát nhưng để cú bấm XUYÊN qua (pointer-events-none)
+  // xuống trình phát Drive/YouTube, nên 1 lần bấm là phát luôn. Drive không cho tự phát qua
+  // tham số URL nên không thể "bấm ảnh rồi mới nạp khung". Biết người dùng đã bấm vào khung
+  // nhờ sự kiện blur của cửa sổ (iframe nhận focus) rồi gỡ ảnh phủ.
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const selectedThumb = selected?.thumb_path ? thumbUrls[selected.thumb_path] : undefined;
   const showCover = !!selectedThumb && playingId !== selected?.id;
-  const embedSrc =
-    video && playingId === selected?.id && video.provider === "youtube"
-      ? `${video.embedUrl}&autoplay=1`
-      : video?.embedUrl;
+  useEffect(() => {
+    if (!showCover || !selected) return;
+    const id = selected.id;
+    const onBlur = () => {
+      setTimeout(() => {
+        if (iframeRef.current && document.activeElement === iframeRef.current) setPlayingId(id);
+      }, 0);
+    };
+    window.addEventListener("blur", onBlur);
+    return () => window.removeEventListener("blur", onBlur);
+  }, [showCover, selected]);
 
   const closeForm = () => {
     if (newThumb) URL.revokeObjectURL(newThumb.preview);
@@ -336,26 +346,21 @@ export default function EopGuidePage() {
               {/* Khung phát */}
               {selected && (
                 <div className="bg-white border border-slate-200/60 rounded-2xl shadow-sm overflow-hidden">
-                  {video && !isMobile && showCover ? (
-                    <button
-                      onClick={() => setPlayingId(selected.id)}
-                      className="group relative block w-full aspect-video bg-black overflow-hidden cursor-pointer"
-                      title="Phát video"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={selectedThumb} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                      <span className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors" />
-                      <span className="absolute inset-0 flex items-center justify-center">
-                        <span className="w-16 h-16 rounded-full bg-white/90 text-[#005BAC] flex items-center justify-center shadow-xl group-hover:scale-105 transition-transform">
-                          <PlayCircle size={36} />
-                        </span>
-                      </span>
-                    </button>
-                  ) : video && !isMobile ? (
-                    <div className="aspect-video bg-black">
+                  {video && !isMobile ? (
+                    <div className="relative aspect-video bg-black">
+                      {showCover && (
+                        <div className="absolute inset-0 z-10 pointer-events-none">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={selectedThumb} alt="" className="w-full h-full object-cover" />
+                          <span className="absolute right-3 bottom-3 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center shadow-lg">
+                            <PlayCircle size={22} />
+                          </span>
+                        </div>
+                      )}
                       <iframe
+                        ref={iframeRef}
                         key={selected.id}
-                        src={embedSrc}
+                        src={video.embedUrl}
                         title={selected.title}
                         className="w-full h-full"
                         allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
@@ -363,6 +368,21 @@ export default function EopGuidePage() {
                         referrerPolicy="strict-origin-when-cross-origin"
                       />
                     </div>
+                  ) : selectedThumb && isHttpUrl(selected.video_url) ? (
+                    // Có ảnh thu nhỏ: hiện nguyên ảnh, chạm 1 lần vào ảnh là mở video.
+                    <a
+                      href={selected.video_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="relative block aspect-video bg-black overflow-hidden"
+                      title="Xem video"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={selectedThumb} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                      <span className="absolute right-3 bottom-3 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center shadow-lg">
+                        <PlayCircle size={22} />
+                      </span>
+                    </a>
                   ) : (
                     <div className="relative aspect-video bg-slate-900 flex flex-col items-center justify-center gap-3 text-center p-6 overflow-hidden">
                       {selected.thumb_path && thumbUrls[selected.thumb_path] && (

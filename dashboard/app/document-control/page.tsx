@@ -82,13 +82,11 @@ interface BatchItem {
 export default function DocumentControlPage() {
   const [activeTab, setActiveTab] = useState<string>("incoming"); // incoming, outgoing_1, outgoing_2, outgoing_hdqt, settings
   const [docs, setDocs] = useState<ClericalDoc[]>([]);
-  // Khoảng ngày xuất Excel, mặc định từ ngày 1 tháng này đến hôm nay (giờ VN).
-  const [exportFrom, setExportFrom] = useState<string>(() =>
-    new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" }).slice(0, 8) + "01"
-  );
-  const [exportTo, setExportTo] = useState<string>(() =>
-    new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" })
-  );
+  // Khoảng ngày upload (cột Ngày/Tháng): lọc luôn bảng đang xem, và 3 nút
+  // Tải Excel / Tải file gốc / Xóa file gốc dùng đúng danh sách đã lọc này.
+  // Mặc định trống = hiện toàn bộ.
+  const [exportFrom, setExportFrom] = useState<string>("");
+  const [exportTo, setExportTo] = useState<string>("");
   const [exporting, setExporting] = useState(false);
   const [zipProgress, setZipProgress] = useState<string | null>(null); // "3/20" khi đang gom file
   const [deleteProgress, setDeleteProgress] = useState<string | null>(null); // xoá file hàng loạt (Admin)
@@ -820,8 +818,22 @@ export default function DocumentControlPage() {
   };
 
   // Filters
+  // Ngày upload (cột "Ngày/Tháng" = receive_send_date) quy về "YYYY-MM-DD" giờ VN để so khoảng ngày.
+  const uploadDay = (v?: string) => {
+    if (!v) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+    const dt = new Date(v);
+    return isNaN(dt.getTime()) ? "" : dt.toLocaleDateString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" });
+  };
+
   const filteredDocs = docs.filter((d) => {
     if (d.type !== activeTab) return false;
+    if (exportFrom || exportTo) {
+      const day = uploadDay(d.receive_send_date);
+      if (!day) return false;
+      if (exportFrom && day < exportFrom) return false;
+      if (exportTo && day > exportTo) return false;
+    }
     const q = search.toLowerCase().trim();
     if (!q) return true;
     return (
@@ -843,12 +855,7 @@ export default function DocumentControlPage() {
       outgoing_hdqt: "Cong van HDQT",
     };
     const vn = (s: string) => s.split("-").reverse().join("/");
-    const rows = filteredDocs.filter((d) => {
-      const day = (d.receive_send_date || "").slice(0, 10);
-      if (exportFrom && (!day || day < exportFrom)) return false;
-      if (exportTo && (!day || day > exportTo)) return false;
-      return true;
-    });
+    const rows = filteredDocs;
     const rangeText = exportFrom || exportTo
       ? `từ ${exportFrom ? vn(exportFrom) : "đầu"} đến ${exportTo ? vn(exportTo) : "nay"}`
       : "";
@@ -895,12 +902,7 @@ export default function DocumentControlPage() {
   // Link Google Drive/OneDrive không tải thẳng được từ trình duyệt (CORS) nên
   // liệt kê vào file "DANH-SACH-CHUA-TAI.txt" trong ZIP để tải tay.
   const handleDownloadOriginalsZip = async () => {
-    const rows = filteredDocs.filter((d) => {
-      const day = (d.receive_send_date || "").slice(0, 10);
-      if (exportFrom && (!day || day < exportFrom)) return false;
-      if (exportTo && (!day || day > exportTo)) return false;
-      return !!(d.original_file_url || d.scan_file_url);
-    });
+    const rows = filteredDocs.filter((d) => !!(d.original_file_url || d.scan_file_url));
     if (rows.length === 0) {
       alert("Không có công văn nào có file đính kèm trong khoảng ngày đã chọn.");
       return;
@@ -987,12 +989,7 @@ export default function DocumentControlPage() {
   const handleDeleteOriginalsBulk = async () => {
     if (!currentUser?.isAdmin) return;
     const targets = filteredDocs
-      .filter((d) => {
-        const day = (d.receive_send_date || "").slice(0, 10);
-        if (exportFrom && (!day || day < exportFrom)) return false;
-        if (exportTo && (!day || day > exportTo)) return false;
-        return isPrivateRef(d.original_file_url) || isPrivateRef(d.scan_file_url);
-      })
+      .filter((d) => isPrivateRef(d.original_file_url) || isPrivateRef(d.scan_file_url))
       .filter((d) => !!d.id);
     if (targets.length === 0) {
       alert("Không có file nào trong kho để xoá ở khoảng ngày đã chọn.");
@@ -1151,7 +1148,7 @@ export default function DocumentControlPage() {
               <div className="flex items-center gap-3">
                 <div
                   className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-sm"
-                  title="Khoảng ngày cần tải theo cột Ngày/Tháng (để trống = không giới hạn)"
+                  title="Lọc theo ngày upload (cột Ngày/Tháng). Để trống = hiện tất cả"
                 >
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider shrink-0">Từ</span>
                   <input
@@ -1169,6 +1166,15 @@ export default function DocumentControlPage() {
                     onChange={(e) => setExportTo(e.target.value)}
                     className="text-xs font-semibold text-slate-700 bg-transparent outline-none cursor-pointer w-[112px]"
                   />
+                  {(exportFrom || exportTo) && (
+                    <button
+                      onClick={() => { setExportFrom(""); setExportTo(""); }}
+                      className="p-0.5 text-slate-400 hover:text-rose-600 rounded"
+                      title="Bỏ lọc ngày"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
                 </div>
                 <button
                   onClick={handleExportExcel}

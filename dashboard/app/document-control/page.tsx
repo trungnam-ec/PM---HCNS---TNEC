@@ -83,13 +83,20 @@ export default function DocumentControlPage() {
   const [activeTab, setActiveTab] = useState<string>("incoming"); // incoming, outgoing_1, outgoing_2, outgoing_hdqt, settings
   const [docs, setDocs] = useState<ClericalDoc[]>([]);
   // Khoảng ngày upload (cột Ngày/Tháng): lọc luôn bảng đang xem, và 3 nút
-  // Tải Excel / Tải file gốc / Xóa file gốc dùng đúng danh sách đã lọc này.
+  // Tải Excel / Tải file gốc / Xóa hàng loạt dùng đúng danh sách đã lọc này.
   // Mặc định trống = hiện toàn bộ.
   const [exportFrom, setExportFrom] = useState<string>("");
   const [exportTo, setExportTo] = useState<string>("");
   const [exporting, setExporting] = useState(false);
   const [zipProgress, setZipProgress] = useState<string | null>(null); // "3/20" khi đang gom file
-  const [deleteProgress, setDeleteProgress] = useState<string | null>(null); // xoá file hàng loạt (Admin)
+  const [deleteProgress, setDeleteProgress] = useState<string | null>(null); // xoá hàng loạt (Admin)
+  // Popup xác nhận "Xóa hàng loạt" (cùng kiểu popup xoá 1 công văn); result != null = đã chạy xong.
+  const [bulkDelete, setBulkDelete] = useState<{
+    targets: ClericalDoc[];
+    tabName: string;
+    rangeText: string; // "" = toàn bộ tab
+    result: { ok: boolean; text: string } | null;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
@@ -980,53 +987,53 @@ export default function DocumentControlPage() {
     }
   };
 
-  // XOÁ HÀNG LOẠT file đính kèm (Bản gốc + Bản scan) trong kho riêng tư, cùng phạm vi
-  // với nút "Tải file gốc" (tab đang mở + khoảng ngày + ô tìm kiếm). CHỈ Admin.
-  // - Giữ nguyên dòng công văn, chỉ bỏ trống ô link file.
-  // - Link Drive/OneDrive và tệp cũ ở kho công khai: không đụng tới.
-  // - Thứ tự: ghi CSDL TRƯỚC rồi mới xoá file (bài học storage-write-order):
-  //   dòng nào RLS không cho sửa thì file của dòng đó được giữ lại.
+  // XOÁ HÀNG LOẠT công văn (cả dòng + file bản gốc/bản scan trong kho riêng tư) của
+  // tab đang mở, theo khoảng ngày upload + ô tìm kiếm (= đúng các dòng đang hiện).
+  // Để trống ngày = xoá cả tab (có hộp xác nhận). CHỈ Admin.
+  // - Link Drive/OneDrive: file nằm bên ngoài nên không xoá được, chỉ mất dòng.
+  // - Thứ tự: xoá dòng CSDL TRƯỚC rồi mới xoá file (bài học storage-write-order):
+  //   chỉ xoá file của những dòng CSDL xác nhận đã xoá.
   const handleDeleteOriginalsBulk = async () => {
     if (!currentUser?.isAdmin) return;
-    const targets = filteredDocs
-      .filter((d) => isPrivateRef(d.original_file_url) || isPrivateRef(d.scan_file_url))
-      .filter((d) => !!d.id);
+    const targets = filteredDocs.filter((d) => !!d.id);
     if (targets.length === 0) {
-      alert("Không có file nào trong kho để xoá ở khoảng ngày đã chọn.");
+      alert("Không có công văn nào trong khoảng đã chọn để xoá.");
       return;
     }
+    const tabNames: Record<string, string> = {
+      incoming: "Công văn đến", outgoing_1: "Công văn đi 1", outgoing_2: "Công văn đi 2", outgoing_hdqt: "Công văn HĐQT",
+    };
     const vn = (s: string) => s.split("-").reverse().join("/");
     const rangeText = exportFrom || exportTo
       ? `từ ${exportFrom ? vn(exportFrom) : "đầu"} đến ${exportTo ? vn(exportTo) : "nay"}`
-      : "(toàn bộ tab)";
-    const ok = window.confirm(
-      `XOÁ VĨNH VIỄN file đính kèm (bản gốc + bản scan) của ${targets.length} công văn ${rangeText}?\n\n` +
-      `• Dòng công văn vẫn giữ, chỉ mất file.\n• Link Google Drive/OneDrive không bị xoá.\n• KHÔNG khôi phục được — nên bấm "Tải file gốc" trước.`
-    );
-    if (!ok) return;
+      : "";
+    setBulkDelete({ targets, tabName: tabNames[activeTab] || activeTab, rangeText, result: null });
+  };
 
+  const confirmBulkDelete = async () => {
+    if (!bulkDelete || !currentUser?.isAdmin) return;
+    const { targets } = bulkDelete;
     setDeleteProgress(`0/${targets.length}`);
     const paths: string[] = [];
-    let failed = 0;
-    let done = 0;
+    let deleted = 0;
+    let dbErr = "";
     try {
-      for (const d of targets) {
-        const patch: Partial<ClericalDoc> = {};
-        if (isPrivateRef(d.original_file_url)) patch.original_file_url = "";
-        if (isPrivateRef(d.scan_file_url)) patch.scan_file_url = "";
+      for (let i = 0; i < targets.length; i += 100) {
+        const chunk = targets.slice(i, i + 100);
         const { data, error } = await supabase
           .from("clerical_documents")
-          .update(patch)
-          .eq("id", d.id!)
+          .delete()
+          .in("id", chunk.map((d) => d.id!))
           .select("id");
-        if (error || !data || data.length === 0) {
-          failed++;
-        } else {
+        if (error) dbErr = error.message;
+        const gone = new Set((data || []).map((r: { id: string }) => r.id));
+        for (const d of chunk) {
+          if (!gone.has(d.id!)) continue;
+          deleted++;
           if (isPrivateRef(d.original_file_url)) paths.push(pathFromRef(d.original_file_url!));
           if (isPrivateRef(d.scan_file_url)) paths.push(pathFromRef(d.scan_file_url!));
         }
-        done++;
-        setDeleteProgress(`${done}/${targets.length}`);
+        setDeleteProgress(`${Math.min(i + 100, targets.length)}/${targets.length}`);
       }
       // Xoá file theo lô 100 đường dẫn
       let removeErr = "";
@@ -1035,13 +1042,21 @@ export default function DocumentControlPage() {
         if (error) removeErr = error.message;
       }
       await fetchDocuments();
-      alert(
-        `Đã xoá file của ${targets.length - failed}/${targets.length} công văn.` +
-        (failed ? `\n${failed} công văn không cập nhật được nên giữ nguyên file.` : "") +
-        (removeErr ? `\nCảnh báo khi xoá trong kho: ${removeErr} (link trên bảng đã gỡ, file có thể còn sót trong kho).` : "")
-      );
+      const failed = targets.length - deleted;
+      setBulkDelete((b) => b && {
+        ...b,
+        result: {
+          ok: failed === 0 && !removeErr,
+          text:
+            `Đã xoá ${deleted}/${targets.length} công văn.` +
+            (failed ? `
+${failed} công văn không xoá được nên giữ nguyên cả dòng lẫn file.${dbErr ? ` (${dbErr})` : ""}` : "") +
+            (removeErr ? `
+Cảnh báo khi xoá file trong kho: ${removeErr} (dòng đã xoá, file có thể còn sót trong kho).` : ""),
+        },
+      });
     } catch (e) {
-      alert("Lỗi khi xoá file: " + (e as Error).message);
+      setBulkDelete((b) => b && { ...b, result: { ok: false, text: "Lỗi khi xoá: " + (e as Error).message } });
       fetchDocuments();
     } finally {
       setDeleteProgress(null);
@@ -1201,12 +1216,12 @@ export default function DocumentControlPage() {
                     onClick={handleDeleteOriginalsBulk}
                     disabled={!!deleteProgress || !!zipProgress}
                     className="flex items-center gap-1.5 bg-white border border-rose-500 text-rose-600 hover:bg-rose-50 disabled:opacity-60 text-xs font-bold px-4 py-2.5 rounded-xl transition-all active:scale-95 shadow-sm"
-                    title="Chỉ Admin: xoá vĩnh viễn file đính kèm của các công văn trong khoảng ngày đã chọn"
+                    title="Chỉ Admin: xoá vĩnh viễn các công văn đang hiện (cả dòng lẫn file). Để trống ngày = cả tab"
                   >
                     {deleteProgress ? (
                       <><Loader2 size={14} className="animate-spin" /> Đang xoá {deleteProgress}</>
                     ) : (
-                      <><Trash2 size={14} /> Xóa file gốc</>
+                      <><Trash2 size={14} /> Xóa hàng loạt</>
                     )}
                   </button>
                 )}
@@ -2250,6 +2265,93 @@ export default function DocumentControlPage() {
                 {deletingDoc ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                 {deletingDoc ? "Đang xoá..." : "Xoá công văn"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup xác nhận "Xóa hàng loạt" — cùng kiểu popup xoá 1 công văn ở trên */}
+      {bulkDelete && (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          onClick={() => !deleteProgress && setBulkDelete(null)}
+        >
+          <div
+            className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-rose-600 text-white px-6 py-4 flex items-center justify-between gap-3">
+              <h3 className="font-heading font-bold text-sm flex items-center gap-2">
+                <Trash2 size={16} /> Xoá hàng loạt công văn
+              </h3>
+              <button
+                type="button"
+                onClick={() => setBulkDelete(null)}
+                disabled={!!deleteProgress}
+                className="text-white/80 hover:text-white cursor-pointer disabled:opacity-50 bg-transparent border-none p-0"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-3">
+              {bulkDelete.result ? (
+                <div className={`flex items-start gap-2 text-sm font-semibold leading-relaxed whitespace-pre-line ${bulkDelete.result.ok ? "text-emerald-700" : "text-rose-600"}`}>
+                  {bulkDelete.result.ok ? <CheckCircle size={18} className="shrink-0 mt-0.5" /> : <AlertCircle size={18} className="shrink-0 mt-0.5" />}
+                  <span>{bulkDelete.result.text}</span>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-600 font-semibold leading-relaxed">
+                    Xoá vĩnh viễn <span className="text-rose-600 font-extrabold">{bulkDelete.targets.length} công văn</span> ở tab{" "}
+                    <span className="text-slate-800">"{bulkDelete.tabName}"</span>{" "}
+                    {bulkDelete.rangeText ? (
+                      <span className="text-slate-800">{bulkDelete.rangeText}</span>
+                    ) : (
+                      <span className="text-rose-600 font-extrabold">— TOÀN BỘ TAB (chưa chọn ngày)</span>
+                    )}
+                    ?
+                  </p>
+                  <ul className="text-xs text-slate-500 font-semibold space-y-1 list-disc pl-5">
+                    <li>Xoá cả dòng công văn lẫn file bản gốc + bản scan.</li>
+                    <li>
+                      <span className="text-rose-600">Không khôi phục được</span> — nên bấm "Tải Excel" và "Tải file gốc" trước.
+                    </li>
+                  </ul>
+                </>
+              )}
+            </div>
+
+            <div className="px-6 pb-5 pt-1 flex items-center justify-end gap-2">
+              {bulkDelete.result ? (
+                <button
+                  type="button"
+                  onClick={() => setBulkDelete(null)}
+                  className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 cursor-pointer shadow-sm border-none"
+                >
+                  Đóng
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setBulkDelete(null)}
+                    disabled={!!deleteProgress}
+                    className="text-xs font-bold text-slate-500 hover:text-slate-700 px-4 py-2 rounded-xl cursor-pointer disabled:opacity-50 bg-transparent border-none"
+                  >
+                    Huỷ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmBulkDelete}
+                    disabled={!!deleteProgress}
+                    className="inline-flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-sm border-none"
+                  >
+                    {deleteProgress ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    {deleteProgress ? `Đang xoá ${deleteProgress}` : `Xoá ${bulkDelete.targets.length} công văn`}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

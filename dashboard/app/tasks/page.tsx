@@ -298,6 +298,9 @@ export default function TaskManagementPage() {
   // Popup xác nhận xoá công việc — thay window.confirm, hiện giữa màn hình.
   const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
   const [deletingTask, setDeletingTask] = useState(false);
+  // Xoá hàng loạt (chỉ Admin): mở popup xác nhận rồi mới xoá.
+  const [showBulkDelete, setShowBulkDelete] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editAssignee, setEditAssignee] = useState("");
   const [editPriority, setEditPriority] = useState("Trung bình");
@@ -1324,6 +1327,47 @@ export default function TaskManagementPage() {
     }
   };
 
+  // ─── Xoá task hàng loạt (CHỈ Admin) ───
+  // Xoá ĐÚNG những thẻ đang hiện trên bảng (filteredTasks) — tức là theo phòng
+  // ban/BĐH + khoảng ngày + các bộ lọc khác đang chọn. Không chọn phòng và để
+  // trống ngày thì filteredTasks là toàn bộ việc → xoá hết. Đơn nghỉ phép /
+  // công tác vốn bị loại khỏi filteredTasks nên không bao giờ bị xoá ở đây.
+  const isAdminUser = !!currentUser && (currentUser.isAdmin || currentUser.role.toLowerCase() === "admin");
+  const hasDeptFilter = filterDept !== "all" || filterBdh !== "all";
+  const hasDateFilter = !!taskFrom && !!taskTo;
+  const bulkScopeLabel = [
+    hasDeptFilter ? (filterDept !== "all" ? filterDept : filterBdh) : "Tất cả phòng ban",
+    hasDateFilter ? `${fmtD(taskFrom)} – ${fmtD(taskTo)}` : "Mọi thời gian",
+  ].join(" · ");
+
+  const confirmBulkDelete = async () => {
+    if (!isAdminUser || bulkDeleting) return;
+    const ids = filteredTasks.map(t => t.id);
+    if (ids.length === 0) { setShowBulkDelete(false); return; }
+    setBulkDeleting(true);
+    try {
+      let deleted = 0;
+      // Chia lô 200 id để URL của .in() không quá dài.
+      for (let i = 0; i < ids.length; i += 200) {
+        const chunk = ids.slice(i, i + 200);
+        const { data, error } = await supabase.from("tasks").delete().in("id", chunk).select("id");
+        if (error) throw error;
+        deleted += data?.length || 0;
+      }
+      setShowBulkDelete(false);
+      fetchTasks();
+      // RLS chặn DELETE thì Supabase trả 0 dòng chứ không báo lỗi — phải đếm lại.
+      if (deleted < ids.length) {
+        alert(`Chỉ xoá được ${deleted}/${ids.length} công việc. Số còn lại bị chặn quyền trên CSDL.`);
+      }
+    } catch (err) {
+      console.error("Bulk delete tasks error:", err);
+      alert("Lỗi khi xoá công việc: " + (err instanceof Error ? err.message : (err as { message?: string })?.message || String(err)));
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-[#F7F9FC]">
       <Sidebar />
@@ -1464,6 +1508,21 @@ export default function TaskManagementPage() {
             </div>
 
             <div className="flex items-center gap-3">
+            {isAdminUser && (
+              <button
+                onClick={() => setShowBulkDelete(true)}
+                disabled={loading || bulkDeleting || filteredTasks.length === 0}
+                title={
+                  filteredTasks.length === 0
+                    ? "Không có công việc nào trong danh sách đang lọc"
+                    : `Xoá ${filteredTasks.length} công việc theo bộ lọc hiện tại`
+                }
+                className="flex items-center gap-1.5 bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 text-xs font-bold px-4 py-2 rounded-xl transition-all active:scale-95 shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+              >
+                <Trash2 size={14} /> Xóa task
+              </button>
+            )}
+
             {/* Bộ lọc thời gian dạng nút gọn — bấm mới bung lịch chọn */}
             <div className="relative">
               <button
@@ -2695,6 +2754,65 @@ export default function TaskManagementPage() {
               >
                 {deletingTask ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                 {deletingTask ? "Đang xoá..." : "Xoá công việc"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup xác nhận XOÁ HÀNG LOẠT — cùng mẫu với popup xoá 1 công việc ở trên */}
+      {showBulkDelete && isAdminUser && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[70] flex items-center justify-center p-4"
+          onClick={() => !bulkDeleting && setShowBulkDelete(false)}
+        >
+          <div
+            className="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-rose-600 text-white px-6 py-4 flex items-center justify-between gap-3">
+              <h3 className="font-heading font-black text-sm flex items-center gap-2">
+                <Trash2 size={16} /> Xoá task hàng loạt
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowBulkDelete(false)}
+                disabled={bulkDeleting}
+                className="text-white/80 hover:text-white disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-3">
+              <p className="text-xs text-slate-600 font-semibold leading-relaxed">
+                Bạn có chắc chắn muốn xoá{" "}
+                <span className="font-black text-rose-600">{filteredTasks.length} công việc</span>{" "}
+                {hasDeptFilter || hasDateFilter ? "theo bộ lọc đang chọn?" : "— TOÀN BỘ công việc trên bảng?"}{" "}
+                <span className="text-rose-600">Dữ liệu sẽ xoá trên hệ thống, không khôi phục được.</span>
+              </p>
+              <div className="text-[11px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                Phạm vi: {bulkScopeLabel}
+              </div>
+            </div>
+
+            <div className="px-6 pb-5 pt-1 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowBulkDelete(false)}
+                disabled={bulkDeleting}
+                className="px-4 py-2 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 text-xs disabled:opacity-50"
+              >
+                Huỷ
+              </button>
+              <button
+                type="button"
+                onClick={confirmBulkDelete}
+                disabled={bulkDeleting}
+                className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-white font-bold rounded-xl shadow-md transition-all active:scale-95 text-xs"
+              >
+                {bulkDeleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                {bulkDeleting ? "Đang xoá..." : `Xoá ${filteredTasks.length} công việc`}
               </button>
             </div>
           </div>

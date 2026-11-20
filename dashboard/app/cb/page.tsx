@@ -4594,6 +4594,58 @@ export default function CBPage() {
     return tempContracts.filter(c => normalizeText(c.employee_name || c.employees?.name || "") === normalizeText(currentUser?.name || ""));
   }, [tempContracts, hasFullAccess, currentUser]);
 
+  // Tải danh sách HĐLĐ ra Excel. Lọc theo phòng ban / Ban điều hành đang chọn
+  // (cùng cách so khớp với bảng); không chọn gì thì tải toàn bộ. Bỏ dòng chưa lưu.
+  const handleExportContractsExcel = () => {
+    const toVNDate = (d?: string | null) => {
+      if (!d) return "";
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
+    };
+    const unitFilter = (contractsDeptFilter || contractsProjectFilter || "").toLowerCase();
+    const rows = myVisibleContracts
+      .filter(c => !c.id.startsWith("new-"))
+      .filter(c => {
+        if (!unitFilter) return true;
+        const dept = (c.department || c.employees?.department || "").toLowerCase();
+        return dept.includes(unitFilter);
+      })
+      .sort((a, b) => (isResignedNote(a.notes) ? 1 : 0) - (isResignedNote(b.notes) ? 1 : 0));
+
+    if (rows.length === 0) {
+      alert("Không có hợp đồng nào để tải.");
+      return;
+    }
+
+    const data = rows.map((c, i) => ({
+      "STT": i + 1,
+      "Mã NV": c.employee_code || "",
+      "Họ và tên": c.employee_name || c.employees?.name || "",
+      "Phòng ban": c.department || c.employees?.department || "",
+      "HĐTV từ ngày": toVNDate(c.probation_start_date),
+      "HĐTV đến ngày": toVNDate(c.probation_end_date),
+      "Số HĐTV": c.probation_contract_number || "",
+      "Loại HĐLĐ": c.type || "",
+      "HĐLĐ từ ngày": toVNDate(c.sign_date),
+      "HĐLĐ đến ngày": toVNDate(c.expiration_date),
+      "Số HĐLĐ": c.contract_number && !c.contract_number.startsWith("IMPORT-") ? c.contract_number : "",
+      "Lương BHXH": c.base_salary_insurance ?? "",
+      "Thưởng HQCV": c.performance_bonus ?? "",
+      "Phụ cấp": c.allowances ?? "",
+      "Tổng thu nhập": c.total_income ?? "",
+      "Ghi chú": c.notes || "",
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws["!cols"] = [6, 12, 26, 28, 13, 13, 18, 22, 13, 13, 18, 14, 14, 14, 14, 24].map(wch => ({ wch }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "HĐLĐ");
+    const unitName = contractsDeptFilter || contractsProjectFilter;
+    const suffix = unitName ? unitName.replace(/[\\/:*?"<>|]/g, "-") : "Toan bo";
+    const today = new Date().toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }).replace(/\//g, "-");
+    XLSX.writeFile(wb, `Danh sach HDLD - ${suffix} - ${today}.xlsx`);
+  };
+
   const parseBirthdate = (dateStr: string) => {
     if (!dateStr) return null;
     
@@ -8672,13 +8724,6 @@ export default function CBPage() {
                   </label>
 
                   <button
-                    onClick={openAiSettings}
-                    className="flex items-center gap-1.5 px-4 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-650 bg-white rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
-                  >
-                    <Settings size={14} /> Cấu hình AI
-                  </button>
-
-                  <button
                     onClick={handleAddBlankContractRow}
                     className="flex items-center gap-1.5 px-4 py-2.5 bg-[#005BAC] hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-premium active:scale-95"
                   >
@@ -8703,17 +8748,24 @@ export default function CBPage() {
                     {syncingProbation ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                     Đồng bộ HĐTV (Excel)
                   </button>
-                    </>
-                  )}
 
                   <button
-                    onClick={() => fetchContracts()}
+                    onClick={handleExportContractsExcel}
                     disabled={loadingContracts}
-                    className="p-2.5 border border-slate-200 hover:bg-slate-50 text-slate-500 rounded-xl transition-all cursor-pointer active:scale-95"
-                    title="Đồng bộ lại"
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-premium disabled:opacity-50 active:scale-95"
+                    title="Tải file Excel theo phòng ban / Ban điều hành đang lọc; không lọc thì tải toàn bộ"
                   >
-                    <RefreshCw size={14} className={loadingContracts ? "animate-spin" : ""} />
+                    <Download size={14} /> Tải danh sách HĐLĐ
                   </button>
+
+                  <button
+                    onClick={openAiSettings}
+                    className="flex items-center gap-1.5 px-4 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-650 bg-white rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
+                  >
+                    <Settings size={14} /> Cấu hình AI
+                  </button>
+                    </>
+                  )}
                 </div>
               </div>
 
